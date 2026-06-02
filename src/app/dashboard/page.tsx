@@ -1,0 +1,285 @@
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
+import {
+  Plane,
+  ScanLine,
+  CheckCircle2,
+  AlertOctagon,
+  CopyCheck,
+  ArrowRight,
+  Clock,
+  Sparkles,
+} from "lucide-react";
+import { AppShell } from "@/components/layout/AppShell";
+import { StatCard } from "@/components/ui/StatCard";
+import { Card, CardBody, CardHeader, CardTitle } from "@/components/ui/Card";
+import {
+  FlightStatusBadge,
+  ScanStatusBadge,
+} from "@/components/ui/StatusBadge";
+import { Flight, ScanEvent } from "@/lib/types";
+import { getFlights, getScanEvents } from "@/lib/storage";
+import { formatTime, todayDateString } from "@/lib/utils";
+import { useCountUp } from "@/lib/useCountUp";
+
+export default function DashboardPage() {
+  const [flights, setFlights] = useState<Flight[]>([]);
+  const [events, setEvents] = useState<ScanEvent[]>([]);
+
+  useEffect(() => {
+    setFlights(getFlights());
+    setEvents(getScanEvents());
+  }, []);
+
+  const today = todayDateString();
+
+  const flightsToday = useMemo(
+    () => flights.filter((f) => f.departureDate === today),
+    [flights, today],
+  );
+
+  const eventsToday = useMemo(
+    () => events.filter((e) => e.scannedAt.slice(0, 10) === today),
+    [events, today],
+  );
+
+  const validCount = eventsToday.filter(
+    (e) => e.resultStatus === "VALID_FLIGHT",
+  ).length;
+  const dupCount = eventsToday.filter(
+    (e) => e.resultStatus === "DUPLICATE_SCAN",
+  ).length;
+  const rejectedCount = eventsToday.length - validCount - dupCount;
+
+  const flightsCnt = useCountUp(flightsToday.length);
+  const scanCnt = useCountUp(eventsToday.length);
+  const validCnt = useCountUp(validCount);
+  const dupCnt = useCountUp(dupCount);
+  const rejectedCnt = useCountUp(rejectedCount);
+
+  return (
+    <AppShell>
+      <div className="space-y-6">
+        {/* Hero greeting */}
+        <div className="relative overflow-hidden rounded-3xl border border-blue-200/60 bg-gradient-to-br from-blue-600 via-blue-500 to-cyan-500 px-6 py-6 text-white shadow-lift animate-fade-up">
+          <div className="deco-blob -right-10 -top-10 h-40 w-40 bg-white/30 opacity-50" />
+          <div className="deco-blob -bottom-12 -left-8 h-44 w-44 bg-cyan-200/40 opacity-40" />
+          <div className="relative z-[1] flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <div className="inline-flex items-center gap-2 rounded-full bg-white/15 px-3 py-1 text-[11px] font-semibold uppercase tracking-wider text-white/90 ring-1 ring-white/20">
+                <Sparkles className="h-3.5 w-3.5" />
+                Pos Validasi Boarding Pass
+              </div>
+              <h2 className="mt-2 text-2xl font-semibold tracking-tight">
+                Selamat datang kembali 👋
+              </h2>
+              <p className="mt-1 text-sm text-white/85">
+                Ringkasan aktivitas validasi boarding pass hari ini.
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <Link
+                href="/scan"
+                className="inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2 text-sm font-semibold text-blue-700 shadow-sm transition hover:shadow-lift"
+              >
+                <ScanLine className="h-4 w-4" />
+                Mulai Scan
+              </Link>
+              <Link
+                href="/flights"
+                className="inline-flex items-center gap-2 rounded-xl bg-white/15 px-4 py-2 text-sm font-semibold text-white ring-1 ring-white/25 backdrop-blur transition hover:bg-white/25"
+              >
+                Jadwal Penerbangan
+                <ArrowRight className="h-4 w-4" />
+              </Link>
+            </div>
+          </div>
+        </div>
+
+        {/* Stat cards */}
+        <div className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-5">
+          <div className="animate-fade-up stagger-1">
+            <StatCard
+              label="Flight Hari Ini"
+              value={flightsCnt}
+              helper={`Tanggal ${today}`}
+              tone="brand"
+              icon={<Plane className="h-5 w-5" />}
+            />
+          </div>
+          <div className="animate-fade-up stagger-2">
+            <StatCard
+              label="Total Scan"
+              value={scanCnt}
+              helper="Hari ini"
+              tone="sky"
+              icon={<ScanLine className="h-5 w-5" />}
+            />
+          </div>
+          <div className="animate-fade-up stagger-3">
+            <StatCard
+              label="Valid"
+              value={validCnt}
+              helper="Boarding pass valid"
+              tone="emerald"
+              icon={<CheckCircle2 className="h-5 w-5" />}
+            />
+          </div>
+          <div className="animate-fade-up stagger-4">
+            <StatCard
+              label="Duplicate"
+              value={dupCnt}
+              helper="Pernah di-scan"
+              tone="amber"
+              icon={<CopyCheck className="h-5 w-5" />}
+            />
+          </div>
+          <div className="animate-fade-up stagger-5">
+            <StatCard
+              label="Rejected"
+              value={rejectedCnt}
+              helper="Invalid / not today / etc."
+              tone="rose"
+              icon={<AlertOctagon className="h-5 w-5" />}
+            />
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
+          {/* Today flights */}
+          <Card className="animate-fade-up stagger-2 lift xl:col-span-2">
+            <div className="deco-blob -right-12 -top-12 h-40 w-40 bg-blue-200" />
+            <CardHeader>
+              <div>
+                <CardTitle>
+                  <span className="inline-flex items-center gap-2">
+                    <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-blue-100 text-blue-700 ring-1 ring-blue-200">
+                      <Plane className="h-3.5 w-3.5" />
+                    </span>
+                    Jadwal Penerbangan Hari Ini
+                  </span>
+                </CardTitle>
+                <p className="mt-0.5 text-xs text-slate-500">
+                  Flight yang boleh divalidasi pada pos pengecekan.
+                </p>
+              </div>
+              <Link
+                href="/flights"
+                className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700 ring-1 ring-blue-200 transition hover:bg-blue-100"
+              >
+                Lihat semua <ArrowRight className="h-3.5 w-3.5" />
+              </Link>
+            </CardHeader>
+            <CardBody className="p-0">
+              {flightsToday.length === 0 ? (
+                <div className="px-5 py-12 text-center text-sm text-slate-500">
+                  Belum ada flight terjadwal untuk hari ini.
+                </div>
+              ) : (
+                <ul className="divide-y divide-slate-100">
+                  {flightsToday
+                    .slice()
+                    .sort((a, b) =>
+                      a.departureTime.localeCompare(b.departureTime),
+                    )
+                    .map((f, idx) => (
+                      <li
+                        key={f.id}
+                        className="animate-fade-up"
+                        style={{ animationDelay: `${idx * 50}ms` }}
+                      >
+                        <Link
+                          href={`/flights/${f.id}`}
+                          className="group flex items-center justify-between px-5 py-3.5 transition hover:bg-blue-50/60"
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-50 to-cyan-100 ring-1 ring-blue-200 transition group-hover:scale-105">
+                              <Plane className="h-5 w-5 text-blue-700" />
+                            </div>
+                            <div>
+                              <p className="text-sm font-semibold text-slate-800">
+                                {f.flightNumber}{" "}
+                                <span className="font-normal text-slate-400">
+                                  · {f.airlineCode}
+                                </span>
+                              </p>
+                              <p className="text-xs text-slate-500">
+                                {f.originAirport} → {f.destinationAirport} ·{" "}
+                                {f.gateOrCheckpoint}
+                              </p>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-3">
+                            <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600">
+                              <Clock className="h-3.5 w-3.5" />
+                              {f.departureTime}
+                            </span>
+                            <FlightStatusBadge status={f.status} />
+                          </div>
+                        </Link>
+                      </li>
+                    ))}
+                </ul>
+              )}
+            </CardBody>
+          </Card>
+
+          {/* Recent events */}
+          <Card className="animate-fade-up stagger-3 lift">
+            <div className="deco-blob -right-12 -top-12 h-36 w-36 bg-emerald-200" />
+            <CardHeader>
+              <div>
+                <CardTitle>
+                  <span className="inline-flex items-center gap-2">
+                    <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-100 text-emerald-700 ring-1 ring-emerald-200">
+                      <ScanLine className="h-3.5 w-3.5" />
+                    </span>
+                    Aktivitas Scan Terbaru
+                  </span>
+                </CardTitle>
+                <p className="mt-0.5 text-xs text-slate-500">
+                  10 event terakhir.
+                </p>
+              </div>
+              <Link
+                href="/scan-events"
+                className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700 ring-1 ring-emerald-200 transition hover:bg-emerald-100"
+              >
+                Riwayat <ArrowRight className="h-3.5 w-3.5" />
+              </Link>
+            </CardHeader>
+            <CardBody className="p-0">
+              {events.length === 0 ? (
+                <div className="px-5 py-12 text-center text-sm text-slate-500">
+                  Belum ada aktivitas scan.
+                </div>
+              ) : (
+                <ul className="divide-y divide-slate-100">
+                  {events.slice(0, 10).map((e, idx) => (
+                    <li
+                      key={e.id}
+                      className="px-5 py-3 animate-fade-up"
+                      style={{ animationDelay: `${idx * 40}ms` }}
+                    >
+                      <div className="flex items-center justify-between">
+                        <p className="text-sm font-semibold text-slate-800">
+                          {e.parsedFlightNumber ?? "—"}
+                        </p>
+                        <ScanStatusBadge status={e.resultStatus} />
+                      </div>
+                      <p className="mt-0.5 text-[11px] text-slate-500">
+                        {formatTime(e.scannedAt)} · oleh {e.scannedBy}
+                      </p>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </CardBody>
+          </Card>
+        </div>
+      </div>
+    </AppShell>
+  );
+}
