@@ -23,6 +23,7 @@ import { formatDateTime, todayDateString } from "@/lib/utils";
 import { useCountUp } from "@/lib/useCountUp";
 import { useToast } from "@/components/ui/Toast";
 import { PageHero, HeroChip } from "@/components/layout/PageHero";
+import { Pagination } from "@/components/ui/Pagination";
 
 const STATUSES: ScanResultStatus[] = [
   "VALID_FLIGHT",
@@ -436,38 +437,15 @@ export default function ScanEventsPage() {
               </TBody>
             </Table>
 
-            {filtered.length > PAGE_SIZE && (
-              <div className="flex items-center justify-between border-t border-slate-100 pt-3 text-xs text-slate-600">
-                <span>
-                  Menampilkan{" "}
-                  <strong>
-                    {(currentPage - 1) * PAGE_SIZE + 1}–
-                    {Math.min(currentPage * PAGE_SIZE, filtered.length)}
-                  </strong>{" "}
-                  dari <strong>{filtered.length}</strong> event
-                </span>
-                <div className="inline-flex items-center gap-1">
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => setPage((p) => Math.max(1, p - 1))}
-                    disabled={currentPage <= 1}
-                  >
-                    Sebelumnya
-                  </Button>
-                  <span className="px-2 font-semibold">
-                    {currentPage} / {totalPages}
-                  </span>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                    disabled={currentPage >= totalPages}
-                  >
-                    Berikutnya
-                  </Button>
-                </div>
-              </div>
+            {filtered.length > 0 && (
+              <Pagination
+                page={currentPage}
+                totalPages={totalPages}
+                total={filtered.length}
+                pageSize={PAGE_SIZE}
+                onPageChange={setPage}
+                label="event"
+              />
             )}
           </CardBody>
         </Card>

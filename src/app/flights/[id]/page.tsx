@@ -56,6 +56,8 @@ import { getBoardingProgress } from "@/lib/boarding";
 import { getAuditForFlight, recordAudit } from "@/lib/audit";
 import { useToast } from "@/components/ui/Toast";
 import { useConfirm } from "@/components/ui/ConfirmDialog";
+import { AirlineLogo } from "@/components/ui/AirlineLogo";
+import { getAirlineMeta } from "@/lib/airlines";
 
 export default function FlightDetailPage() {
   const router = useRouter();
@@ -370,8 +372,8 @@ export default function FlightDetailPage() {
           <div className="deco-blob -bottom-12 -left-8 h-44 w-44 bg-cyan-200/40 opacity-40" />
           <div className="relative z-[1] flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-center gap-4">
-              <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-white/15 ring-1 ring-white/30 backdrop-blur animate-float">
-                <Plane className="h-8 w-8 text-white" />
+              <div className="animate-float">
+                <AirlineLogo code={flight.airlineCode} size="lg" />
               </div>
               <div>
                 <div className="flex flex-wrap items-center gap-2">
@@ -381,7 +383,10 @@ export default function FlightDetailPage() {
                   <FlightStatusBadge status={flight.status} />
                 </div>
                 <p className="text-sm text-white/85">
-                  Maskapai {flight.airlineCode}
+                  {getAirlineMeta(flight.airlineCode).name}{" "}
+                  <span className="text-white/60">
+                    · {flight.airlineCode}
+                  </span>
                 </p>
               </div>
             </div>

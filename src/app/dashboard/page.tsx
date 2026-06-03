@@ -25,6 +25,7 @@ import { cn, formatTime, todayDateString } from "@/lib/utils";
 import { useCountUp } from "@/lib/useCountUp";
 import { getBoardingProgress } from "@/lib/boarding";
 import { PageHero, HeroChip } from "@/components/layout/PageHero";
+import { AirlineLogo } from "@/components/ui/AirlineLogo";
 
 export default function DashboardPage() {
   const [flights, setFlights] = useState<Flight[]>([]);
@@ -212,8 +213,8 @@ export default function DashboardPage() {
                           className="group flex items-center justify-between px-5 py-3.5 transition hover:bg-blue-50/60"
                         >
                           <div className="flex items-center gap-3">
-                            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-50 to-cyan-100 ring-1 ring-blue-200 transition group-hover:scale-105">
-                              <Plane className="h-5 w-5 text-blue-700" />
+                            <div className="transition group-hover:scale-105">
+                              <AirlineLogo code={f.airlineCode} size="md" />
                             </div>
                             <div>
                               <p className="text-sm font-semibold text-slate-800">

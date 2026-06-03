@@ -42,6 +42,8 @@ import { useToast } from "@/components/ui/Toast";
 import { useConfirm } from "@/components/ui/ConfirmDialog";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { PageHero, HeroChip } from "@/components/layout/PageHero";
+import { AirlineLogo } from "@/components/ui/AirlineLogo";
+import { Pagination } from "@/components/ui/Pagination";
 
 const STATUSES: FlightStatus[] = [
   "DRAFT",
@@ -50,6 +52,8 @@ const STATUSES: FlightStatus[] = [
   "CLOSED",
   "CANCELLED",
 ];
+
+const PAGE_SIZE = 15;
 
 export default function FlightsPage() {
   const [flights, setFlights] = useState<Flight[]>([]);
@@ -61,6 +65,7 @@ export default function FlightsPage() {
   const [statusFilter, setStatusFilter] = useState<FlightStatus | "ALL">(
     "ALL",
   );
+  const [page, setPage] = useState(1);
 
   const toast = useToast();
   const confirm = useConfirm();
@@ -99,6 +104,17 @@ export default function FlightsPage() {
         ),
       );
   }, [flights, search, dateFilter, statusFilter]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [search, dateFilter, statusFilter]);
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const currentPage = Math.min(page, totalPages);
+  const paginated = useMemo(() => {
+    const start = (currentPage - 1) * PAGE_SIZE;
+    return filtered.slice(start, start + PAGE_SIZE);
+  }, [filtered, currentPage]);
 
   const onChangeStatus = (id: string, status: FlightStatus) => {
     const before = flights.find((f) => f.id === id);
@@ -252,21 +268,26 @@ export default function FlightsPage() {
                     </Td>
                   </Tr>
                 ) : (
-                  filtered.map((f, idx) => (
+                  paginated.map((f, idx) => (
                     <Tr
                       key={f.id}
                       className="animate-fade-up"
                       style={{ animationDelay: `${idx * 30}ms` }}
                     >
                       <Td>
-                        <Link
-                          href={`/flights/${f.id}`}
-                          className="font-semibold text-slate-800 hover:text-blue-700"
-                        >
-                          {f.flightNumber}
-                        </Link>
-                        <div className="text-xs text-slate-500">
-                          Maskapai {f.airlineCode}
+                        <div className="flex items-center gap-2.5">
+                          <AirlineLogo code={f.airlineCode} size="sm" />
+                          <div className="min-w-0">
+                            <Link
+                              href={`/flights/${f.id}`}
+                              className="block font-semibold text-slate-800 hover:text-blue-700"
+                            >
+                              {f.flightNumber}
+                            </Link>
+                            <div className="text-xs text-slate-500">
+                              {f.airlineCode}
+                            </div>
+                          </div>
                         </div>
                       </Td>
                       <Td>
@@ -348,6 +369,17 @@ export default function FlightsPage() {
                 )}
               </TBody>
             </Table>
+
+            {filtered.length > 0 && (
+              <Pagination
+                page={currentPage}
+                totalPages={totalPages}
+                total={filtered.length}
+                pageSize={PAGE_SIZE}
+                onPageChange={setPage}
+                label="flight"
+              />
+            )}
           </CardBody>
         </Card>
       </div>

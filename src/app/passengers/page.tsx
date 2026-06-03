@@ -28,8 +28,11 @@ import { Flight, ScanEvent } from "@/lib/types";
 import { getFlights, getScanEvents } from "@/lib/storage";
 import { cn, formatDateTime } from "@/lib/utils";
 import { PageHero, HeroChip } from "@/components/layout/PageHero";
+import { Pagination } from "@/components/ui/Pagination";
 
 type SearchField = "any" | "pnr" | "seat" | "ticket" | "name";
+
+const PAGE_SIZE = 20;
 
 interface Match {
   key: string;
@@ -52,11 +55,16 @@ export default function PassengersPage() {
   const [field, setField] = useState<SearchField>("any");
   const [events, setEvents] = useState<ScanEvent[]>([]);
   const [flights, setFlights] = useState<Flight[]>([]);
+  const [page, setPage] = useState(1);
 
   useEffect(() => {
     setEvents(getScanEvents());
     setFlights(getFlights());
   }, []);
+
+  useEffect(() => {
+    setPage(1);
+  }, [query, field]);
 
   const flightById = useMemo(() => {
     const m = new Map<string, Flight>();
@@ -123,6 +131,13 @@ export default function PassengersPage() {
       b.lastScannedAt.localeCompare(a.lastScannedAt),
     );
   }, [events, query, field, flightById]);
+
+  const totalPages = Math.max(1, Math.ceil(matches.length / PAGE_SIZE));
+  const currentPage = Math.min(page, totalPages);
+  const paginated = useMemo(() => {
+    const start = (currentPage - 1) * PAGE_SIZE;
+    return matches.slice(start, start + PAGE_SIZE);
+  }, [matches, currentPage]);
 
   return (
     <AppShell>
@@ -217,7 +232,7 @@ export default function PassengersPage() {
                   </Tr>
                 </THead>
                 <TBody>
-                  {matches.map((m, idx) => (
+                  {paginated.map((m, idx) => (
                     <Tr
                       key={m.key}
                       className="animate-fade-up"
@@ -301,6 +316,17 @@ export default function PassengersPage() {
                   ))}
                 </TBody>
               </Table>
+            )}
+
+            {matches.length > 0 && (
+              <Pagination
+                page={currentPage}
+                totalPages={totalPages}
+                total={matches.length}
+                pageSize={PAGE_SIZE}
+                onPageChange={setPage}
+                label="penumpang"
+              />
             )}
           </CardBody>
         </Card>
