@@ -1,0 +1,21 @@
+{
+  "name": "Airport Flight Validation System",
+  "short_name": "AFVS",
+  "description": "Sistem validasi boarding pass berbasis barcode untuk operasi bandara.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f6f8fc",
+  "theme_color": "#2563eb",
+  "lang": "id",
+  "categories": ["productivity", "travel", "business"],
+  "icons": [
+    {
+      "src": "/icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

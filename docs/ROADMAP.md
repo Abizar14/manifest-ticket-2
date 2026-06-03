@@ -32,14 +32,14 @@ Field `expectedPax` di Flight, `BoardingProgress` (boarded / expected / remainin
 - Helper `src/lib/export.ts` → `toCsv(rows)` + `download(blob, filename)`.
 - Filename: `manifest_<flightNumber>_<departureDate>.csv`.
 
-### #3 — Reopen boarding (undo CLOSED)  ⏱ S
+### ✅ #3 — Reopen boarding (undo CLOSED)  ⏱ S
 **Kenapa**: kadang petugas salah tekan "Tutup Boarding" sementara masih ada late passenger.
 **Bangun**:
 - Di flight detail, kalau status `CLOSED` dan role admin/supervisor → tombol **Buka Kembali** (status → OPEN).
 - Konfirmasi: "Boarding sudah ditutup — yakin membuka kembali?"
 - Catat di audit trail (lihat #4).
 
-### #4 — Audit log untuk perubahan status flight  ⏱ M
+### ✅ #4 — Audit log untuk perubahan status flight  ⏱ M
 **Kenapa**: pertanggungjawaban operasional. Siapa menutup boarding, kapan, dari status apa.
 **Bangun**:
 - Type baru `FlightAuditEvent { id, flightId, action, fromStatus, toStatus, userId, userName, at, note? }`.
@@ -47,7 +47,7 @@ Field `expectedPax` di Flight, `BoardingProgress` (boarded / expected / remainin
 - Hook ke `updateFlight` jika `status` berubah → push event.
 - Section "Riwayat Status" di flight detail (collapsible, urut terbaru).
 
-### #5 — Pencarian penumpang global (PNR / Seat / Tiket)  ⏱ M
+### ✅ #5 — Pencarian penumpang global (PNR / Seat / Tiket)  ⏱ M
 **Kenapa**: petugas sering ditanya "penumpang X sudah boarding belum?" — saat ini harus buka flight satu-satu.
 **Bangun**:
 - Halaman baru `/passengers` atau modal di topbar (Cmd+K style).
@@ -79,20 +79,20 @@ Field `expectedPax` di Flight, `BoardingProgress` (boarded / expected / remainin
 - Field `parsedBoardingZone` di ScanEvent (parse dari kolom 23–25 IATA BCBP, optional).
 - Grouping di BoardingCard: "Group A: 45/60 · B: 30/80 · C: …".
 
-### #9 — Cancel flight workflow  ⏱ S
+### ✅ #9 — Cancel flight workflow  ⏱ S
 **Kenapa**: status `CANCELLED` ada tapi belum ada UX khusus. Saat ini cuma di-set dari Select.
 **Bangun**:
 - Tombol terpisah "Batalkan Penerbangan" dengan modal alasan (`cancellationReason: string`).
 - Highlight visual lebih kuat di list (banner / row dengan strikethrough).
 
-### #10 — Riwayat scan: filter & search lebih kaya  ⏱ S
+### ✅ #10 — Riwayat scan: filter & search lebih kaya  ⏱ S
 **Kenapa**: `/scan-events` saat ini list datar. Kalau scan ribuan, susah dilacak.
 **Bangun**:
 - Filter: tanggal range, flight number, status hasil, user (scannedBy).
 - Search free-text untuk PNR / Tiket / Nama.
 - Pagination atau virtualisasi list.
 
-### #11 — Print-friendly view  ⏱ S
+### ✅ #11 — Print-friendly view  ⏱ S
 **Kenapa**: ground ops sering minta print manifest.
 **Bangun**:
 - `@media print` CSS di globals.
@@ -108,33 +108,30 @@ Field `expectedPax` di Flight, `BoardingProgress` (boarded / expected / remainin
 
 ## 🔵 P2 — UX Polish
 
-### #13 — Camera scanner (mobile)  ⏱ L
-**Kenapa**: input barcode saat ini keyboard-only (asumsi scanner USB). Untuk pos darurat / mobile petugas, kamera HP via `BarcodeDetector` API atau lib seperti `@zxing/browser`.
-**Bangun**:
-- Toggle "Pakai Kamera" di /scan.
-- Stream video + decode → isi field rawBarcode otomatis.
-- Vibrate + sound feedback saat sukses.
+### ✅ #13 — Camera scanner (mobile)  ⏱ L
+**Status**: Selesai.
+Tombol **Pakai Kamera** di /scan membuka overlay kamera (back camera ideal) yang men-decode via native `BarcodeDetector` API (PDF417/Aztec/QR/Code128/39/DataMatrix). Hasil decode otomatis diumpan ke `submit()` — full flow validasi + sound + haptic + toast tetap berjalan. Throttle 2 detik untuk barcode yang sama supaya tidak auto-resubmit. Tombol torch muncul kalau hardware mendukung. Fallback pesan jika browser tidak punya `BarcodeDetector`.
 
-### #14 — Sound + haptic feedback  ⏱ S
+### ✅ #14 — Sound + haptic feedback  ⏱ S
 **Kenapa**: petugas tidak harus selalu lihat layar.
 **Bangun**:
 - Web Audio API: beep panjang untuk VALID, beep ganda untuk DUPLICATE/INVALID.
 - `navigator.vibrate()` di mobile.
 - Toggle on/off di settings.
 
-### #15 — Toast notifications (replace inline alerts)  ⏱ S
+### ✅ #15 — Toast notifications (replace inline alerts)  ⏱ S
 **Kenapa**: feedback lebih instan tanpa mengganggu layout.
 **Bangun**:
 - Toast provider sederhana (`src/components/ui/Toast.tsx`).
 - Replace inline `<div className="rose-50…">` di form, scan, dll.
 
-### #16 — Loading skeletons  ⏱ S
+### ✅ #16 — Loading skeletons  ⏱ S
 **Kenapa**: saat ini hanya "Memuat sesi…" di AppShell. Card-card lain langsung kosong → terasa lompat.
 **Bangun**:
 - `Skeleton` primitive (shimmer pakai keyframe yang sudah ada).
 - Pasang di list flight, dashboard stat cards (sebentar saja, karena data lokal).
 
-### #17 — Empty state illustrations  ⏱ S
+### ✅ #17 — Empty state illustrations  ⏱ S
 **Kenapa**: empty state saat ini cuma teks abu-abu. Bisa lebih ramah dengan icon besar + CTA.
 **Bangun**:
 - Komponen `<EmptyState icon title description action />`.
@@ -155,7 +152,7 @@ Field `expectedPax` di Flight, `BoardingProgress` (boarded / expected / remainin
 - Toggle di AppShell, simpan preference di localStorage.
 - Audit semua warna hard-coded (banyak `bg-white`, `text-slate-800`).
 
-### #20 — Settings / profile page  ⏱ M
+### ✅ #20 — Settings / profile page  ⏱ M
 **Kenapa**: saat ini tidak ada tempat untuk ganti nama, preferensi (sound on/off, dark mode), reset data.
 **Bangun**:
 - `/settings` dengan tab: Profile, Preferences, Data (reset / export-all / import).
@@ -171,7 +168,7 @@ Field `expectedPax` di Flight, `BoardingProgress` (boarded / expected / remainin
 
 ## ⚪ P3 — Future / Eksperimental
 
-### #22 — Statistik & charts  ⏱ L
+### ✅ #22 — Statistik & charts  ⏱ L
 - Halaman `/analytics`: scan per jam (bar), distribusi status (donut), top user, top flight.
 - Lib ringan: `recharts` atau hand-rolled SVG.
 
@@ -180,16 +177,16 @@ Field `expectedPax` di Flight, `BoardingProgress` (boarded / expected / remainin
 - WebSocket untuk live update (banyak petugas scan flight yang sama).
 - Saat ini kalau dua tab dibuka di device berbeda, datanya tidak sync.
 
-### #24 — PWA / offline-ready beneran  ⏱ M
+### ✅ #24 — PWA / offline-ready beneran  ⏱ M
 - Manifest + service worker.
 - Install prompt di mobile.
 - "Offline-ready" sudah diklaim di /login — tapi belum ada SW.
 
-### #25 — Localization (id ↔ en)  ⏱ M
+### ✅ #25 — Localization (id ↔ en)  ⏱ M
 - Saat ini full Bahasa Indonesia.
 - Kalau dipakai bandara internasional → butuh switch.
 
-### #26 — Daily auto-archive  ⏱ M
+### ✅ #26 — Daily auto-archive  ⏱ M
 - Setelah H+1, scan events di-archive ke key terpisah.
 - Mencegah localStorage membengkak.
 - Tombol "Export & purge" di settings.

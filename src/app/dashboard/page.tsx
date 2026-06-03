@@ -24,6 +24,7 @@ import { getFlights, getScanEvents } from "@/lib/storage";
 import { cn, formatTime, todayDateString } from "@/lib/utils";
 import { useCountUp } from "@/lib/useCountUp";
 import { getBoardingProgress } from "@/lib/boarding";
+import { PageHero, HeroChip } from "@/components/layout/PageHero";
 
 export default function DashboardPage() {
   const [flights, setFlights] = useState<Flight[]>([]);
@@ -63,27 +64,42 @@ export default function DashboardPage() {
   return (
     <AppShell>
       <div className="space-y-6">
-        {/* Hero greeting */}
-        <div className="relative overflow-hidden rounded-3xl border border-blue-200/60 bg-gradient-to-br from-blue-600 via-blue-500 to-cyan-500 px-6 py-6 text-white shadow-lift animate-fade-up">
-          <div className="deco-blob -right-10 -top-10 h-40 w-40 bg-white/30 opacity-50" />
-          <div className="deco-blob -bottom-12 -left-8 h-44 w-44 bg-cyan-200/40 opacity-40" />
-          <div className="relative z-[1] flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <div className="inline-flex items-center gap-2 rounded-full bg-white/15 px-3 py-1 text-[11px] font-semibold uppercase tracking-wider text-white/90 ring-1 ring-white/20">
-                <Sparkles className="h-3.5 w-3.5" />
-                Pos Validasi Boarding Pass
-              </div>
-              <h2 className="mt-2 text-2xl font-semibold tracking-tight">
-                Selamat datang kembali 👋
-              </h2>
-              <p className="mt-1 text-sm text-white/85">
-                Ringkasan aktivitas validasi boarding pass hari ini.
-              </p>
-            </div>
-            <div className="flex items-center gap-2">
+        <PageHero
+          tone="cyan"
+          eyebrow="Dashboard Operasional"
+          eyebrowIcon={<Sparkles className="h-3.5 w-3.5" />}
+          ghostIcon={<Plane className="h-full w-full" strokeWidth={1.5} />}
+          title={
+            <span>
+              Selamat datang kembali{" "}
+              <span className="inline-block animate-float">👋</span>
+            </span>
+          }
+          description="Ringkasan aktivitas validasi boarding pass hari ini."
+          meta={
+            <>
+              <HeroChip
+                icon={<Plane className="h-3 w-3" />}
+                label="Flight hari ini"
+                value={flightsToday.length}
+              />
+              <HeroChip
+                icon={<ScanLine className="h-3 w-3" />}
+                label="Scan hari ini"
+                value={eventsToday.length}
+              />
+              <HeroChip
+                icon={<CheckCircle2 className="h-3 w-3" />}
+                label="Valid"
+                value={validCount}
+              />
+            </>
+          }
+          actions={
+            <>
               <Link
                 href="/scan"
-                className="inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2 text-sm font-semibold text-blue-700 shadow-sm transition hover:shadow-lift"
+                className="inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2 text-sm font-semibold text-cyan-700 shadow-sm transition hover:shadow-lift"
               >
                 <ScanLine className="h-4 w-4" />
                 Mulai Scan
@@ -95,9 +111,9 @@ export default function DashboardPage() {
                 Jadwal Penerbangan
                 <ArrowRight className="h-4 w-4" />
               </Link>
-            </div>
-          </div>
-        </div>
+            </>
+          }
+        />
 
         {/* Stat cards */}
         <div className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-5">

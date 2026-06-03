@@ -220,6 +220,13 @@ export function processScan(
 export function playFeedbackSound(status: ScanResultStatus) {
   if (typeof window === "undefined") return;
   try {
+    // Lazy import keeps this module SSR-safe and avoids a circular dep.
+    const { getSettings } = require("./settings") as typeof import("./settings");
+    if (!getSettings().soundOn) return;
+  } catch {
+    /* fallback: allow sound if settings unavailable */
+  }
+  try {
     const AudioCtx =
       (window as unknown as { AudioContext?: typeof AudioContext })
         .AudioContext ||
@@ -255,6 +262,25 @@ export function playFeedbackSound(status: ScanResultStatus) {
     osc.start();
     osc.stop(ctx.currentTime + duration);
     setTimeout(() => ctx.close().catch(() => {}), duration * 1000 + 100);
+  } catch {
+    /* ignore */
+  }
+}
+
+/* Haptic feedback (mobile) — gated by user settings */
+export function playFeedbackHaptic(status: ScanResultStatus) {
+  if (typeof window === "undefined") return;
+  if (typeof navigator === "undefined" || !navigator.vibrate) return;
+  try {
+    const { getSettings } = require("./settings") as typeof import("./settings");
+    if (!getSettings().hapticOn) return;
+  } catch {
+    /* allow vibrate if settings unavailable */
+  }
+  try {
+    if (status === "VALID_FLIGHT") navigator.vibrate(40);
+    else if (status === "DUPLICATE_SCAN") navigator.vibrate([30, 60, 30]);
+    else navigator.vibrate([80, 40, 80]);
   } catch {
     /* ignore */
   }

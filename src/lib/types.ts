@@ -33,8 +33,28 @@ export interface Flight {
   gateOrCheckpoint: string;
   status: FlightStatus;
   expectedPax?: number; // total penumpang yang diharapkan boarding
+  cancellationReason?: string;
   createdAt: string;
   updatedAt: string;
+}
+
+export type AuditAction =
+  | "STATUS_CHANGE"
+  | "CLOSE_BOARDING"
+  | "REOPEN_BOARDING"
+  | "CANCEL_FLIGHT";
+
+export interface FlightAuditEvent {
+  id: string;
+  flightId: string;
+  flightNumber: string;
+  action: AuditAction;
+  fromStatus: FlightStatus | null;
+  toStatus: FlightStatus | null;
+  userId: string;
+  userName: string;
+  at: string; // ISO
+  note?: string;
 }
 
 export interface BoardingProgress {

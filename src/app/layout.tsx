@@ -1,10 +1,29 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import "./globals.css";
+import { PWARegister } from "@/components/PWARegister";
+import { Providers } from "@/components/providers/Providers";
 
 export const metadata: Metadata = {
   title: "Airport Flight Validation System",
   description:
     "Sistem validasi boarding pass berbasis barcode untuk operasi bandara.",
+  manifest: "/manifest.webmanifest",
+  applicationName: "AFVS",
+  appleWebApp: {
+    capable: true,
+    title: "AFVS",
+    statusBarStyle: "default",
+  },
+  icons: {
+    icon: "/icons/icon.svg",
+    apple: "/icons/icon.svg",
+  },
+};
+
+export const viewport: Viewport = {
+  themeColor: "#2563eb",
+  width: "device-width",
+  initialScale: 1,
 };
 
 export default function RootLayout({
@@ -26,7 +45,10 @@ export default function RootLayout({
           rel="stylesheet"
         />
       </head>
-      <body className="font-sans antialiased">{children}</body>
+      <body className="font-sans antialiased">
+        <Providers>{children}</Providers>
+        <PWARegister />
+      </body>
     </html>
   );
 }

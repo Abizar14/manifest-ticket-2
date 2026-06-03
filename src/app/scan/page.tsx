@@ -12,8 +12,10 @@ import {
   Volume2,
   VolumeX,
   Bug,
+  Camera,
 } from "lucide-react";
 import { AppShell } from "@/components/layout/AppShell";
+import { CameraScanner } from "@/components/scan/CameraScanner";
 import { Card, CardBody, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Input";
 import { FlightStatusBadge } from "@/components/ui/StatusBadge";
@@ -24,9 +26,16 @@ import {
   SessionUser,
 } from "@/lib/types";
 import { getFlights, getScanEvents, getSession } from "@/lib/storage";
-import { playFeedbackSound, processScan } from "@/lib/scanService";
+import {
+  playFeedbackHaptic,
+  playFeedbackSound,
+  processScan,
+} from "@/lib/scanService";
 import { formatTime, todayDateString } from "@/lib/utils";
 import { cn } from "@/lib/utils";
+import { getSettings, saveSettings, subscribeSettings } from "@/lib/settings";
+import { useToast } from "@/components/ui/Toast";
+import { PageHero, HeroChip } from "@/components/layout/PageHero";
 
 interface LastResult {
   status: ScanResultStatus;
@@ -50,14 +59,25 @@ export default function ScanPage() {
   const [debugOn, setDebugOn] = useState(false);
   const [keyLog, setKeyLog] = useState<string[]>([]);
   const [pulseKey, setPulseKey] = useState(0);
+  const [cameraOpen, setCameraOpen] = useState(false);
+  const toast = useToast();
 
   useEffect(() => {
     const s = getSession();
     setSession(s);
     setFlights(getFlights());
     setRecent(getScanEvents().slice(0, 8));
+    setSoundOn(getSettings().soundOn);
+    const unsub = subscribeSettings((next) => setSoundOn(next.soundOn));
     setTimeout(() => inputRef.current?.focus(), 50);
+    return unsub;
   }, []);
+
+  const toggleSound = () => {
+    const next = !soundOn;
+    setSoundOn(next);
+    saveSettings({ soundOn: next });
+  };
 
   useEffect(() => {
     const handler = () => {
@@ -89,16 +109,27 @@ export default function ScanPage() {
     }
   };
 
-  const submit = () => {
+  const submit = (rawInput?: string) => {
     if (!session) return;
-    const raw = value;
+    const raw = rawInput ?? value;
     if (!raw.trim()) {
       setValue("");
       setTimeout(() => inputRef.current?.focus(), 0);
       return;
     }
     const { outcome, event } = processScan(raw, session.email);
-    if (soundOn) playFeedbackSound(outcome.status);
+    playFeedbackSound(outcome.status);
+    playFeedbackHaptic(outcome.status);
+    if (outcome.status === "VALID_FLIGHT") {
+      toast.success(
+        `${outcome.flight?.flightNumber ?? "Flight"} · seat ${outcome.parsed?.seatNumber ?? "—"}`,
+        "Valid",
+      );
+    } else if (outcome.status === "DUPLICATE_SCAN") {
+      toast.warning(outcome.message, "Duplicate");
+    } else {
+      toast.error(outcome.message, "Rejected");
+    }
     setLast({
       status: outcome.status,
       message: outcome.message,
@@ -121,53 +152,66 @@ export default function ScanPage() {
       <div className="grid gap-6 xl:grid-cols-3">
         {/* Scanner area */}
         <div className="space-y-5 xl:col-span-2">
-          <div className="flex items-center justify-between gap-3 animate-fade-up">
-            <div>
-              <h2 className="text-xl font-semibold tracking-tight text-slate-800">
-                Pos Validasi Boarding Pass
-              </h2>
-              <p className="text-sm text-slate-500">
-                Scan barcode menggunakan scanner USB/Bluetooth. Input akan
-                tersubmit otomatis saat scanner mengirim Enter.
-              </p>
-            </div>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => {
-                  setDebugOn((v) => !v);
-                  setKeyLog([]);
-                }}
-                className={cn(
-                  "inline-flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-semibold ring-1 transition",
-                  debugOn
-                    ? "bg-amber-50 text-amber-700 ring-amber-200"
-                    : "bg-white text-slate-600 ring-slate-200 hover:bg-slate-50",
-                )}
-              >
-                <Bug className="h-3.5 w-3.5" />
-                {debugOn ? "Debug ON" : "Debug"}
-              </button>
-              <button
-                onClick={() => setSoundOn((v) => !v)}
-                className={cn(
-                  "inline-flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-semibold ring-1 transition",
-                  soundOn
-                    ? "bg-blue-50 text-blue-700 ring-blue-200"
-                    : "bg-white text-slate-600 ring-slate-200 hover:bg-slate-50",
-                )}
-              >
-                {soundOn ? (
-                  <>
-                    <Volume2 className="h-3.5 w-3.5" /> Sound aktif
-                  </>
-                ) : (
-                  <>
-                    <VolumeX className="h-3.5 w-3.5" /> Sound mati
-                  </>
-                )}
-              </button>
-            </div>
-          </div>
+          <PageHero
+            tone="emerald"
+            eyebrow="Pos Validasi"
+            eyebrowIcon={<ScanLine className="h-3.5 w-3.5" />}
+            ghostIcon={<ScanLine className="h-full w-full" strokeWidth={1.5} />}
+            title="Pos Validasi Boarding Pass"
+            description="Scan barcode dengan scanner USB/Bluetooth. Input tersubmit otomatis saat scanner mengirim Enter."
+            actions={
+              <>
+                <button
+                  onClick={() => setCameraOpen(true)}
+                  className="inline-flex items-center gap-1.5 rounded-xl bg-white px-3 py-2 text-xs font-semibold text-emerald-700 shadow-sm ring-1 ring-white/40 transition hover:shadow-lift"
+                >
+                  <Camera className="h-3.5 w-3.5" />
+                  Pakai Kamera
+                </button>
+                <button
+                  onClick={() => {
+                    setDebugOn((v) => !v);
+                    setKeyLog([]);
+                  }}
+                  className={cn(
+                    "inline-flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-semibold ring-1 backdrop-blur transition",
+                    debugOn
+                      ? "bg-amber-100 text-amber-800 ring-amber-200"
+                      : "bg-white/15 text-white ring-white/25 hover:bg-white/25",
+                  )}
+                >
+                  <Bug className="h-3.5 w-3.5" />
+                  {debugOn ? "Debug ON" : "Debug"}
+                </button>
+                <button
+                  onClick={toggleSound}
+                  className={cn(
+                    "inline-flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-semibold ring-1 backdrop-blur transition",
+                    soundOn
+                      ? "bg-white text-emerald-700 ring-white/40"
+                      : "bg-white/15 text-white ring-white/25 hover:bg-white/25",
+                  )}
+                >
+                  {soundOn ? (
+                    <>
+                      <Volume2 className="h-3.5 w-3.5" /> Sound aktif
+                    </>
+                  ) : (
+                    <>
+                      <VolumeX className="h-3.5 w-3.5" /> Sound mati
+                    </>
+                  )}
+                </button>
+              </>
+            }
+            meta={
+              <HeroChip
+                icon={<ScanLine className="h-3 w-3" />}
+                label="Recent"
+                value={recent.length}
+              />
+            }
+          />
 
           <Card className="animate-fade-up stagger-1">
             <div className="deco-blob -right-16 -top-16 h-48 w-48 bg-blue-200" />
@@ -356,6 +400,11 @@ export default function ScanPage() {
           </Card>
         </div>
       </div>
+      <CameraScanner
+        open={cameraOpen}
+        onClose={() => setCameraOpen(false)}
+        onDecode={(raw) => submit(raw)}
+      />
     </AppShell>
   );
 }

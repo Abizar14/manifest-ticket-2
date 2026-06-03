@@ -71,3 +71,64 @@ body {
   transform: translateY(-2px);
   box-shadow: 0 16px 40px rgba(37, 99, 235, 0.12);
 }
+
+/* Print stylesheet — for ground ops hard-copy manifest. Hide chrome,
+   flatten gradients & cards, force single-column. Pair with .print-hide
+   on interactive UI and .print-only on print-only sections. */
+@media print {
+  html,
+  body {
+    background: #ffffff !important;
+    color: #111827 !important;
+    font-size: 11pt;
+  }
+  body {
+    background-image: none !important;
+    background-attachment: initial !important;
+  }
+  .print-hide,
+  button:not(.print-keep) {
+    display: none !important;
+  }
+  .print-only {
+    display: block !important;
+  }
+  .deco-blob,
+  .animate-float,
+  .animate-pulse-glow,
+  .animate-pulse-glow-emerald,
+  .animate-pulse-glow-rose,
+  .lift,
+  .shadow-card,
+  .shadow-lift,
+  .shadow-soft {
+    box-shadow: none !important;
+    animation: none !important;
+    filter: none !important;
+  }
+  .deco-blob {
+    display: none !important;
+  }
+  /* Flatten cards so they don't break weirdly across pages */
+  [class*="bg-gradient"],
+  [class*="bg-white/"],
+  [class*="bg-white"] {
+    background: #ffffff !important;
+    color: #111827 !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  table {
+    page-break-inside: auto;
+  }
+  tr {
+    page-break-inside: avoid;
+    page-break-after: auto;
+  }
+  thead {
+    display: table-header-group;
+  }
+}
+.print-only {
+  display: none;
+}

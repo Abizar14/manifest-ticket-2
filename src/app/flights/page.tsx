@@ -26,7 +26,7 @@ import {
   Tr,
 } from "@/components/ui/Table";
 import { FlightStatusBadge } from "@/components/ui/StatusBadge";
-import { Flight, FlightStatus, ScanEvent } from "@/lib/types";
+import { Flight, FlightStatus, ScanEvent, SessionUser } from "@/lib/types";
 import {
   deleteFlight,
   getFlights,
@@ -37,6 +37,11 @@ import {
 import { todayDateString, tomorrowDateString, cn } from "@/lib/utils";
 import { canManageFlights } from "@/lib/auth";
 import { getBoardingProgress } from "@/lib/boarding";
+import { recordAudit } from "@/lib/audit";
+import { useToast } from "@/components/ui/Toast";
+import { useConfirm } from "@/components/ui/ConfirmDialog";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { PageHero, HeroChip } from "@/components/layout/PageHero";
 
 const STATUSES: FlightStatus[] = [
   "DRAFT",
@@ -57,10 +62,13 @@ export default function FlightsPage() {
     "ALL",
   );
 
-  const session = typeof window !== "undefined" ? getSession() : null;
+  const toast = useToast();
+  const confirm = useConfirm();
+  const [session, setSessionState] = useState<SessionUser | null>(null);
   const canManage = canManageFlights(session?.role);
 
   useEffect(() => {
+    setSessionState(getSession());
     setFlights(getFlights());
     setEvents(getScanEvents());
   }, []);
@@ -93,42 +101,73 @@ export default function FlightsPage() {
   }, [flights, search, dateFilter, statusFilter]);
 
   const onChangeStatus = (id: string, status: FlightStatus) => {
+    const before = flights.find((f) => f.id === id);
+    if (!before || before.status === status) return;
     updateFlight(id, { status });
+    recordAudit({
+      flightId: id,
+      flightNumber: before.flightNumber,
+      action: "STATUS_CHANGE",
+      fromStatus: before.status,
+      toStatus: status,
+      session,
+    });
+    toast.success(`${before.flightNumber}: ${before.status} → ${status}`);
     setFlights(getFlights());
   };
 
-  const onDelete = (id: string) => {
-    if (!confirm("Yakin menghapus flight ini?")) return;
+  const onDelete = async (id: string) => {
+    const target = flights.find((f) => f.id === id);
+    const res = await confirm({
+      title: `Hapus flight ${target?.flightNumber ?? ""}?`,
+      description:
+        "Jadwal ini akan dihapus permanen. Riwayat scan terkait tetap tersimpan di arsip.",
+      tone: "danger",
+      destructive: true,
+      confirmLabel: "Hapus Flight",
+      cancelLabel: "Batal",
+    });
+    if (!res.confirmed) return;
     deleteFlight(id);
+    toast.success("Flight dihapus.");
     setFlights(getFlights());
   };
 
   return (
     <AppShell>
       <div className="space-y-6">
-        <div className="flex flex-col gap-4 animate-fade-up sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <div className="inline-flex items-center gap-2 rounded-full bg-blue-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-wider text-blue-700 ring-1 ring-blue-200">
-              <Plane className="h-3.5 w-3.5" />
-              Jadwal
-            </div>
-            <h2 className="mt-2 text-xl font-semibold tracking-tight text-slate-800">
-              Jadwal Penerbangan
-            </h2>
-            <p className="text-sm text-slate-500">
-              Kelola jadwal flight hari ini & besok. Hanya status OPEN/ACTIVE
-              yang dapat divalidasi.
-            </p>
-          </div>
-          {canManage && (
-            <Link href="/flights/create">
-              <Button size="md">
-                <Plus className="h-4 w-4" />
-                Tambah Penerbangan
-              </Button>
-            </Link>
-          )}
-        </div>
+        <PageHero
+          tone="blue"
+          eyebrow="Jadwal"
+          eyebrowIcon={<Plane className="h-3.5 w-3.5" />}
+          ghostIcon={<Plane className="h-full w-full" strokeWidth={1.5} />}
+          title="Jadwal Penerbangan"
+          description="Kelola jadwal flight hari ini & besok. Hanya status OPEN/ACTIVE yang dapat divalidasi."
+          meta={
+            <>
+              <HeroChip
+                icon={<Plane className="h-3 w-3" />}
+                label="Total"
+                value={flights.length}
+              />
+              <HeroChip
+                icon={<Filter className="h-3 w-3" />}
+                label="Tampil"
+                value={filtered.length}
+              />
+            </>
+          }
+          actions={
+            canManage && (
+              <Link href="/flights/create">
+                <span className="inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2 text-sm font-semibold text-blue-700 shadow-sm transition hover:shadow-lift">
+                  <Plus className="h-4 w-4" />
+                  Tambah Penerbangan
+                </span>
+              </Link>
+            )
+          }
+        />
 
         <Card className="animate-fade-up stagger-1 lift">
           <div className="deco-blob -right-16 -top-16 h-44 w-44 bg-blue-200" />
@@ -203,11 +242,13 @@ export default function FlightsPage() {
               <TBody>
                 {filtered.length === 0 ? (
                   <Tr>
-                    <Td
-                      colSpan={8}
-                      className="py-10 text-center text-slate-500"
-                    >
-                      Tidak ada penerbangan sesuai filter.
+                    <Td colSpan={8} className="px-0 py-0">
+                      <EmptyState
+                        tone="info"
+                        icon={<Plane className="h-6 w-6" />}
+                        title="Tidak ada penerbangan sesuai filter"
+                        description="Coba bersihkan pencarian atau ubah filter tanggal / status."
+                      />
                     </Td>
                   </Tr>
                 ) : (
