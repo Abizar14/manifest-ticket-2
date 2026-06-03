@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import {
   ScanLine,
   CheckCircle2,
@@ -49,6 +50,8 @@ interface LastResult {
 }
 
 export default function ScanPage() {
+  const searchParams = useSearchParams();
+  const source = searchParams?.get("source");
   const inputRef = useRef<HTMLInputElement>(null);
   const [value, setValue] = useState("");
   const [session, setSession] = useState<SessionUser | null>(null);
@@ -72,6 +75,16 @@ export default function ScanPage() {
     setTimeout(() => inputRef.current?.focus(), 50);
     return unsub;
   }, []);
+
+  // honor ?source=camera|usb|manual from BottomNav scan picker
+  useEffect(() => {
+    if (source === "camera") {
+      setCameraOpen(true);
+    } else if (source === "usb" || source === "manual") {
+      setCameraOpen(false);
+      setTimeout(() => inputRef.current?.focus(), 50);
+    }
+  }, [source]);
 
   const toggleSound = () => {
     const next = !soundOn;

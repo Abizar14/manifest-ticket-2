@@ -111,6 +111,10 @@ const config: Config = {
           "0%": { transform: "translateY(40px) rotate(-6deg)", opacity: "0" },
           "100%": { transform: "translateY(0) rotate(-6deg)", opacity: "1" },
         },
+        "sheet-up": {
+          "0%": { transform: "translateY(100%)", opacity: "0" },
+          "100%": { transform: "translateY(0)", opacity: "1" },
+        },
       },
       animation: {
         "fade-up": "fade-up 0.5s ease-out both",
@@ -127,6 +131,7 @@ const config: Config = {
         "gradient-shift": "gradient-shift 8s ease-in-out infinite",
         "tilt-soft": "tilt-soft 6s ease-in-out infinite",
         "bp-rise": "bp-rise 0.7s cubic-bezier(0.2, 0.8, 0.2, 1) both",
+        "sheet-up": "sheet-up 0.35s cubic-bezier(0.2, 0.8, 0.2, 1) both",
       },
     },
   },
