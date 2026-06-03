@@ -38,6 +38,8 @@ import { todayDateString, tomorrowDateString, cn } from "@/lib/utils";
 import { canManageFlights } from "@/lib/auth";
 import { getBoardingProgress } from "@/lib/boarding";
 import { recordAudit } from "@/lib/audit";
+import { getSettings, subscribeSettings } from "@/lib/settings";
+import { getEffectiveFlightStatus } from "@/lib/flightStatus";
 import { useToast } from "@/components/ui/Toast";
 import { useConfirm } from "@/components/ui/ConfirmDialog";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -60,12 +62,14 @@ export default function FlightsPage() {
   const [events, setEvents] = useState<ScanEvent[]>([]);
   const [search, setSearch] = useState("");
   const [dateFilter, setDateFilter] = useState<"all" | "today" | "tomorrow">(
-    "all",
+    "today",
   );
   const [statusFilter, setStatusFilter] = useState<FlightStatus | "ALL">(
     "ALL",
   );
   const [page, setPage] = useState(1);
+  const [settings, setSettings] = useState(() => getSettings());
+  const [now, setNow] = useState(() => new Date());
 
   const toast = useToast();
   const confirm = useConfirm();
@@ -76,6 +80,17 @@ export default function FlightsPage() {
     setSessionState(getSession());
     setFlights(getFlights());
     setEvents(getScanEvents());
+    const s = getSettings();
+    setSettings(s);
+    setDateFilter(s.flightListShowOnlyToday ? "today" : "all");
+    const unsub = subscribeSettings((next) => {
+      setSettings(next);
+    });
+    const tick = setInterval(() => setNow(new Date()), 30_000);
+    return () => {
+      unsub();
+      clearInterval(tick);
+    };
   }, []);
 
   const filtered = useMemo(() => {
@@ -270,7 +285,11 @@ export default function FlightsPage() {
                               <p className="truncate text-sm font-bold text-slate-800">
                                 {f.flightNumber}
                               </p>
-                              <FlightStatusBadge status={f.status} />
+                              <EffectiveBadge
+                                flight={f}
+                                now={now}
+                                settings={settings}
+                              />
                             </div>
                             <p className="mt-0.5 text-xs text-slate-500">
                               <span className="font-medium text-slate-700">
@@ -422,7 +441,11 @@ export default function FlightsPage() {
                             ))}
                           </Select>
                         ) : (
-                          <FlightStatusBadge status={f.status} />
+                          <EffectiveBadge
+                            flight={f}
+                            now={now}
+                            settings={settings}
+                          />
                         )}
                       </Td>
                       <Td className="text-right">
@@ -476,6 +499,39 @@ export default function FlightsPage() {
         </Card>
       </div>
     </AppShell>
+  );
+}
+
+function EffectiveBadge({
+  flight,
+  now,
+  settings,
+}: {
+  flight: Flight;
+  now: Date;
+  settings: ReturnType<typeof getSettings>;
+}) {
+  const eff = getEffectiveFlightStatus(flight, now, settings);
+  const differs = eff.status !== flight.status;
+  return (
+    <span
+      className="inline-flex items-center gap-1"
+      title={
+        differs
+          ? `Manual: ${flight.status} • ${eff.description}`
+          : eff.description
+      }
+    >
+      <FlightStatusBadge status={eff.status} />
+      {differs && (
+        <span
+          aria-label="Auto-derived"
+          className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-slate-500 ring-1 ring-slate-200"
+        >
+          auto
+        </span>
+      )}
+    </span>
   );
 }
 

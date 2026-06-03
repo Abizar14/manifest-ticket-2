@@ -42,6 +42,10 @@ interface MediaTrackConstraintSetWithTorch extends MediaTrackConstraintSet {
   torch?: boolean;
 }
 
+interface ZxingControls {
+  stop: () => void;
+}
+
 interface Props {
   open: boolean;
   onClose: () => void;
@@ -56,6 +60,7 @@ export function CameraScanner({ open, onClose, onDecode }: Props) {
   const [starting, setStarting] = useState(true);
   const [torchOn, setTorchOn] = useState(false);
   const [torchAvailable, setTorchAvailable] = useState(false);
+  const [engine, setEngine] = useState<"native" | "zxing" | null>(null);
   const [hint, setHint] = useState(
     "Arahkan kamera ke barcode boarding pass…",
   );
@@ -66,6 +71,12 @@ export function CameraScanner({ open, onClose, onDecode }: Props) {
   const rafRef = useRef<number | null>(null);
   const detectorRef = useRef<BarcodeDetectorLike | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const zxingControlsRef = useRef<ZxingControls | null>(null);
+  const onDecodeRef = useRef(onDecode);
+
+  useEffect(() => {
+    onDecodeRef.current = onDecode;
+  }, [onDecode]);
 
   useEffect(() => setMounted(true), []);
 
@@ -73,80 +84,81 @@ export function CameraScanner({ open, onClose, onDecode }: Props) {
     if (!open) return;
     let cancelled = false;
 
+    const emitDecoded = (raw: string, format: string) => {
+      const cleaned = (raw ?? "").trim();
+      if (!cleaned) return;
+      const now = Date.now();
+      const last = lastDecodedRef.current;
+      if (cleaned === last.value && now - last.at <= 2000) return;
+      lastDecodedRef.current = { value: cleaned, at: now };
+      setHint(`Terbaca · ${format.toUpperCase()} · ${cleaned.length} char`);
+      onDecodeRef.current(cleaned, format);
+    };
+
     const stop = () => {
       if (rafRef.current !== null) {
         cancelAnimationFrame(rafRef.current);
         rafRef.current = null;
+      }
+      if (zxingControlsRef.current) {
+        try {
+          zxingControlsRef.current.stop();
+        } catch {
+          /* ignore */
+        }
+        zxingControlsRef.current = null;
       }
       const s = streamRef.current;
       if (s) {
         s.getTracks().forEach((t) => t.stop());
         streamRef.current = null;
       }
+      const v = videoRef.current;
+      if (v) {
+        v.srcObject = null;
+      }
     };
 
-    const start = async () => {
-      setStarting(true);
-      setError(null);
+    const startNative = async (BD: BarcodeDetectorCtor) => {
+      let formats = PREFERRED_FORMATS;
+      if (BD.getSupportedFormats) {
+        const sup = await BD.getSupportedFormats();
+        const filtered = PREFERRED_FORMATS.filter((f) => sup.includes(f));
+        if (filtered.length > 0) formats = filtered;
+      }
+      detectorRef.current = new BD({ formats });
 
-      const BD = (window as unknown as { BarcodeDetector?: BarcodeDetectorCtor })
-        .BarcodeDetector;
-      if (!BD) {
-        setSupported(false);
-        setStarting(false);
-        setError(
-          "Browser tidak mendukung BarcodeDetector. Gunakan Chrome di Android atau scanner USB.",
-        );
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          facingMode: { ideal: "environment" },
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
+        },
+        audio: false,
+      });
+      if (cancelled) {
+        stream.getTracks().forEach((t) => t.stop());
         return;
       }
+      streamRef.current = stream;
 
-      try {
-        let formats = PREFERRED_FORMATS;
-        if (BD.getSupportedFormats) {
-          const sup = await BD.getSupportedFormats();
-          const filtered = PREFERRED_FORMATS.filter((f) => sup.includes(f));
-          if (filtered.length > 0) formats = filtered;
-        }
-        detectorRef.current = new BD({ formats });
+      const track = stream.getVideoTracks()[0];
+      const caps = (track.getCapabilities?.() ??
+        {}) as MediaTrackCapabilitiesWithTorch;
+      setTorchAvailable(Boolean(caps.torch));
 
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: {
-            facingMode: { ideal: "environment" },
-            width: { ideal: 1280 },
-            height: { ideal: 720 },
-          },
-          audio: false,
-        });
-        if (cancelled) {
-          stream.getTracks().forEach((t) => t.stop());
-          return;
-        }
-        streamRef.current = stream;
-
-        const track = stream.getVideoTracks()[0];
-        const caps = (track.getCapabilities?.() ??
-          {}) as MediaTrackCapabilitiesWithTorch;
-        setTorchAvailable(Boolean(caps.torch));
-
-        const v = videoRef.current;
-        if (v) {
-          v.srcObject = stream;
-          await v.play().catch(() => {});
-        }
-        setSupported(true);
-        setStarting(false);
-        loop();
-      } catch (e) {
-        const msg =
-          e instanceof Error
-            ? e.message
-            : "Tidak dapat mengakses kamera.";
-        setError(msg);
-        setStarting(false);
+      const v = videoRef.current;
+      if (v) {
+        v.srcObject = stream;
+        await v.play().catch(() => {});
       }
+      setSupported(true);
+      setEngine("native");
+      setStarting(false);
+      loopNative();
     };
 
-    const loop = () => {
+    const loopNative = () => {
       const detect = async () => {
         const v = videoRef.current;
         const det = detectorRef.current;
@@ -158,25 +170,126 @@ export function CameraScanner({ open, onClose, onDecode }: Props) {
           const codes = await det.detect(v);
           if (codes && codes.length > 0) {
             const code = codes[0];
-            const raw = (code.rawValue ?? "").trim();
-            if (raw) {
-              const now = Date.now();
-              const last = lastDecodedRef.current;
-              if (raw !== last.value || now - last.at > 2000) {
-                lastDecodedRef.current = { value: raw, at: now };
-                setHint(
-                  `Terbaca · ${code.format.toUpperCase()} · ${raw.length} char`,
-                );
-                onDecode(raw, code.format);
-              }
-            }
+            emitDecoded(code.rawValue ?? "", code.format);
           }
         } catch {
-          // ignore frame error
+          /* ignore frame error */
         }
         rafRef.current = requestAnimationFrame(detect);
       };
       rafRef.current = requestAnimationFrame(detect);
+    };
+
+    const startZxing = async () => {
+      const [{ BrowserMultiFormatReader }, { DecodeHintType, BarcodeFormat }] =
+        await Promise.all([
+          import("@zxing/browser"),
+          import("@zxing/library"),
+        ]);
+
+      if (cancelled) return;
+
+      const hints = new Map();
+      hints.set(DecodeHintType.POSSIBLE_FORMATS, [
+        BarcodeFormat.PDF_417,
+        BarcodeFormat.AZTEC,
+        BarcodeFormat.QR_CODE,
+        BarcodeFormat.CODE_128,
+        BarcodeFormat.CODE_39,
+        BarcodeFormat.DATA_MATRIX,
+      ]);
+      hints.set(DecodeHintType.TRY_HARDER, true);
+
+      const reader = new BrowserMultiFormatReader(hints, {
+        delayBetweenScanAttempts: 120,
+      });
+
+      const v = videoRef.current;
+      if (!v) return;
+
+      const constraints: MediaStreamConstraints = {
+        video: {
+          facingMode: { ideal: "environment" },
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
+        },
+        audio: false,
+      };
+
+      const controls = await reader.decodeFromConstraints(
+        constraints,
+        v,
+        (result) => {
+          if (!result) return;
+          const fmt = result.getBarcodeFormat?.();
+          const format =
+            typeof fmt === "number" ? BarcodeFormat[fmt] ?? "barcode" : "barcode";
+          emitDecoded(result.getText(), String(format).toLowerCase());
+        },
+      );
+      if (cancelled) {
+        try {
+          controls.stop();
+        } catch {
+          /* ignore */
+        }
+        return;
+      }
+      zxingControlsRef.current = { stop: () => controls.stop() };
+
+      // ZXing manages the stream internally — capture it for torch support.
+      const stream = (v.srcObject as MediaStream | null) ?? null;
+      if (stream) {
+        streamRef.current = stream;
+        const track = stream.getVideoTracks()[0];
+        const caps = (track?.getCapabilities?.() ??
+          {}) as MediaTrackCapabilitiesWithTorch;
+        setTorchAvailable(Boolean(caps.torch));
+      }
+
+      setSupported(true);
+      setEngine("zxing");
+      setStarting(false);
+    };
+
+    const start = async () => {
+      setStarting(true);
+      setError(null);
+
+      if (
+        typeof navigator === "undefined" ||
+        !navigator.mediaDevices?.getUserMedia
+      ) {
+        setSupported(false);
+        setStarting(false);
+        const isInsecure =
+          typeof window !== "undefined" &&
+          window.location.protocol !== "https:" &&
+          window.location.hostname !== "localhost" &&
+          window.location.hostname !== "127.0.0.1";
+        setError(
+          isInsecure
+            ? `Akses kamera diblokir karena halaman dibuka via HTTP (${window.location.host}). iPhone Safari WAJIB HTTPS. Jalankan "npm run dev:https" lalu buka URL https://… yang muncul di terminal.`
+            : "Browser tidak mendukung akses kamera (navigator.mediaDevices tidak tersedia).",
+        );
+        return;
+      }
+
+      const BD = (window as unknown as { BarcodeDetector?: BarcodeDetectorCtor })
+        .BarcodeDetector;
+
+      try {
+        if (BD) {
+          await startNative(BD);
+        } else {
+          await startZxing();
+        }
+      } catch (e) {
+        const msg =
+          e instanceof Error ? e.message : "Tidak dapat mengakses kamera.";
+        setError(msg);
+        setStarting(false);
+      }
     };
 
     start();
@@ -184,8 +297,9 @@ export function CameraScanner({ open, onClose, onDecode }: Props) {
       cancelled = true;
       stop();
       setTorchOn(false);
+      setEngine(null);
     };
-  }, [open, onDecode]);
+  }, [open]);
 
   const toggleTorch = async () => {
     const s = streamRef.current;
@@ -217,6 +331,23 @@ export function CameraScanner({ open, onClose, onDecode }: Props) {
               <Camera className="h-3.5 w-3.5" />
             </span>
             Kamera Scanner
+            {engine && (
+              <span
+                className={cn(
+                  "ml-1 rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider ring-1",
+                  engine === "native"
+                    ? "bg-emerald-500/15 text-emerald-300 ring-emerald-500/30"
+                    : "bg-sky-500/15 text-sky-300 ring-sky-500/30",
+                )}
+                title={
+                  engine === "native"
+                    ? "BarcodeDetector native (cepat)"
+                    : "ZXing fallback (untuk iOS Safari)"
+                }
+              >
+                {engine === "native" ? "native" : "zxing"}
+              </span>
+            )}
           </div>
           <div className="flex items-center gap-1">
             {torchAvailable && (
@@ -294,6 +425,9 @@ export function CameraScanner({ open, onClose, onDecode }: Props) {
           </p>
           <p className="text-center text-[10px] text-slate-500">
             Format: PDF417 (BCBP) · Aztec · QR · Code 128/39
+            {engine === "zxing" && (
+              <span className="ml-1 text-sky-400">· iOS fallback aktif</span>
+            )}
           </p>
         </div>
       </div>

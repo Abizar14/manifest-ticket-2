@@ -12,6 +12,8 @@ import {
   getScanEvents,
 } from "./storage";
 import { todayDateString, uid } from "./utils";
+import { getSettings } from "./settings";
+import { getEffectiveFlightStatus } from "./flightStatus";
 
 /**
  * Mendukung dua format barcode:
@@ -105,8 +107,6 @@ export interface ValidationOutcome {
   parsed: ParsedBarcode | null;
 }
 
-const ACTIVE_STATUSES = new Set(["OPEN", "ACTIVE"]);
-
 export function validateBarcode(raw: string): ValidationOutcome {
   const cleaned = (raw ?? "").trim();
   if (!cleaned) {
@@ -154,10 +154,11 @@ export function validateBarcode(raw: string): ValidationOutcome {
     };
   }
 
-  if (!ACTIVE_STATUSES.has(flight.status)) {
+  const effective = getEffectiveFlightStatus(flight, new Date(), getSettings());
+  if (effective.status !== "OPEN" && effective.status !== "ACTIVE") {
     return {
       status: "FLIGHT_NOT_ACTIVE",
-      message: `Flight ${flight.flightNumber} berstatus ${flight.status}. Tidak dapat boarding.`,
+      message: `Flight ${flight.flightNumber}: ${effective.description}`,
       flight,
       parsed,
     };

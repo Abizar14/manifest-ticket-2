@@ -40,6 +40,22 @@ const ID: Dict = {
   "settings.pref.sound": "Suara feedback scan",
   "settings.pref.haptic": "Getaran (mobile)",
   "settings.pref.locale": "Bahasa",
+  "settings.section.boarding": "Jadwal & Boarding",
+  "settings.pref.flightOnlyToday": "Tampilkan hanya jadwal hari ini",
+  "settings.pref.flightOnlyToday.desc":
+    "Default filter pada daftar penerbangan. Bisa dilewati lewat opsi \"Semua tanggal\".",
+  "settings.pref.autoClose": "Auto-close jadwal hari lalu",
+  "settings.pref.autoClose.desc":
+    "Set status OPEN/ACTIVE jadwal hari kemarin menjadi CLOSED saat aplikasi dibuka.",
+  "settings.pref.openWindow": "Buka boarding (menit sebelum)",
+  "settings.pref.openWindow.desc":
+    "Berapa menit sebelum STD status efektif berubah jadi OPEN.",
+  "settings.pref.activeWindow": "Final call (menit sebelum)",
+  "settings.pref.activeWindow.desc":
+    "Berapa menit sebelum STD status efektif berubah jadi ACTIVE.",
+  "settings.pref.closeWindow": "Tutup boarding (menit setelah)",
+  "settings.pref.closeWindow.desc":
+    "Berapa menit setelah STD status efektif berubah jadi CLOSED.",
   "settings.data.export": "Export semua data (JSON)",
   "settings.data.archiveExport": "Export arsip scan",
   "settings.data.archivePurge": "Hapus arsip",
@@ -85,6 +101,22 @@ const EN: Dict = {
   "settings.pref.sound": "Scan feedback sound",
   "settings.pref.haptic": "Haptic feedback (mobile)",
   "settings.pref.locale": "Language",
+  "settings.section.boarding": "Schedule & Boarding",
+  "settings.pref.flightOnlyToday": "Show only today's flights",
+  "settings.pref.flightOnlyToday.desc":
+    "Default filter on the flight list. Can be overridden with \"All dates\".",
+  "settings.pref.autoClose": "Auto-close past-day flights",
+  "settings.pref.autoClose.desc":
+    "Set OPEN/ACTIVE flights from previous days to CLOSED when the app loads.",
+  "settings.pref.openWindow": "Open boarding (minutes before)",
+  "settings.pref.openWindow.desc":
+    "How many minutes before STD the effective status becomes OPEN.",
+  "settings.pref.activeWindow": "Final call (minutes before)",
+  "settings.pref.activeWindow.desc":
+    "How many minutes before STD the effective status becomes ACTIVE.",
+  "settings.pref.closeWindow": "Close boarding (minutes after)",
+  "settings.pref.closeWindow.desc":
+    "How many minutes after STD the effective status becomes CLOSED.",
   "settings.data.export": "Export all data (JSON)",
   "settings.data.archiveExport": "Export scan archive",
   "settings.data.archivePurge": "Purge archive",

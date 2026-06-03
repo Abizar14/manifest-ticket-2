@@ -54,6 +54,8 @@ import { canManageFlights } from "@/lib/auth";
 import { cn, formatDateTime } from "@/lib/utils";
 import { getBoardingProgress } from "@/lib/boarding";
 import { getAuditForFlight, recordAudit } from "@/lib/audit";
+import { getSettings, subscribeSettings } from "@/lib/settings";
+import { getEffectiveFlightStatus } from "@/lib/flightStatus";
 import { useToast } from "@/components/ui/Toast";
 import { useConfirm } from "@/components/ui/ConfirmDialog";
 import { AirlineLogo } from "@/components/ui/AirlineLogo";
@@ -74,6 +76,8 @@ export default function FlightDetailPage() {
   const [cancelOpen, setCancelOpen] = useState(false);
   const [cancelReason, setCancelReason] = useState("");
   const [showAudit, setShowAudit] = useState(false);
+  const [settings, setSettings] = useState(() => getSettings());
+  const [now, setNow] = useState(() => new Date());
 
   useEffect(() => {
     if (!id) return;
@@ -81,7 +85,23 @@ export default function FlightDetailPage() {
     setSession(s);
     setCanManage(canManageFlights(s?.role));
     refreshAll(id);
+    setSettings(getSettings());
+    const unsub = subscribeSettings(setSettings);
+    const tick = setInterval(() => {
+      if (typeof document !== "undefined" && document.visibilityState !== "visible") {
+        return;
+      }
+      setNow(new Date());
+    }, 30_000);
+    return () => {
+      unsub();
+      clearInterval(tick);
+    };
   }, [id]);
+
+  const effective = flight
+    ? getEffectiveFlightStatus(flight, now, settings)
+    : null;
 
   const refreshAll = (flightId: string) => {
     const f = getFlights().find((x) => x.id === flightId) ?? null;
@@ -380,7 +400,15 @@ export default function FlightDetailPage() {
                   <h2 className="text-3xl font-bold tracking-tight">
                     {flight.flightNumber}
                   </h2>
-                  <FlightStatusBadge status={flight.status} />
+                  <FlightStatusBadge status={effective?.status ?? flight.status} />
+                  {effective && effective.status !== flight.status && (
+                    <span
+                      title={`Status manual: ${flight.status}`}
+                      className="rounded-full bg-white/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white/90 ring-1 ring-white/25"
+                    >
+                      Manual: {flight.status}
+                    </span>
+                  )}
                 </div>
                 <p className="text-sm text-white/85">
                   {getAirlineMeta(flight.airlineCode).name}{" "}
@@ -388,6 +416,11 @@ export default function FlightDetailPage() {
                     · {flight.airlineCode}
                   </span>
                 </p>
+                {effective && (
+                  <p className="mt-1.5 text-xs text-white/75">
+                    {effective.description}
+                  </p>
+                )}
               </div>
             </div>
 

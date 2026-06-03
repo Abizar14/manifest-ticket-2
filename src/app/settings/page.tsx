@@ -15,6 +15,11 @@ import {
   Trash2,
   RefreshCw,
   Archive,
+  CalendarCheck,
+  Timer,
+  DoorOpen,
+  AlarmClockCheck,
+  DoorClosed,
 } from "lucide-react";
 import { AppShell } from "@/components/layout/AppShell";
 import { Card, CardBody, CardHeader, CardTitle } from "@/components/ui/Card";
@@ -213,7 +218,8 @@ export default function SettingsPage() {
               )}
 
               {tab === "preferences" && (
-                <div className="space-y-3">
+                <div className="space-y-5">
+                  <div className="space-y-3">
                   <ToggleRow
                     icon={
                       settings.soundOn ? (
@@ -265,6 +271,65 @@ export default function SettingsPage() {
                         </button>
                       ))}
                     </div>
+                  </div>
+                  </div>
+
+                  <SectionDivider
+                    icon={<CalendarCheck className="h-3.5 w-3.5" />}
+                    label={t("settings.section.boarding")}
+                  />
+
+                  <div className="space-y-3">
+                    <ToggleRow
+                      icon={<CalendarCheck className="h-4 w-4" />}
+                      title={t("settings.pref.flightOnlyToday")}
+                      description={t("settings.pref.flightOnlyToday.desc")}
+                      checked={settings.flightListShowOnlyToday}
+                      onChange={(v) => update({ flightListShowOnlyToday: v })}
+                    />
+                    <ToggleRow
+                      icon={<Timer className="h-4 w-4" />}
+                      title={t("settings.pref.autoClose")}
+                      description={t("settings.pref.autoClose.desc")}
+                      checked={settings.autoClosePastDayFlights}
+                      onChange={(v) => update({ autoClosePastDayFlights: v })}
+                    />
+                    <NumberRow
+                      icon={<DoorOpen className="h-4 w-4" />}
+                      title={t("settings.pref.openWindow")}
+                      description={t("settings.pref.openWindow.desc")}
+                      value={settings.boardingOpenMinutesBefore}
+                      min={0}
+                      max={240}
+                      suffix="menit"
+                      onChange={(v) =>
+                        update({ boardingOpenMinutesBefore: v })
+                      }
+                    />
+                    <NumberRow
+                      icon={<AlarmClockCheck className="h-4 w-4" />}
+                      title={t("settings.pref.activeWindow")}
+                      description={t("settings.pref.activeWindow.desc")}
+                      value={settings.boardingActiveMinutesBefore}
+                      min={0}
+                      max={Math.max(0, settings.boardingOpenMinutesBefore)}
+                      suffix="menit"
+                      onChange={(v) =>
+                        update({ boardingActiveMinutesBefore: v })
+                      }
+                    />
+                    <NumberRow
+                      icon={<DoorClosed className="h-4 w-4" />}
+                      title={t("settings.pref.closeWindow")}
+                      description={t("settings.pref.closeWindow.desc")}
+                      value={settings.boardingCloseMinutesAfter}
+                      min={0}
+                      max={120}
+                      suffix="menit"
+                      onChange={(v) =>
+                        update({ boardingCloseMinutesAfter: v })
+                      }
+                    />
                   </div>
                 </div>
               )}
@@ -383,6 +448,94 @@ function ToggleRow({
           )}
         />
       </button>
+    </div>
+  );
+}
+
+function NumberRow({
+  icon,
+  title,
+  description,
+  value,
+  min,
+  max,
+  suffix,
+  onChange,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  description?: string;
+  value: number;
+  min: number;
+  max: number;
+  suffix?: string;
+  onChange: (v: number) => void;
+}) {
+  const clamp = (n: number) => Math.max(min, Math.min(max, n));
+  return (
+    <div className="flex items-center justify-between gap-3 rounded-2xl bg-slate-50 px-4 py-3 ring-1 ring-slate-100">
+      <div className="flex items-start gap-3">
+        <div className="mt-0.5 flex h-8 w-8 items-center justify-center rounded-xl bg-white text-slate-600 ring-1 ring-slate-200">
+          {icon}
+        </div>
+        <div>
+          <p className="text-sm font-semibold text-slate-800">{title}</p>
+          {description && (
+            <p className="text-xs text-slate-500">{description}</p>
+          )}
+        </div>
+      </div>
+      <div className="inline-flex items-center gap-1 rounded-xl bg-white ring-1 ring-slate-200">
+        <button
+          type="button"
+          onClick={() => onChange(clamp(value - 5))}
+          className="h-8 w-8 rounded-l-xl text-slate-500 transition hover:bg-slate-100 hover:text-slate-700"
+          aria-label="kurang"
+        >
+          −
+        </button>
+        <input
+          type="number"
+          min={min}
+          max={max}
+          value={value}
+          onChange={(e) => onChange(clamp(parseInt(e.target.value, 10) || 0))}
+          className="w-12 border-0 bg-transparent text-center text-sm font-bold tabular-nums text-slate-800 outline-none focus:ring-0 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+        />
+        <button
+          type="button"
+          onClick={() => onChange(clamp(value + 5))}
+          className="h-8 w-8 rounded-r-xl text-slate-500 transition hover:bg-slate-100 hover:text-slate-700"
+          aria-label="tambah"
+        >
+          +
+        </button>
+        {suffix && (
+          <span className="pr-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+            {suffix}
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function SectionDivider({
+  icon,
+  label,
+}: {
+  icon: React.ReactNode;
+  label: string;
+}) {
+  return (
+    <div className="flex items-center gap-2 pt-1">
+      <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-blue-50 text-blue-700 ring-1 ring-blue-200">
+        {icon}
+      </span>
+      <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-slate-500">
+        {label}
+      </p>
+      <span className="h-px flex-1 bg-gradient-to-r from-slate-200 to-transparent" />
     </div>
   );
 }

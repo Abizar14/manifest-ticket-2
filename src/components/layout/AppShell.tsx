@@ -17,13 +17,16 @@ import {
   BarChart3,
   Settings as SettingsIcon,
   ChevronRight,
-  Bell,
+  ChevronLeft,
   Wifi,
   WifiOff,
   Clock as ClockIcon,
+  PanelLeftClose,
+  PanelLeft,
 } from "lucide-react";
 import { SessionUser, UserRole } from "@/lib/types";
 import { archiveOldScanEvents, ensureSeed, getSession } from "@/lib/storage";
+import { sweepPastDayFlights } from "@/lib/flightSweeper";
 import { logout } from "@/lib/auth";
 import { cn } from "@/lib/utils";
 import { useT, useLocale } from "@/lib/useT";
@@ -112,13 +115,34 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
   const locale = useLocale();
   const [session, setSession] = useState<SessionUser | null>(null);
   const [open, setOpen] = useState(false);
+  const [collapsed, setCollapsed] = useState(false);
   const [ready, setReady] = useState(false);
   const [now, setNow] = useState<Date | null>(null);
   const [online, setOnline] = useState(true);
 
   useEffect(() => {
+    if (typeof window === "undefined") return;
+    const stored = window.localStorage.getItem("afvs.sidebar.collapsed");
+    if (stored === "1") setCollapsed(true);
+  }, []);
+
+  const toggleCollapsed = () => {
+    setCollapsed((prev) => {
+      const next = !prev;
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem(
+          "afvs.sidebar.collapsed",
+          next ? "1" : "0",
+        );
+      }
+      return next;
+    });
+  };
+
+  useEffect(() => {
     ensureSeed();
     archiveOldScanEvents(1);
+    sweepPastDayFlights();
     const s = getSession();
     if (!s) {
       router.replace("/login");
@@ -187,41 +211,82 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
       {/* Sidebar */}
       <aside
         className={cn(
-          "fixed inset-y-0 left-0 z-40 flex w-72 transform flex-col border-r border-slate-200/60 bg-white/85 shadow-soft backdrop-blur-md transition-transform lg:static lg:translate-x-0 print:hidden",
+          "fixed inset-y-0 left-0 z-40 flex transform flex-col border-r border-slate-200/60 bg-white/85 shadow-soft backdrop-blur-md transition-all duration-300 lg:static lg:translate-x-0 print:hidden",
+          collapsed ? "w-[76px]" : "w-72",
           open ? "translate-x-0" : "-translate-x-full",
         )}
       >
-        <div className="flex h-16 items-center justify-between border-b border-slate-100 px-5">
-          <div className="flex items-center gap-2.5">
+        <div
+          className={cn(
+            "relative flex h-16 items-center border-b border-slate-100",
+            collapsed ? "justify-center px-2" : "justify-between px-5",
+          )}
+        >
+          <Link
+            href="/dashboard"
+            className={cn(
+              "flex items-center gap-2.5 transition",
+              collapsed && "justify-center",
+            )}
+            title="AFVS"
+          >
             <div className="relative flex h-10 w-10 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-600 to-cyan-500 text-white shadow-lift">
               <ShieldCheck className="h-5 w-5" />
               <span className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full bg-emerald-400 ring-2 ring-white" />
             </div>
-            <div className="leading-tight">
-              <p className="text-sm font-bold tracking-tight text-slate-800">
-                AFVS
-              </p>
-              <p className="text-[11px] text-slate-500">Flight Validation</p>
-            </div>
-          </div>
+            {!collapsed && (
+              <div className="leading-tight">
+                <p className="text-sm font-bold tracking-tight text-slate-800">
+                  AFVS
+                </p>
+                <p className="text-[11px] text-slate-500">Flight Validation</p>
+              </div>
+            )}
+          </Link>
+          {!collapsed && (
+            <button
+              className="text-slate-500 lg:hidden"
+              onClick={() => setOpen(false)}
+              aria-label="Close menu"
+            >
+              <X className="h-5 w-5" />
+            </button>
+          )}
+          {/* Desktop collapse toggle — sits on the right edge */}
           <button
-            className="text-slate-500 lg:hidden"
-            onClick={() => setOpen(false)}
-            aria-label="Close menu"
+            type="button"
+            onClick={toggleCollapsed}
+            aria-label={collapsed ? "Buka sidebar" : "Ciutkan sidebar"}
+            title={collapsed ? "Buka sidebar" : "Ciutkan sidebar"}
+            className="absolute -right-3 top-1/2 hidden h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 shadow-sm transition hover:bg-blue-50 hover:text-blue-700 hover:shadow-md lg:flex"
           >
-            <X className="h-5 w-5" />
+            {collapsed ? (
+              <ChevronRight className="h-3.5 w-3.5" />
+            ) : (
+              <ChevronLeft className="h-3.5 w-3.5" />
+            )}
           </button>
         </div>
 
-        <nav className="flex-1 overflow-y-auto px-3 py-4">
+        <nav
+          className={cn(
+            "flex-1 overflow-y-auto py-4",
+            collapsed ? "px-2" : "px-3",
+          )}
+        >
           {visibleSections.map((section, sIdx) => (
             <div
               key={section.labelKey}
               className={cn(sIdx > 0 && "mt-5")}
             >
-              <p className="px-3 pb-1.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">
-                {t(section.labelKey)}
-              </p>
+              {!collapsed && (
+                <p className="px-3 pb-1.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">
+                  {t(section.labelKey)}
+                </p>
+              )}
+              {collapsed && sIdx > 0 && (
+                <div className="my-2 mx-auto h-px w-8 bg-slate-200/70" />
+              )}
               <div className="space-y-0.5">
                 {section.items.map((item, idx) => {
                   const Icon = item.icon;
@@ -232,8 +297,12 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
                     <Link
                       key={item.href}
                       href={item.href}
+                      title={collapsed ? t(item.labelKey) : undefined}
                       className={cn(
-                        "group relative flex items-center gap-3 rounded-xl px-3 py-2 text-[13px] font-semibold transition-all duration-200 animate-fade-up",
+                        "group relative flex items-center rounded-xl text-[13px] font-semibold transition-all duration-200 animate-fade-up",
+                        collapsed
+                          ? "justify-center px-1.5 py-2"
+                          : "gap-3 px-3 py-2",
                         active
                           ? "bg-gradient-to-r from-blue-500 to-cyan-500 text-white shadow-lift"
                           : "text-slate-600 hover:bg-blue-50 hover:text-blue-700",
@@ -242,17 +311,25 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
                     >
                       <span
                         className={cn(
-                          "flex h-7 w-7 items-center justify-center rounded-lg transition",
+                          "flex items-center justify-center rounded-lg transition",
+                          collapsed ? "h-9 w-9" : "h-7 w-7",
                           active
                             ? "bg-white/15 text-white ring-1 ring-white/20"
                             : "bg-slate-100 text-slate-600 ring-1 ring-slate-200 group-hover:bg-white group-hover:text-blue-700 group-hover:ring-blue-200",
                         )}
                       >
-                        <Icon className="h-3.5 w-3.5" />
+                        <Icon
+                          className={cn(collapsed ? "h-4 w-4" : "h-3.5 w-3.5")}
+                        />
                       </span>
-                      <span className="truncate">{t(item.labelKey)}</span>
-                      {active && (
+                      {!collapsed && (
+                        <span className="truncate">{t(item.labelKey)}</span>
+                      )}
+                      {active && !collapsed && (
                         <span className="absolute right-3 h-1.5 w-1.5 rounded-full bg-white" />
+                      )}
+                      {active && collapsed && (
+                        <span className="absolute right-0 top-1/2 h-6 w-1 -translate-y-1/2 rounded-l-full bg-blue-500" />
                       )}
                     </Link>
                   );
@@ -262,37 +339,76 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
           ))}
         </nav>
 
-        <div className="p-4">
-          <div className="relative overflow-hidden rounded-2xl border border-slate-200/70 bg-gradient-to-br from-blue-50 via-white to-cyan-50 p-3 shadow-card">
-            <div className="deco-blob -right-6 -top-6 h-20 w-20 bg-blue-300 opacity-40" />
-            <div className="relative z-[1]">
-              <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-blue-600 to-cyan-500 text-sm font-bold text-white shadow-sm ring-2 ring-white">
-                  {session.name.charAt(0).toUpperCase()}
-                </div>
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-semibold text-slate-800">
-                    {session.name}
-                  </p>
-                  <span
-                    className={cn(
-                      "mt-0.5 inline-block rounded-full px-2 py-0.5 text-[10px] font-semibold ring-1",
-                      roleTone[session.role],
-                    )}
-                  >
-                    {roleLabel[session.role]}
-                  </span>
-                </div>
+        <div className={cn("p-3", !collapsed && "p-4")}>
+          {collapsed ? (
+            <div className="flex flex-col items-center gap-2">
+              <div
+                className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-blue-600 to-cyan-500 text-sm font-bold text-white shadow-sm ring-2 ring-white"
+                title={`${session.name} · ${roleLabel[session.role]}`}
+              >
+                {session.name.charAt(0).toUpperCase()}
               </div>
               <button
                 onClick={handleLogout}
-                className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-white/90 px-3 py-2 text-xs font-semibold text-slate-700 ring-1 ring-slate-200 transition hover:bg-rose-50 hover:text-rose-700 hover:ring-rose-200"
+                title={t("common.logout")}
+                aria-label={t("common.logout")}
+                className="flex h-9 w-9 items-center justify-center rounded-xl bg-white ring-1 ring-slate-200 text-slate-600 transition hover:bg-rose-50 hover:text-rose-700 hover:ring-rose-200"
               >
-                <LogOut className="h-3.5 w-3.5" />
-                {t("common.logout")}
+                <LogOut className="h-4 w-4" />
+              </button>
+              <button
+                type="button"
+                onClick={toggleCollapsed}
+                title="Buka sidebar"
+                aria-label="Buka sidebar"
+                className="hidden h-9 w-9 items-center justify-center rounded-xl bg-white ring-1 ring-slate-200 text-slate-600 transition hover:bg-blue-50 hover:text-blue-700 hover:ring-blue-200 lg:flex"
+              >
+                <PanelLeft className="h-4 w-4" />
               </button>
             </div>
-          </div>
+          ) : (
+            <div className="relative overflow-hidden rounded-2xl border border-slate-200/70 bg-gradient-to-br from-blue-50 via-white to-cyan-50 p-3 shadow-card">
+              <div className="deco-blob -right-6 -top-6 h-20 w-20 bg-blue-300 opacity-40" />
+              <div className="relative z-[1]">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-blue-600 to-cyan-500 text-sm font-bold text-white shadow-sm ring-2 ring-white">
+                    {session.name.charAt(0).toUpperCase()}
+                  </div>
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-semibold text-slate-800">
+                      {session.name}
+                    </p>
+                    <span
+                      className={cn(
+                        "mt-0.5 inline-block rounded-full px-2 py-0.5 text-[10px] font-semibold ring-1",
+                        roleTone[session.role],
+                      )}
+                    >
+                      {roleLabel[session.role]}
+                    </span>
+                  </div>
+                </div>
+                <div className="mt-3 flex gap-2">
+                  <button
+                    onClick={handleLogout}
+                    className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-white/90 px-3 py-2 text-xs font-semibold text-slate-700 ring-1 ring-slate-200 transition hover:bg-rose-50 hover:text-rose-700 hover:ring-rose-200"
+                  >
+                    <LogOut className="h-3.5 w-3.5" />
+                    {t("common.logout")}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={toggleCollapsed}
+                    title="Ciutkan sidebar"
+                    aria-label="Ciutkan sidebar"
+                    className="hidden h-[34px] w-[34px] items-center justify-center rounded-xl bg-white/90 text-slate-600 ring-1 ring-slate-200 transition hover:bg-blue-50 hover:text-blue-700 hover:ring-blue-200 lg:flex"
+                  >
+                    <PanelLeftClose className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </aside>
 
@@ -390,16 +506,6 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
                   },
                 )}
               </div>
-
-              {/* Bell */}
-              <button
-                className="relative hidden h-9 w-9 items-center justify-center rounded-xl bg-white/80 text-slate-600 ring-1 ring-slate-200 backdrop-blur transition hover:bg-blue-50 hover:text-blue-700 hover:ring-blue-200 sm:inline-flex"
-                aria-label="Notifications"
-                title="Notifications"
-              >
-                <Bell className="h-4 w-4" />
-                <span className="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-rose-500 ring-2 ring-white" />
-              </button>
 
               {/* User chip */}
               <div className="hidden items-center gap-2 rounded-xl bg-white/80 px-2 py-1 ring-1 ring-slate-200 backdrop-blur sm:inline-flex">

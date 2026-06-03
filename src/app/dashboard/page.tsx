@@ -26,14 +26,30 @@ import { useCountUp } from "@/lib/useCountUp";
 import { getBoardingProgress } from "@/lib/boarding";
 import { PageHero, HeroChip } from "@/components/layout/PageHero";
 import { AirlineLogo } from "@/components/ui/AirlineLogo";
+import { getSettings, subscribeSettings } from "@/lib/settings";
+import { getEffectiveFlightStatus } from "@/lib/flightStatus";
 
 export default function DashboardPage() {
   const [flights, setFlights] = useState<Flight[]>([]);
   const [events, setEvents] = useState<ScanEvent[]>([]);
+  const [settings, setSettings] = useState(() => getSettings());
+  const [now, setNow] = useState(() => new Date());
 
   useEffect(() => {
     setFlights(getFlights());
     setEvents(getScanEvents());
+    setSettings(getSettings());
+    const unsub = subscribeSettings(setSettings);
+    const tick = setInterval(() => {
+      if (typeof document !== "undefined" && document.visibilityState !== "visible") {
+        return;
+      }
+      setNow(new Date());
+    }, 30_000);
+    return () => {
+      unsub();
+      clearInterval(tick);
+    };
   }, []);
 
   const today = todayDateString();
@@ -42,6 +58,21 @@ export default function DashboardPage() {
     () => flights.filter((f) => f.departureDate === today),
     [flights, today],
   );
+
+  const effectiveStats = useMemo(() => {
+    const counts = { open: 0, active: 0, closed: 0, draft: 0, cancelled: 0 };
+    for (const f of flightsToday) {
+      const eff = getEffectiveFlightStatus(f, now, settings).status;
+      if (eff === "OPEN") counts.open += 1;
+      else if (eff === "ACTIVE") counts.active += 1;
+      else if (eff === "CLOSED") counts.closed += 1;
+      else if (eff === "DRAFT") counts.draft += 1;
+      else if (eff === "CANCELLED") counts.cancelled += 1;
+    }
+    return counts;
+  }, [flightsToday, now, settings]);
+
+  const boardableNow = effectiveStats.open + effectiveStats.active;
 
   const eventsToday = useMemo(
     () => events.filter((e) => e.scannedAt.slice(0, 10) === today),
@@ -122,7 +153,11 @@ export default function DashboardPage() {
             <StatCard
               label="Flight Hari Ini"
               value={flightsCnt}
-              helper={`Tanggal ${today}`}
+              helper={
+                boardableNow > 0
+                  ? `${boardableNow} sedang boarding`
+                  : `Tanggal ${today}`
+              }
               tone="brand"
               icon={<Plane className="h-5 w-5" />}
             />
@@ -237,7 +272,31 @@ export default function DashboardPage() {
                               <Clock className="h-3.5 w-3.5" />
                               {f.departureTime}
                             </span>
-                            <FlightStatusBadge status={f.status} />
+                            {(() => {
+                              const eff = getEffectiveFlightStatus(
+                                f,
+                                now,
+                                settings,
+                              );
+                              const differs = eff.status !== f.status;
+                              return (
+                                <span
+                                  className="inline-flex items-center gap-1"
+                                  title={
+                                    differs
+                                      ? `Manual: ${f.status} • ${eff.description}`
+                                      : eff.description
+                                  }
+                                >
+                                  <FlightStatusBadge status={eff.status} />
+                                  {differs && (
+                                    <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-slate-500 ring-1 ring-slate-200">
+                                      auto
+                                    </span>
+                                  )}
+                                </span>
+                              );
+                            })()}
                           </div>
                         </Link>
                       </li>

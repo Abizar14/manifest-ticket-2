@@ -6,6 +6,11 @@ export interface AppSettings {
   soundOn: boolean;
   hapticOn: boolean;
   locale: Locale;
+  flightListShowOnlyToday: boolean;
+  autoClosePastDayFlights: boolean;
+  boardingOpenMinutesBefore: number;
+  boardingActiveMinutesBefore: number;
+  boardingCloseMinutesAfter: number;
 }
 
 const KEY = "afvs.settings";
@@ -14,6 +19,11 @@ const DEFAULTS: AppSettings = {
   soundOn: true,
   hapticOn: true,
   locale: "id",
+  flightListShowOnlyToday: true,
+  autoClosePastDayFlights: true,
+  boardingOpenMinutesBefore: 60,
+  boardingActiveMinutesBefore: 30,
+  boardingCloseMinutesAfter: 10,
 };
 
 function isBrowser() {
