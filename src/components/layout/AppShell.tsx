@@ -27,6 +27,7 @@ import { archiveOldScanEvents, ensureSeed, getSession } from "@/lib/storage";
 import { logout } from "@/lib/auth";
 import { cn } from "@/lib/utils";
 import { useT, useLocale } from "@/lib/useT";
+import { BottomNav } from "./BottomNav";
 
 interface NavItem {
   href: string;
@@ -311,7 +312,7 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
             aria-hidden
             className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-blue-400/60 to-transparent"
           />
-          <div className="flex h-16 items-center justify-between gap-3 px-4 sm:px-6">
+          <div className="flex h-14 items-center justify-between gap-3 px-3 sm:h-16 sm:px-6">
             <div className="flex min-w-0 items-center gap-3">
               <button
                 className="rounded-lg p-2 text-slate-600 transition hover:bg-blue-50 hover:text-blue-700 lg:hidden"
@@ -418,8 +419,12 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
           </div>
         </header>
 
-        <main className="flex-1 p-4 sm:p-6 print:p-0">{children}</main>
+        <main className="flex-1 px-4 pt-4 sm:px-6 sm:pt-6 print:p-0 pb-[calc(env(safe-area-inset-bottom)+6rem)] lg:pb-6">
+          {children}
+        </main>
       </div>
+
+      <BottomNav onMoreClick={() => setOpen(true)} />
     </div>
   );
 }

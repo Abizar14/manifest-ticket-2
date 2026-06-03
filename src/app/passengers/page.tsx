@@ -219,6 +219,84 @@ export default function PassengersPage() {
                 description="Coba kata kunci lain atau ubah field pencarian."
               />
             ) : (
+              <>
+              {/* Mobile: card stack */}
+              <ul className="space-y-2 md:hidden">
+                {paginated.map((m, idx) => (
+                  <li
+                    key={m.key}
+                    className="rounded-2xl bg-white p-3 shadow-card ring-1 ring-slate-200 animate-fade-up"
+                    style={{ animationDelay: `${idx * 25}ms` }}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        {m.passengerName ? (
+                          <p className="truncate text-sm font-bold text-slate-800">
+                            {m.passengerName}
+                          </p>
+                        ) : (
+                          <p className="italic text-sm text-slate-400">
+                            (nama tidak ada)
+                          </p>
+                        )}
+                        {m.flight ? (
+                          <Link
+                            href={`/flights/${m.flight.id}`}
+                            className="mt-0.5 inline-flex items-center gap-1 text-xs font-semibold text-blue-700"
+                          >
+                            <Plane className="h-3 w-3" />
+                            {m.flight.flightNumber}
+                            <span className="font-normal text-slate-500">
+                              · {m.flight.originAirport} → {m.flight.destinationAirport}
+                            </span>
+                          </Link>
+                        ) : (
+                          <p className="mt-0.5 text-xs text-slate-500">
+                            {m.flightNumber ?? "—"}
+                          </p>
+                        )}
+                      </div>
+                      {m.boarded ? (
+                        <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 ring-1 ring-emerald-200">
+                          <CheckCircle2 className="h-3 w-3" />
+                          Boarded
+                        </span>
+                      ) : (
+                        <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-rose-50 px-2 py-0.5 text-[10px] font-semibold text-rose-700 ring-1 ring-rose-200">
+                          <XCircle className="h-3 w-3" />
+                          Belum
+                        </span>
+                      )}
+                    </div>
+                    <div className="mt-2 grid grid-cols-3 gap-2 text-[11px]">
+                      <div className="min-w-0 rounded-lg bg-slate-50 px-2 py-1 ring-1 ring-slate-200">
+                        <p className="text-[9px] font-semibold uppercase tracking-wider text-slate-400">PNR</p>
+                        <p className="truncate font-mono text-[11px] font-semibold text-slate-700">{m.pnr}</p>
+                      </div>
+                      <div className="rounded-lg bg-blue-50 px-2 py-1 ring-1 ring-blue-200">
+                        <p className="text-[9px] font-semibold uppercase tracking-wider text-blue-600">Seat</p>
+                        <p className="font-mono text-[11px] font-bold text-blue-700">{m.seat}</p>
+                      </div>
+                      <div className="min-w-0 rounded-lg bg-slate-50 px-2 py-1 ring-1 ring-slate-200">
+                        <p className="text-[9px] font-semibold uppercase tracking-wider text-slate-400">Tiket</p>
+                        <p className="truncate font-mono text-[11px] font-semibold text-slate-700">{m.ticketNumber}</p>
+                      </div>
+                    </div>
+                    <div className="mt-2 flex items-center justify-between text-[10px] text-slate-500">
+                      <span className="inline-flex items-center gap-1">
+                        <Clock className="h-3 w-3" />
+                        {formatDateTime(m.lastScannedAt)}
+                      </span>
+                      <span className={cn(m.scanCount > 1 ? "text-amber-600 font-semibold" : "text-slate-400")}>
+                        {m.scanCount}× scan
+                      </span>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+
+              {/* Desktop: table */}
+              <div className="hidden md:block">
               <Table>
                 <THead>
                   <Tr>
@@ -316,6 +394,8 @@ export default function PassengersPage() {
                   ))}
                 </TBody>
               </Table>
+              </div>
+              </>
             )}
 
             {matches.length > 0 && (

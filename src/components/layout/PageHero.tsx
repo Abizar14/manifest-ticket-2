@@ -107,7 +107,7 @@ export function PageHero({
   return (
     <section
       className={cn(
-        "relative animate-fade-up overflow-hidden rounded-3xl border border-white/30 px-5 py-5 text-white shadow-lift sm:px-7 sm:py-6",
+        "relative animate-fade-up overflow-hidden rounded-2xl border border-white/30 px-4 py-4 text-white shadow-lift sm:rounded-3xl sm:px-7 sm:py-6",
         "bg-gradient-to-br",
         t.bg,
         className,
@@ -141,11 +141,11 @@ export function PageHero({
             {eyebrowIcon}
             {eyebrow}
           </div>
-          <h2 className="mt-3 text-2xl font-bold tracking-tight drop-shadow-sm sm:text-[28px]">
+          <h2 className="mt-2 text-xl font-bold tracking-tight drop-shadow-sm sm:mt-3 sm:text-[28px]">
             {title}
           </h2>
           {description && (
-            <p className="mt-1 max-w-2xl text-sm text-white/85">
+            <p className="mt-1 max-w-2xl text-[13px] text-white/85 sm:text-sm">
               {description}
             </p>
           )}

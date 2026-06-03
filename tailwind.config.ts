@@ -83,6 +83,34 @@ const config: Config = {
           "0%, 100%": { transform: "translateY(0)" },
           "50%": { transform: "translateY(-4px)" },
         },
+        drift: {
+          "0%": { transform: "translate(0, 0)" },
+          "33%": { transform: "translate(8px, -6px)" },
+          "66%": { transform: "translate(-6px, 4px)" },
+          "100%": { transform: "translate(0, 0)" },
+        },
+        "spin-slow": {
+          "0%": { transform: "rotate(0deg)" },
+          "100%": { transform: "rotate(360deg)" },
+        },
+        "fly-by": {
+          "0%": { transform: "translate(-120%, 30%) rotate(-12deg)", opacity: "0" },
+          "10%": { opacity: "0.6" },
+          "90%": { opacity: "0.6" },
+          "100%": { transform: "translate(120%, -30%) rotate(-12deg)", opacity: "0" },
+        },
+        "gradient-shift": {
+          "0%, 100%": { backgroundPosition: "0% 50%" },
+          "50%": { backgroundPosition: "100% 50%" },
+        },
+        "tilt-soft": {
+          "0%, 100%": { transform: "rotate(-1deg)" },
+          "50%": { transform: "rotate(1deg)" },
+        },
+        "bp-rise": {
+          "0%": { transform: "translateY(40px) rotate(-6deg)", opacity: "0" },
+          "100%": { transform: "translateY(0) rotate(-6deg)", opacity: "1" },
+        },
       },
       animation: {
         "fade-up": "fade-up 0.5s ease-out both",
@@ -93,6 +121,12 @@ const config: Config = {
         "pulse-glow-rose": "pulse-glow-rose 1.8s ease-in-out infinite",
         shimmer: "shimmer 2.4s ease-in-out infinite",
         float: "float 3.5s ease-in-out infinite",
+        drift: "drift 9s ease-in-out infinite",
+        "spin-slow": "spin-slow 22s linear infinite",
+        "fly-by": "fly-by 14s ease-in-out infinite",
+        "gradient-shift": "gradient-shift 8s ease-in-out infinite",
+        "tilt-soft": "tilt-soft 6s ease-in-out infinite",
+        "bp-rise": "bp-rise 0.7s cubic-bezier(0.2, 0.8, 0.2, 1) both",
       },
     },
   },

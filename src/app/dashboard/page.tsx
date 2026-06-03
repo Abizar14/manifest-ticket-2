@@ -118,7 +118,7 @@ export default function DashboardPage() {
 
         {/* Stat cards */}
         <div className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-5">
-          <div className="animate-fade-up stagger-1">
+          <div className="h-full animate-fade-up stagger-1">
             <StatCard
               label="Flight Hari Ini"
               value={flightsCnt}
@@ -127,7 +127,7 @@ export default function DashboardPage() {
               icon={<Plane className="h-5 w-5" />}
             />
           </div>
-          <div className="animate-fade-up stagger-2">
+          <div className="h-full animate-fade-up stagger-2">
             <StatCard
               label="Total Scan"
               value={scanCnt}
@@ -136,7 +136,7 @@ export default function DashboardPage() {
               icon={<ScanLine className="h-5 w-5" />}
             />
           </div>
-          <div className="animate-fade-up stagger-3">
+          <div className="h-full animate-fade-up stagger-3">
             <StatCard
               label="Valid"
               value={validCnt}
@@ -145,7 +145,7 @@ export default function DashboardPage() {
               icon={<CheckCircle2 className="h-5 w-5" />}
             />
           </div>
-          <div className="animate-fade-up stagger-4">
+          <div className="h-full animate-fade-up stagger-4">
             <StatCard
               label="Duplicate"
               value={dupCnt}
@@ -154,11 +154,11 @@ export default function DashboardPage() {
               icon={<CopyCheck className="h-5 w-5" />}
             />
           </div>
-          <div className="animate-fade-up stagger-5">
+          <div className="h-full animate-fade-up stagger-5">
             <StatCard
               label="Rejected"
               value={rejectedCnt}
-              helper="Invalid / not today / etc."
+              helper="Invalid / tidak hari ini"
               tone="rose"
               icon={<AlertOctagon className="h-5 w-5" />}
             />

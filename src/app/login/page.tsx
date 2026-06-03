@@ -10,6 +10,8 @@ import {
   Sparkles,
   ScanLine,
   Zap,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
@@ -20,6 +22,7 @@ export default function LoginPage() {
   const router = useRouter();
   const [email, setEmail] = useState("admin@airport.test");
   const [password, setPassword] = useState("password");
+  const [showPw, setShowPw] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -33,13 +36,16 @@ export default function LoginPage() {
     e.preventDefault();
     setError(null);
     setLoading(true);
-    const res = login(email, password);
-    setLoading(false);
-    if (!res.ok) {
-      setError(res.error);
-      return;
-    }
-    router.replace("/dashboard");
+    // small artificial delay so the loading state is visible
+    setTimeout(() => {
+      const res = login(email, password);
+      setLoading(false);
+      if (!res.ok) {
+        setError(res.error);
+        return;
+      }
+      router.replace("/dashboard");
+    }, 350);
   };
 
   const quick = (e: string) => {
@@ -48,183 +54,405 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="flex min-h-screen items-stretch">
-      {/* Left brand panel */}
-      <div className="relative hidden w-1/2 overflow-hidden bg-gradient-to-br from-blue-700 via-blue-600 to-cyan-500 p-12 text-white lg:flex">
-        <div className="absolute -right-32 -top-32 h-96 w-96 rounded-full bg-white/15 blur-3xl" />
-        <div className="absolute -bottom-32 -left-32 h-96 w-96 rounded-full bg-cyan-300/30 blur-3xl" />
-        <div className="absolute right-10 top-1/3 h-64 w-64 rounded-full bg-white/10 blur-2xl animate-float" />
-        <div className="relative z-10 flex w-full flex-col justify-between">
-          <div className="flex items-center gap-3 animate-fade-up">
-            <div className="relative flex h-11 w-11 items-center justify-center rounded-2xl bg-white/15 backdrop-blur ring-1 ring-white/25">
-              <ShieldCheck className="h-5 w-5" />
-              <span className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full bg-emerald-400 ring-2 ring-blue-700" />
-            </div>
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.2em] opacity-80">
-                AFVS
-              </p>
-              <p className="text-lg font-bold tracking-tight">
-                Airport Flight Validation
-              </p>
-            </div>
-          </div>
+    <div className="relative flex min-h-screen w-full items-stretch overflow-hidden bg-slate-950">
+      {/* ============ animated background (full-screen) ============ */}
+      <AnimatedBackdrop />
 
-          <div className="space-y-6 animate-fade-up stagger-2">
-            <div className="inline-flex items-center gap-2 rounded-full bg-white/15 px-3 py-1 text-[11px] font-semibold uppercase tracking-wider ring-1 ring-white/20 backdrop-blur">
-              <Sparkles className="h-3.5 w-3.5" />
-              Pos Validasi Real-time
-            </div>
-            <div className="flex items-center gap-3 text-white/95">
-              <Plane className="h-7 w-7 animate-float" />
-              <h2 className="text-4xl font-bold tracking-tight leading-tight">
-                Validasi Boarding Pass
-                <br />
-                <span className="bg-gradient-to-r from-white to-cyan-200 bg-clip-text text-transparent">
-                  Cepat & Aman
-                </span>
-              </h2>
-            </div>
-            <p className="max-w-md text-sm leading-relaxed text-white/80">
-              Scan barcode boarding pass — sistem akan mengecek apakah kode
-              penerbangan terdaftar di jadwal hari ini, statusnya aktif, dan
-              belum pernah di-scan sebelumnya.
+      {/* ============ left brand panel (desktop only) ============ */}
+      <div className="relative z-10 hidden w-1/2 flex-col justify-between p-10 text-white lg:flex xl:p-14">
+        <div className="flex items-center gap-3 animate-fade-up">
+          <div className="relative flex h-12 w-12 items-center justify-center rounded-2xl bg-white/10 ring-1 ring-white/25 backdrop-blur">
+            <ShieldCheck className="h-6 w-6" />
+            <span className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 animate-pulse-glow-emerald rounded-full bg-emerald-400" />
+          </div>
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.25em] text-white/70">
+              AFVS
             </p>
+            <p className="text-lg font-bold tracking-tight">
+              Airport Flight Validation
+            </p>
+          </div>
+        </div>
 
-            <div className="grid max-w-md grid-cols-3 gap-3">
-              {[
-                { v: "5", k: "Flight aktif", icon: Plane },
-                { v: "100%", k: "Offline-ready", icon: ScanLine },
-                { v: "<1s", k: "Validasi", icon: Zap },
-              ].map((s, idx) => {
-                const Icon = s.icon;
-                return (
-                  <div
-                    key={s.k}
-                    className="relative overflow-hidden rounded-2xl bg-white/10 p-3 ring-1 ring-white/15 backdrop-blur transition hover:bg-white/15 animate-fade-up"
-                    style={{ animationDelay: `${300 + idx * 100}ms` }}
-                  >
-                    <Icon className="absolute -bottom-2 -right-2 h-12 w-12 text-white/10" />
-                    <p className="text-2xl font-bold">{s.v}</p>
-                    <p className="text-[11px] text-white/80">{s.k}</p>
+        <div className="space-y-6">
+          <div
+            className="inline-flex animate-fade-up items-center gap-2 rounded-full bg-white/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-wider ring-1 ring-white/20 backdrop-blur"
+            style={{ animationDelay: "120ms" }}
+          >
+            <Sparkles className="h-3.5 w-3.5" />
+            Pos Validasi Real-time
+          </div>
+
+          <h2
+            className="animate-fade-up text-5xl font-black leading-[1.05] tracking-tight"
+            style={{ animationDelay: "200ms" }}
+          >
+            Validasi Boarding Pass
+            <br />
+            <span className="inline-block bg-[length:200%_200%] bg-gradient-to-r from-cyan-200 via-white to-blue-200 bg-clip-text text-transparent animate-gradient-shift">
+              Cepat. Aman. Akurat.
+            </span>
+          </h2>
+
+          <p
+            className="max-w-md animate-fade-up text-sm leading-relaxed text-white/75"
+            style={{ animationDelay: "320ms" }}
+          >
+            Scan barcode boarding pass — sistem akan mengecek apakah kode
+            penerbangan terdaftar di jadwal hari ini, statusnya aktif, dan
+            belum pernah di-scan sebelumnya.
+          </p>
+
+          <div className="grid max-w-md grid-cols-3 gap-3">
+            {[
+              { v: "5+", k: "Flight aktif", icon: Plane },
+              { v: "100%", k: "Offline-ready", icon: ScanLine },
+              { v: "<1s", k: "Validasi", icon: Zap },
+            ].map((s, idx) => {
+              const Icon = s.icon;
+              return (
+                <div
+                  key={s.k}
+                  className="relative animate-fade-up overflow-hidden rounded-2xl border border-white/15 bg-white/[0.07] p-3 backdrop-blur transition hover:bg-white/[0.12]"
+                  style={{ animationDelay: `${440 + idx * 100}ms` }}
+                >
+                  <Icon className="absolute -bottom-2 -right-2 h-12 w-12 text-white/10" />
+                  <p className="text-2xl font-bold drop-shadow">{s.v}</p>
+                  <p className="text-[11px] text-white/70">{s.k}</p>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        <p className="text-xs text-white/50">
+          © {new Date().getFullYear()} AFVS — Internal Operation Tool.
+        </p>
+      </div>
+
+      {/* ============ right form (and full-width on mobile) ============ */}
+      <div className="relative z-10 flex flex-1 items-center justify-center px-4 py-8 sm:px-8">
+        <div className="w-full max-w-md">
+          {/* Mobile-only hero badge */}
+          <div className="mb-6 flex flex-col items-center text-center text-white lg:hidden">
+            <div className="relative flex h-16 w-16 items-center justify-center rounded-3xl bg-gradient-to-br from-blue-500 to-cyan-400 shadow-glow animate-bp-rise">
+              <ShieldCheck className="h-7 w-7 drop-shadow" />
+              <span className="absolute -right-1 -top-1 h-3 w-3 animate-pulse-glow-emerald rounded-full bg-emerald-400" />
+            </div>
+            <p className="mt-3 text-[11px] font-semibold uppercase tracking-[0.25em] text-white/70 animate-fade-up">
+              AFVS
+            </p>
+            <h1
+              className="mt-1 animate-fade-up text-2xl font-black tracking-tight"
+              style={{ animationDelay: "120ms" }}
+            >
+              Airport Flight Validation
+            </h1>
+            <p
+              className="mt-1 max-w-xs animate-fade-up text-xs text-white/65"
+              style={{ animationDelay: "200ms" }}
+            >
+              Validasi cepat & aman untuk setiap boarding pass.
+            </p>
+          </div>
+
+          {/* Glassmorphism card */}
+          <div
+            className="relative animate-fade-up overflow-hidden rounded-3xl border border-white/15 bg-white/[0.06] p-5 shadow-lift backdrop-blur-2xl sm:p-7"
+            style={{ animationDelay: "280ms" }}
+          >
+            {/* card sheen */}
+            <div className="pointer-events-none absolute -top-1/2 left-0 h-[200%] w-1/2 -translate-x-full animate-shimmer bg-gradient-to-r from-transparent via-white/10 to-transparent" />
+
+            <div className="relative">
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-cyan-200">
+                Selamat datang kembali
+              </p>
+              <h2 className="mt-1 text-2xl font-black tracking-tight text-white sm:text-3xl">
+                Masuk ke Panel Operasi
+              </h2>
+              <p className="mt-1 text-sm text-white/65">
+                Gunakan akun petugas Anda untuk melanjutkan.
+              </p>
+
+              <form onSubmit={submit} className="mt-5 space-y-4">
+                <div>
+                  <label className="text-[11px] font-semibold uppercase tracking-wider text-white/70">
+                    Email
+                  </label>
+                  <Input
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="nama@airport.test"
+                    required
+                    className="mt-1.5 border-white/20 bg-white/10 text-white placeholder:text-white/40 focus:border-cyan-300 focus:ring-cyan-300/30"
+                  />
+                </div>
+                <div>
+                  <label className="text-[11px] font-semibold uppercase tracking-wider text-white/70">
+                    Password
+                  </label>
+                  <div className="relative mt-1.5">
+                    <Input
+                      type={showPw ? "text" : "password"}
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      placeholder="••••••••"
+                      required
+                      className="border-white/20 bg-white/10 pr-10 text-white placeholder:text-white/40 focus:border-cyan-300 focus:ring-cyan-300/30"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPw((v) => !v)}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 rounded-lg p-1.5 text-white/70 hover:bg-white/10 hover:text-white"
+                      aria-label={showPw ? "Sembunyikan" : "Tampilkan"}
+                    >
+                      {showPw ? (
+                        <EyeOff className="h-4 w-4" />
+                      ) : (
+                        <Eye className="h-4 w-4" />
+                      )}
+                    </button>
                   </div>
-                );
-              })}
+                </div>
+
+                {error && (
+                  <div className="flex animate-fade-up items-start gap-2 rounded-xl border border-rose-300/40 bg-rose-500/15 px-3 py-2 text-sm text-rose-100 backdrop-blur">
+                    <AlertCircle className="mt-0.5 h-4 w-4" />
+                    <span>{error}</span>
+                  </div>
+                )}
+
+                <Button
+                  type="submit"
+                  size="lg"
+                  className="group relative w-full overflow-hidden bg-gradient-to-r from-blue-500 via-cyan-400 to-blue-500 bg-[length:200%_100%] shadow-lift transition-all hover:bg-[position:100%_0]"
+                  disabled={loading}
+                >
+                  <span className="relative z-[1] flex items-center justify-center gap-2">
+                    {loading ? (
+                      <>
+                        <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" />
+                        Memproses…
+                      </>
+                    ) : (
+                      <>
+                        <LogIn className="h-4 w-4" />
+                        Masuk
+                      </>
+                    )}
+                  </span>
+                </Button>
+              </form>
+
+              {/* Demo accounts */}
+              <div className="mt-5 rounded-2xl border border-white/15 bg-white/[0.05] p-3 backdrop-blur">
+                <p className="inline-flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-cyan-200">
+                  <Sparkles className="h-3 w-3" />
+                  Akun Demo · password:{" "}
+                  <code className="rounded bg-white/10 px-1.5 py-0.5 font-mono text-cyan-100 ring-1 ring-white/15">
+                    password
+                  </code>
+                </p>
+                <div className="mt-2 grid gap-1.5">
+                  {[
+                    { e: "admin@airport.test", r: "Admin" },
+                    { e: "supervisor@airport.test", r: "Supervisor" },
+                    { e: "security@airport.test", r: "Security" },
+                  ].map((u) => (
+                    <button
+                      key={u.e}
+                      type="button"
+                      onClick={() => quick(u.e)}
+                      className="flex items-center justify-between rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-sm text-white/85 transition hover:-translate-y-0.5 hover:border-cyan-300/40 hover:bg-white/10"
+                    >
+                      <span className="truncate font-medium">{u.e}</span>
+                      <span className="ml-2 shrink-0 rounded-full bg-cyan-400/20 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-cyan-100 ring-1 ring-cyan-300/30">
+                        {u.r}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </div>
             </div>
           </div>
 
-          <p className="text-xs text-white/60">
+          <p className="mt-4 text-center text-[11px] text-white/40">
             © {new Date().getFullYear()} AFVS — Internal Operation Tool.
           </p>
         </div>
       </div>
-
-      {/* Right form */}
-      <div className="flex flex-1 items-center justify-center p-6 sm:p-10">
-        <div className="w-full max-w-md animate-fade-up">
-          <div className="mb-6 flex items-center gap-2.5 lg:hidden">
-            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-600 to-cyan-500 text-white shadow-lift">
-              <ShieldCheck className="h-5 w-5" />
-            </div>
-            <div>
-              <p className="text-[11px] font-semibold uppercase tracking-wider text-blue-700/80">
-                AFVS
-              </p>
-              <p className="text-sm font-bold text-slate-800">
-                Flight Validation
-              </p>
-            </div>
-          </div>
-
-          <h1 className="text-3xl font-bold tracking-tight text-slate-900">
-            Masuk
-          </h1>
-          <p className="mt-1 text-sm text-slate-500">
-            Gunakan akun petugas Anda untuk mengakses panel operasi.
-          </p>
-
-          <form onSubmit={submit} className="mt-6 space-y-4">
-            <div>
-              <label className="text-[11px] font-semibold uppercase tracking-wider text-slate-600">
-                Email
-              </label>
-              <Input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="nama@airport.test"
-                required
-                className="mt-1.5"
-              />
-            </div>
-            <div>
-              <label className="text-[11px] font-semibold uppercase tracking-wider text-slate-600">
-                Password
-              </label>
-              <Input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••"
-                required
-                className="mt-1.5"
-              />
-            </div>
-
-            {error && (
-              <div className="flex animate-fade-up items-start gap-2 rounded-xl bg-rose-50 px-3 py-2 text-sm text-rose-700 ring-1 ring-rose-200">
-                <AlertCircle className="mt-0.5 h-4 w-4" />
-                <span>{error}</span>
-              </div>
-            )}
-
-            <Button
-              type="submit"
-              size="lg"
-              className="w-full"
-              disabled={loading}
-            >
-              <LogIn className="h-4 w-4" />
-              {loading ? "Memproses…" : "Masuk"}
-            </Button>
-          </form>
-
-          <div className="mt-6 relative overflow-hidden rounded-2xl border border-blue-200/60 bg-gradient-to-br from-blue-50 via-white to-cyan-50 p-4 shadow-card animate-fade-up stagger-2">
-            <div className="deco-blob -right-8 -top-8 h-24 w-24 bg-blue-200 opacity-40" />
-            <div className="relative z-[1]">
-              <p className="inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-blue-700">
-                <Sparkles className="h-3 w-3" />
-                Akun Demo
-              </p>
-              <p className="mt-0.5 text-[11px] text-slate-500">
-                Klik untuk mengisi otomatis. Password:{" "}
-                <code className="rounded bg-white px-1.5 py-0.5 font-mono text-slate-700 ring-1 ring-slate-200">
-                  password
-                </code>
-              </p>
-              <div className="mt-3 grid gap-2">
-                {[
-                  { e: "admin@airport.test", r: "Admin" },
-                  { e: "supervisor@airport.test", r: "Supervisor" },
-                  { e: "security@airport.test", r: "Security" },
-                ].map((u) => (
-                  <button
-                    key={u.e}
-                    type="button"
-                    onClick={() => quick(u.e)}
-                    className="flex items-center justify-between rounded-xl bg-white/90 px-3 py-2 text-sm ring-1 ring-slate-200 transition hover:-translate-y-0.5 hover:bg-blue-50 hover:ring-blue-300 hover:shadow-card"
-                  >
-                    <span className="font-medium text-slate-700">{u.e}</span>
-                    <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-semibold text-blue-700 ring-1 ring-blue-200">
-                      {u.r}
-                    </span>
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
     </div>
+  );
+}
+
+/* ----------------------------------------------------------------------
+   Animated backdrop: deep gradient, drifting blobs, animated flight paths,
+   slow-spinning compass ring, and a soft star/dust layer.
+---------------------------------------------------------------------- */
+function AnimatedBackdrop() {
+  return (
+    <div
+      aria-hidden
+      className="pointer-events-none absolute inset-0 overflow-hidden"
+    >
+      {/* base deep gradient */}
+      <div className="absolute inset-0 bg-[length:200%_200%] bg-gradient-to-br from-slate-950 via-blue-950 to-cyan-950 animate-gradient-shift" />
+
+      {/* dotted noise / star layer */}
+      <div
+        className="absolute inset-0 opacity-[0.18] mix-blend-screen"
+        style={{
+          backgroundImage:
+            "radial-gradient(rgba(255,255,255,0.6) 1px, transparent 1px)",
+          backgroundSize: "22px 22px",
+        }}
+      />
+
+      {/* drifting color blobs */}
+      <div className="absolute -left-32 top-1/4 h-96 w-96 animate-drift rounded-full bg-blue-500/30 blur-3xl" />
+      <div
+        className="absolute -right-40 top-10 h-[28rem] w-[28rem] animate-drift rounded-full bg-cyan-400/25 blur-3xl"
+        style={{ animationDelay: "2s" }}
+      />
+      <div
+        className="absolute -bottom-32 left-1/3 h-96 w-96 animate-drift rounded-full bg-violet-500/25 blur-3xl"
+        style={{ animationDelay: "3.5s" }}
+      />
+
+      {/* slow-spinning compass ring */}
+      <svg
+        className="absolute -right-40 top-1/2 h-[40rem] w-[40rem] -translate-y-1/2 animate-spin-slow opacity-[0.08]"
+        viewBox="0 0 100 100"
+        fill="none"
+        stroke="currentColor"
+      >
+        <circle cx="50" cy="50" r="48" strokeWidth="0.25" />
+        <circle cx="50" cy="50" r="40" strokeWidth="0.15" />
+        <circle cx="50" cy="50" r="30" strokeWidth="0.15" />
+        {Array.from({ length: 24 }).map((_, i) => {
+          const a = (i / 24) * Math.PI * 2;
+          const x1 = 50 + Math.cos(a) * 44;
+          const y1 = 50 + Math.sin(a) * 44;
+          const x2 = 50 + Math.cos(a) * 48;
+          const y2 = 50 + Math.sin(a) * 48;
+          return (
+            <line
+              key={i}
+              x1={x1}
+              y1={y1}
+              x2={x2}
+              y2={y2}
+              strokeWidth="0.3"
+            />
+          );
+        })}
+      </svg>
+
+      {/* animated flight paths */}
+      <svg
+        className="absolute inset-0 h-full w-full"
+        viewBox="0 0 1200 800"
+        preserveAspectRatio="none"
+      >
+        <defs>
+          <linearGradient id="lp-grad-1" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stopColor="rgb(125 211 252)" stopOpacity="0" />
+            <stop offset="50%" stopColor="rgb(125 211 252)" stopOpacity="0.5" />
+            <stop offset="100%" stopColor="rgb(125 211 252)" stopOpacity="0" />
+          </linearGradient>
+          <linearGradient id="lp-grad-2" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0%" stopColor="rgb(196 181 253)" stopOpacity="0" />
+            <stop offset="50%" stopColor="rgb(196 181 253)" stopOpacity="0.45" />
+            <stop offset="100%" stopColor="rgb(196 181 253)" stopOpacity="0" />
+          </linearGradient>
+        </defs>
+
+        {/* curved dashed paths */}
+        <path
+          d="M -50 650 Q 300 200 700 350 T 1300 200"
+          stroke="url(#lp-grad-1)"
+          strokeWidth="1.5"
+          strokeDasharray="6 10"
+          fill="none"
+          className="animate-fade-in"
+        />
+        <path
+          d="M -100 300 Q 400 600 800 450 T 1300 700"
+          stroke="url(#lp-grad-2)"
+          strokeWidth="1.2"
+          strokeDasharray="4 12"
+          fill="none"
+          className="animate-fade-in"
+        />
+        <path
+          d="M -50 100 Q 500 50 900 250 T 1300 400"
+          stroke="rgba(255,255,255,0.18)"
+          strokeWidth="0.8"
+          strokeDasharray="3 9"
+          fill="none"
+        />
+      </svg>
+
+      {/* fly-by planes */}
+      <Plane
+        className="absolute left-0 top-1/3 h-7 w-7 -rotate-12 animate-fly-by text-cyan-200/70 drop-shadow-[0_0_8px_rgba(125,211,252,0.6)]"
+      />
+      <Plane
+        className="absolute left-0 top-2/3 h-5 w-5 -rotate-12 animate-fly-by text-white/50"
+        style={{ animationDelay: "5s", animationDuration: "18s" }}
+      />
+
+      {/* floating airline-tone dots (badge-style) */}
+      <FloatingBadges />
+
+      {/* vignette */}
+      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,transparent_40%,rgba(2,6,23,0.7)_100%)]" />
+    </div>
+  );
+}
+
+function FloatingBadges() {
+  // small floating IATA chips that reference real airline brand colors
+  const items: { code: string; cls: string; pos: string; delay: string }[] = [
+    {
+      code: "GA",
+      cls: "from-sky-500 to-blue-700",
+      pos: "left-[10%] top-[18%]",
+      delay: "0s",
+    },
+    {
+      code: "JT",
+      cls: "from-rose-500 to-red-700",
+      pos: "left-[18%] top-[78%]",
+      delay: "1s",
+    },
+    {
+      code: "QG",
+      cls: "from-emerald-500 to-green-700",
+      pos: "right-[14%] top-[28%]",
+      delay: "2s",
+    },
+    {
+      code: "ID",
+      cls: "from-indigo-500 to-blue-800",
+      pos: "right-[8%] top-[70%]",
+      delay: "1.5s",
+    },
+  ];
+  return (
+    <>
+      {items.map((it) => (
+        <div
+          key={it.code}
+          className={`absolute hidden h-10 w-10 animate-float items-center justify-center rounded-2xl bg-gradient-to-br ${it.cls} text-[11px] font-black text-white opacity-50 shadow-lift ring-1 ring-white/20 backdrop-blur sm:flex ${it.pos}`}
+          style={{ animationDelay: it.delay }}
+        >
+          {it.code}
+        </div>
+      ))}
+    </>
   );
 }

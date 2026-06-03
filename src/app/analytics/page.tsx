@@ -14,7 +14,7 @@ import {
 } from "lucide-react";
 import { AppShell } from "@/components/layout/AppShell";
 import { Card, CardBody, CardHeader, CardTitle } from "@/components/ui/Card";
-import { Select } from "@/components/ui/Select";
+import { StatCard } from "@/components/ui/StatCard";
 import { EmptyState } from "@/components/ui/EmptyState";
 import {
   Flight,
@@ -25,7 +25,6 @@ import {
 import { getFlights, getScanEvents, getSession } from "@/lib/storage";
 import { canManageFlights } from "@/lib/auth";
 import { todayDateString } from "@/lib/utils";
-import { cn } from "@/lib/utils";
 import { PageHero, HeroChip } from "@/components/layout/PageHero";
 
 type RangePreset = "today" | "7d" | "30d" | "all";
@@ -211,31 +210,39 @@ export default function AnalyticsPage() {
           }
         />
 
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <SummaryStat
-            label="Total scan"
-            value={summary.total}
-            icon={<TrendingUp className="h-4 w-4" />}
-            tone="info"
-          />
-          <SummaryStat
-            label="Valid"
-            value={summary.valid}
-            icon={<Plane className="h-4 w-4" />}
-            tone="success"
-          />
-          <SummaryStat
-            label="Duplikat"
-            value={summary.dup}
-            icon={<Users className="h-4 w-4" />}
-            tone="warning"
-          />
-          <SummaryStat
-            label="Success rate"
-            value={`${summary.successRate}%`}
-            icon={<TrendingUp className="h-4 w-4" />}
-            tone="info"
-          />
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="h-full animate-fade-up stagger-1">
+            <StatCard
+              label="Total scan"
+              value={summary.total}
+              tone="brand"
+              icon={<TrendingUp className="h-5 w-5" />}
+            />
+          </div>
+          <div className="h-full animate-fade-up stagger-2">
+            <StatCard
+              label="Valid"
+              value={summary.valid}
+              tone="emerald"
+              icon={<Plane className="h-5 w-5" />}
+            />
+          </div>
+          <div className="h-full animate-fade-up stagger-3">
+            <StatCard
+              label="Duplikat"
+              value={summary.dup}
+              tone="amber"
+              icon={<Users className="h-5 w-5" />}
+            />
+          </div>
+          <div className="h-full animate-fade-up stagger-4">
+            <StatCard
+              label="Success rate"
+              value={`${summary.successRate}%`}
+              tone="violet"
+              icon={<TrendingUp className="h-5 w-5" />}
+            />
+          </div>
         </div>
 
         {summary.total === 0 ? (
@@ -389,71 +396,6 @@ export default function AnalyticsPage() {
         )}
       </div>
     </AppShell>
-  );
-}
-
-const STAT_TONE: Record<
-  "info" | "success" | "warning",
-  { bg: string; ring: string; icon: string; chip: string }
-> = {
-  info: {
-    bg: "bg-blue-50",
-    ring: "ring-blue-200",
-    icon: "text-blue-700",
-    chip: "bg-blue-100",
-  },
-  success: {
-    bg: "bg-emerald-50",
-    ring: "ring-emerald-200",
-    icon: "text-emerald-700",
-    chip: "bg-emerald-100",
-  },
-  warning: {
-    bg: "bg-amber-50",
-    ring: "ring-amber-200",
-    icon: "text-amber-700",
-    chip: "bg-amber-100",
-  },
-};
-
-function SummaryStat({
-  label,
-  value,
-  icon,
-  tone,
-}: {
-  label: string;
-  value: number | string;
-  icon: React.ReactNode;
-  tone: "info" | "success" | "warning";
-}) {
-  const t = STAT_TONE[tone];
-  return (
-    <div
-      className={cn(
-        "relative overflow-hidden rounded-2xl px-4 py-3 ring-1 backdrop-blur",
-        t.bg,
-        t.ring,
-      )}
-    >
-      <div className="flex items-center justify-between">
-        <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-600">
-          {label}
-        </span>
-        <span
-          className={cn(
-            "flex h-7 w-7 items-center justify-center rounded-lg",
-            t.chip,
-            t.icon,
-          )}
-        >
-          {icon}
-        </span>
-      </div>
-      <div className="mt-1 text-2xl font-bold tracking-tight text-slate-800">
-        {value}
-      </div>
-    </div>
   );
 }
 

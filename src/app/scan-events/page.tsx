@@ -1,9 +1,20 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { History, Filter, Search, X, Download } from "lucide-react";
+import {
+  History,
+  Filter,
+  Search,
+  X,
+  Download,
+  TrendingUp,
+  CheckCircle2,
+  CopyCheck,
+  AlertOctagon,
+} from "lucide-react";
 import { AppShell } from "@/components/layout/AppShell";
 import { Card, CardBody, CardHeader, CardTitle } from "@/components/ui/Card";
+import { StatCard } from "@/components/ui/StatCard";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import { Button } from "@/components/ui/Button";
@@ -235,29 +246,33 @@ export default function ScanEventsPage() {
           }
         />
 
-        <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+        <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
           <SummaryPill
             label="Total"
             value={summary.total}
             tone="brand"
+            icon={<TrendingUp className="h-5 w-5" />}
             delay={60}
           />
           <SummaryPill
             label="Valid"
             value={summary.valid}
             tone="emerald"
+            icon={<CheckCircle2 className="h-5 w-5" />}
             delay={120}
           />
           <SummaryPill
             label="Duplicate"
             value={summary.dup}
             tone="amber"
+            icon={<CopyCheck className="h-5 w-5" />}
             delay={180}
           />
           <SummaryPill
             label="Rejected"
             value={summary.rejected}
             tone="rose"
+            icon={<AlertOctagon className="h-5 w-5" />}
             delay={240}
           />
         </div>
@@ -377,6 +392,55 @@ export default function ScanEventsPage() {
               </label>
             </div>
 
+            {/* Mobile: card stack */}
+            <div className="md:hidden">
+              {paginated.length === 0 ? (
+                <EmptyState
+                  tone="info"
+                  icon={<History className="h-6 w-6" />}
+                  title="Belum ada event scan sesuai filter"
+                  description="Coba ubah filter atau reset pencarian."
+                />
+              ) : (
+                <ul className="space-y-2">
+                  {paginated.map((e, idx) => (
+                    <li
+                      key={e.id}
+                      className="rounded-2xl bg-white p-3 shadow-card ring-1 ring-slate-200 animate-fade-up"
+                      style={{ animationDelay: `${idx * 18}ms` }}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="text-sm font-bold text-slate-800">
+                            {e.parsedFlightNumber ?? "—"}
+                          </p>
+                          <p className="mt-0.5 text-[11px] text-slate-500">
+                            {formatDateTime(e.scannedAt)}
+                          </p>
+                        </div>
+                        <ScanStatusBadge status={e.resultStatus} />
+                      </div>
+                      <div className="mt-2 grid grid-cols-3 gap-2 text-[11px]">
+                        <Cell label="Penumpang" value={e.parsedPassengerName ?? "—"} />
+                        <Cell label="Seat" value={e.parsedSeatNumber ?? "—"} />
+                        <Cell label="PNR" value={e.parsedPnr ?? "—"} />
+                      </div>
+                      {e.message && (
+                        <p className="mt-2 line-clamp-2 rounded-lg bg-slate-50 px-2 py-1 text-[11px] text-slate-600 ring-1 ring-slate-200">
+                          {e.message}
+                        </p>
+                      )}
+                      <p className="mt-2 text-[10px] text-slate-400">
+                        oleh <span className="font-semibold text-slate-600">{e.scannedBy}</span>
+                      </p>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+
+            {/* Desktop: table */}
+            <div className="hidden md:block">
             <Table>
               <THead>
                 <Tr>
@@ -436,6 +500,7 @@ export default function ScanEventsPage() {
                 )}
               </TBody>
             </Table>
+            </div>
 
             {filtered.length > 0 && (
               <Pagination
@@ -454,59 +519,39 @@ export default function ScanEventsPage() {
   );
 }
 
+function Cell({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="min-w-0 rounded-lg bg-slate-50 px-2 py-1 ring-1 ring-slate-200">
+      <p className="text-[9px] font-semibold uppercase tracking-wider text-slate-400">
+        {label}
+      </p>
+      <p className="truncate text-[11px] font-semibold text-slate-700">
+        {value}
+      </p>
+    </div>
+  );
+}
+
 function SummaryPill({
   label,
   value,
   tone,
+  icon,
   delay = 0,
 }: {
   label: string;
   value: number;
   tone: "brand" | "emerald" | "amber" | "rose";
+  icon?: React.ReactNode;
   delay?: number;
 }) {
   const count = useCountUp(value);
-  const map = {
-    brand: {
-      bg: "from-blue-50 via-white to-sky-100 border-blue-200",
-      label: "text-blue-700/80",
-      value: "text-blue-900",
-      glow: "bg-blue-300",
-    },
-    emerald: {
-      bg: "from-emerald-50 via-white to-green-100 border-emerald-200",
-      label: "text-emerald-700/80",
-      value: "text-emerald-900",
-      glow: "bg-emerald-300",
-    },
-    amber: {
-      bg: "from-amber-50 via-white to-yellow-100 border-amber-200",
-      label: "text-amber-700/80",
-      value: "text-amber-900",
-      glow: "bg-amber-300",
-    },
-    rose: {
-      bg: "from-rose-50 via-white to-pink-100 border-rose-200",
-      label: "text-rose-700/80",
-      value: "text-rose-900",
-      glow: "bg-rose-300",
-    },
-  } as const;
-  const t = map[tone];
   return (
     <div
-      className={`group relative overflow-hidden rounded-2xl border bg-gradient-to-br px-4 py-3 shadow-card backdrop-blur transition-all duration-300 hover:-translate-y-1 hover:shadow-lift animate-fade-up ${t.bg}`}
+      className="h-full animate-fade-up"
       style={{ animationDelay: `${delay}ms` }}
     >
-      <div className={`deco-blob -right-6 -top-6 h-20 w-20 ${t.glow}`} />
-      <div className="relative z-[1]">
-        <p
-          className={`text-[10px] font-semibold uppercase tracking-wider ${t.label}`}
-        >
-          {label}
-        </p>
-        <p className={`mt-1 text-2xl font-bold ${t.value}`}>{count}</p>
-      </div>
+      <StatCard label={label} value={count} tone={tone} icon={icon} />
     </div>
   );
 }

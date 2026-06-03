@@ -242,6 +242,97 @@ export default function FlightsPage() {
               </Select>
             </div>
 
+            {/* Mobile: card stack */}
+            <div className="md:hidden">
+              {filtered.length === 0 ? (
+                <EmptyState
+                  tone="info"
+                  icon={<Plane className="h-6 w-6" />}
+                  title="Tidak ada penerbangan sesuai filter"
+                  description="Coba bersihkan pencarian atau ubah filter tanggal / status."
+                />
+              ) : (
+                <ul className="space-y-2.5">
+                  {paginated.map((f, idx) => (
+                    <li
+                      key={f.id}
+                      className="animate-fade-up"
+                      style={{ animationDelay: `${idx * 30}ms` }}
+                    >
+                      <Link
+                        href={`/flights/${f.id}`}
+                        className="block rounded-2xl bg-white p-3.5 shadow-card ring-1 ring-slate-200 transition active:scale-[0.99]"
+                      >
+                        <div className="flex items-start gap-3">
+                          <AirlineLogo code={f.airlineCode} size="md" />
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center justify-between gap-2">
+                              <p className="truncate text-sm font-bold text-slate-800">
+                                {f.flightNumber}
+                              </p>
+                              <FlightStatusBadge status={f.status} />
+                            </div>
+                            <p className="mt-0.5 text-xs text-slate-500">
+                              <span className="font-medium text-slate-700">
+                                {f.originAirport}
+                              </span>{" "}
+                              →{" "}
+                              <span className="font-medium text-slate-700">
+                                {f.destinationAirport}
+                              </span>
+                            </p>
+                            <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-slate-500">
+                              <span className="inline-flex items-center gap-1 rounded-full bg-slate-50 px-2 py-0.5 ring-1 ring-slate-200">
+                                <Calendar className="h-3 w-3" />
+                                {f.departureDate}
+                              </span>
+                              <span className="inline-flex items-center gap-1 rounded-full bg-slate-50 px-2 py-0.5 font-mono font-semibold text-slate-700 ring-1 ring-slate-200">
+                                {f.departureTime}
+                              </span>
+                              <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-0.5 font-semibold text-blue-700 ring-1 ring-blue-200">
+                                {f.gateOrCheckpoint}
+                              </span>
+                            </div>
+                            <div className="mt-2">
+                              <ProgressMini
+                                progress={getBoardingProgress(f, events)}
+                              />
+                            </div>
+                          </div>
+                        </div>
+                        {canManage && (
+                          <div
+                            className="mt-3 flex items-center justify-end gap-1 border-t border-slate-100 pt-2"
+                            onClick={(e) => e.preventDefault()}
+                          >
+                            <Link href={`/flights/${f.id}/edit`}>
+                              <Button variant="ghost" size="sm">
+                                <Pencil className="h-3.5 w-3.5 text-blue-700" />
+                                Edit
+                              </Button>
+                            </Link>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={(e) => {
+                                e.preventDefault();
+                                onDelete(f.id);
+                              }}
+                            >
+                              <Trash2 className="h-3.5 w-3.5 text-rose-600" />
+                              Hapus
+                            </Button>
+                          </div>
+                        )}
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+
+            {/* Desktop: table */}
+            <div className="hidden md:block">
             <Table>
               <THead>
                 <Tr>
@@ -369,6 +460,7 @@ export default function FlightsPage() {
                 )}
               </TBody>
             </Table>
+            </div>
 
             {filtered.length > 0 && (
               <Pagination
