@@ -35,6 +35,7 @@ export default function CreateFlightPage() {
   const [departureTime, setDepartureTime] = useState("08:00");
   const [gateOrCheckpoint, setGateOrCheckpoint] = useState("Gate A1");
   const [status, setStatus] = useState<FlightStatus>("OPEN");
+  const [expectedPax, setExpectedPax] = useState("");
 
   useEffect(() => {
     const session = getSession();
@@ -78,6 +79,17 @@ export default function CreateFlightPage() {
       return;
     }
 
+    let expected: number | undefined;
+    const trimmedPax = expectedPax.trim();
+    if (trimmedPax) {
+      const n = Number(trimmedPax);
+      if (!Number.isFinite(n) || n <= 0 || !Number.isInteger(n)) {
+        setError("Expected PAX harus bilangan bulat positif.");
+        return;
+      }
+      expected = n;
+    }
+
     const now = new Date().toISOString();
     const newFlight: Flight = {
       id: uid("flt"),
@@ -89,6 +101,7 @@ export default function CreateFlightPage() {
       departureTime,
       gateOrCheckpoint: gateOrCheckpoint.trim(),
       status,
+      expectedPax: expected,
       createdAt: now,
       updatedAt: now,
     };
@@ -204,6 +217,18 @@ export default function CreateFlightPage() {
                       </option>
                     ))}
                   </Select>
+                </Field>
+
+                <Field label="Expected PAX">
+                  <Input
+                    type="number"
+                    min={1}
+                    step={1}
+                    inputMode="numeric"
+                    value={expectedPax}
+                    onChange={(e) => setExpectedPax(e.target.value)}
+                    placeholder="mis. 180"
+                  />
                 </Field>
               </div>
 

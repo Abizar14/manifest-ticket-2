@@ -43,6 +43,7 @@ export default function EditFlightPage() {
   const [departureTime, setDepartureTime] = useState("");
   const [gateOrCheckpoint, setGateOrCheckpoint] = useState("");
   const [status, setStatus] = useState<FlightStatus>("OPEN");
+  const [expectedPax, setExpectedPax] = useState("");
 
   useEffect(() => {
     const session = getSession();
@@ -69,6 +70,11 @@ export default function EditFlightPage() {
     setDepartureTime(f.departureTime);
     setGateOrCheckpoint(f.gateOrCheckpoint);
     setStatus(f.status);
+    setExpectedPax(
+      typeof f.expectedPax === "number" && f.expectedPax > 0
+        ? String(f.expectedPax)
+        : "",
+    );
     setReady(true);
   }, [id, router]);
 
@@ -101,6 +107,17 @@ export default function EditFlightPage() {
       return;
     }
 
+    let expected: number | undefined;
+    const trimmedPax = expectedPax.trim();
+    if (trimmedPax) {
+      const n = Number(trimmedPax);
+      if (!Number.isFinite(n) || n <= 0 || !Number.isInteger(n)) {
+        setError("Expected PAX harus bilangan bulat positif.");
+        return;
+      }
+      expected = n;
+    }
+
     const patch: Partial<Flight> = {
       flightNumber: fn,
       airlineCode: airlineCode.trim().toUpperCase() || fn.slice(0, 2),
@@ -110,6 +127,7 @@ export default function EditFlightPage() {
       departureTime,
       gateOrCheckpoint: gateOrCheckpoint.trim(),
       status,
+      expectedPax: expected,
     };
     updateFlight(id, patch);
     router.replace(`/flights/${id}`);
@@ -243,6 +261,18 @@ export default function EditFlightPage() {
                       </option>
                     ))}
                   </Select>
+                </Field>
+
+                <Field label="Expected PAX">
+                  <Input
+                    type="number"
+                    min={1}
+                    step={1}
+                    inputMode="numeric"
+                    value={expectedPax}
+                    onChange={(e) => setExpectedPax(e.target.value)}
+                    placeholder="mis. 180"
+                  />
                 </Field>
               </div>
 

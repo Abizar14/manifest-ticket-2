@@ -21,8 +21,9 @@ import {
 } from "@/components/ui/StatusBadge";
 import { Flight, ScanEvent } from "@/lib/types";
 import { getFlights, getScanEvents } from "@/lib/storage";
-import { formatTime, todayDateString } from "@/lib/utils";
+import { cn, formatTime, todayDateString } from "@/lib/utils";
 import { useCountUp } from "@/lib/useCountUp";
+import { getBoardingProgress } from "@/lib/boarding";
 
 export default function DashboardPage() {
   const [flights, setFlights] = useState<Flight[]>([]);
@@ -212,6 +213,9 @@ export default function DashboardPage() {
                             </div>
                           </div>
                           <div className="flex items-center gap-3">
+                            <DashProgress
+                              progress={getBoardingProgress(f, events)}
+                            />
                             <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600">
                               <Clock className="h-3.5 w-3.5" />
                               {f.departureTime}
@@ -281,5 +285,73 @@ export default function DashboardPage() {
         </div>
       </div>
     </AppShell>
+  );
+}
+
+const DASH_TONE: Record<
+  "neutral" | "info" | "warning" | "success" | "danger",
+  { bar: string; text: string; chip: string }
+> = {
+  neutral: {
+    bar: "bg-slate-400",
+    text: "text-slate-600",
+    chip: "bg-slate-50 ring-slate-200",
+  },
+  info: {
+    bar: "bg-blue-500",
+    text: "text-blue-700",
+    chip: "bg-blue-50 ring-blue-200",
+  },
+  warning: {
+    bar: "bg-amber-500",
+    text: "text-amber-700",
+    chip: "bg-amber-50 ring-amber-200",
+  },
+  success: {
+    bar: "bg-emerald-500",
+    text: "text-emerald-700",
+    chip: "bg-emerald-50 ring-emerald-200",
+  },
+  danger: {
+    bar: "bg-rose-500",
+    text: "text-rose-700",
+    chip: "bg-rose-50 ring-rose-200",
+  },
+};
+
+function DashProgress({
+  progress,
+}: {
+  progress: ReturnType<typeof getBoardingProgress>;
+}) {
+  if (progress.expected === null) {
+    return (
+      <span className="hidden sm:inline rounded-full bg-slate-50 px-2.5 py-1 text-[11px] font-semibold text-slate-500 ring-1 ring-slate-200">
+        {progress.boarded} pax
+      </span>
+    );
+  }
+  const t = DASH_TONE[progress.tone];
+  const percent = progress.percent ?? 0;
+  return (
+    <div
+      className={cn(
+        "hidden min-w-[120px] rounded-xl px-2.5 py-1 ring-1 sm:block",
+        t.chip,
+      )}
+    >
+      <div className={cn("text-[11px] font-bold", t.text)}>
+        {progress.boarded}/{progress.expected}{" "}
+        <span className="text-[10px] font-medium text-slate-400">
+          {percent}%
+        </span>
+      </div>
+      <div className="mt-1 h-1 w-full overflow-hidden rounded-full bg-white/80">
+        <div
+          className={cn("h-full rounded-full transition-all", t.bar)}
+          style={{ width: `${percent}%` }}
+        />
+      </div>
+    </div>
   );
 }

@@ -32,8 +32,17 @@ export interface Flight {
   departureTime: string; // HH:mm
   gateOrCheckpoint: string;
   status: FlightStatus;
+  expectedPax?: number; // total penumpang yang diharapkan boarding
   createdAt: string;
   updatedAt: string;
+}
+
+export interface BoardingProgress {
+  boarded: number;
+  expected: number | null;
+  remaining: number | null;
+  percent: number | null; // 0..100, null jika expected belum diset
+  tone: "neutral" | "info" | "success" | "warning" | "danger";
 }
 
 export type ScanResultStatus =

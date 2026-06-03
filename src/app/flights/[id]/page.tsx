@@ -12,6 +12,9 @@ import {
   Plane,
   MapPin,
   Trash2,
+  CheckCircle2,
+  Gauge,
+  PowerOff,
 } from "lucide-react";
 import { AppShell } from "@/components/layout/AppShell";
 import { Card, CardBody, CardHeader, CardTitle } from "@/components/ui/Card";
@@ -25,15 +28,17 @@ import {
   THead,
   Tr,
 } from "@/components/ui/Table";
-import { Flight, PassengerRecord, ScanEvent } from "@/lib/types";
+import { BoardingProgress, Flight, PassengerRecord, ScanEvent } from "@/lib/types";
 import {
   deleteFlight,
   getFlights,
   getScanEvents,
   getSession,
+  updateFlight,
 } from "@/lib/storage";
 import { canManageFlights } from "@/lib/auth";
-import { formatDateTime } from "@/lib/utils";
+import { cn, formatDateTime } from "@/lib/utils";
+import { getBoardingProgress } from "@/lib/boarding";
 
 export default function FlightDetailPage() {
   const router = useRouter();
@@ -50,6 +55,11 @@ export default function FlightDetailPage() {
     setFlight(f);
     setEvents(getScanEvents());
   }, [id]);
+
+  const progress: BoardingProgress | null = useMemo(
+    () => (flight ? getBoardingProgress(flight, events) : null),
+    [flight, events],
+  );
 
   const passengers: PassengerRecord[] = useMemo(() => {
     if (!flight) return [];
@@ -108,6 +118,21 @@ export default function FlightDetailPage() {
     router.replace("/flights");
   };
 
+  const canCloseBoarding =
+    canManage && (flight.status === "OPEN" || flight.status === "ACTIVE");
+
+  const onCloseBoarding = () => {
+    const p = progress;
+    const remainingMsg =
+      p && p.expected !== null && p.remaining !== null && p.remaining > 0
+        ? `\n\nMasih ada ${p.remaining} dari ${p.expected} penumpang yang belum scan.`
+        : "";
+    const confirmMsg = `Tutup boarding flight ${flight.flightNumber}?${remainingMsg}\n\nStatus akan diubah menjadi CLOSED dan scan boarding pass tidak akan diterima lagi.`;
+    if (!confirm(confirmMsg)) return;
+    updateFlight(flight.id, { status: "CLOSED" });
+    setFlight({ ...flight, status: "CLOSED" });
+  };
+
   return (
     <AppShell>
       <div className="space-y-6">
@@ -121,6 +146,12 @@ export default function FlightDetailPage() {
           </Link>
           {canManage && (
             <div className="flex items-center gap-2">
+              {canCloseBoarding && (
+                <Button size="sm" variant="outline" onClick={onCloseBoarding}>
+                  <PowerOff className="h-3.5 w-3.5" />
+                  Tutup Boarding
+                </Button>
+              )}
               <Link href={`/flights/${flight.id}/edit`}>
                 <Button size="sm" variant="outline">
                   <Pencil className="h-3.5 w-3.5" />
@@ -178,8 +209,11 @@ export default function FlightDetailPage() {
           </div>
         </div>
 
+        {/* Boarding progress */}
+        {progress && <BoardingCard progress={progress} />}
+
         {/* Passengers */}
-        <Card className="animate-fade-up stagger-2 lift">
+        <Card className="animate-fade-up stagger-3 lift">
           <div className="deco-blob -right-12 -top-12 h-40 w-40 bg-emerald-200" />
           <CardHeader>
             <CardTitle>
@@ -278,5 +312,178 @@ function Info({
       </p>
       <p className="mt-0.5 text-sm font-medium text-white">{children}</p>
     </div>
+  );
+}
+
+const TONE_STYLES: Record<
+  BoardingProgress["tone"],
+  {
+    blob: string;
+    iconBg: string;
+    iconText: string;
+    iconRing: string;
+    bar: string;
+    valueText: string;
+    chipBg: string;
+    chipText: string;
+    chipRing: string;
+  }
+> = {
+  neutral: {
+    blob: "bg-slate-200",
+    iconBg: "bg-slate-100",
+    iconText: "text-slate-700",
+    iconRing: "ring-slate-200",
+    bar: "bg-gradient-to-r from-slate-400 to-slate-500",
+    valueText: "text-slate-800",
+    chipBg: "bg-slate-50",
+    chipText: "text-slate-700",
+    chipRing: "ring-slate-200",
+  },
+  info: {
+    blob: "bg-blue-200",
+    iconBg: "bg-blue-100",
+    iconText: "text-blue-700",
+    iconRing: "ring-blue-200",
+    bar: "bg-gradient-to-r from-blue-500 to-cyan-500",
+    valueText: "text-blue-700",
+    chipBg: "bg-blue-50",
+    chipText: "text-blue-700",
+    chipRing: "ring-blue-200",
+  },
+  warning: {
+    blob: "bg-amber-200",
+    iconBg: "bg-amber-100",
+    iconText: "text-amber-700",
+    iconRing: "ring-amber-200",
+    bar: "bg-gradient-to-r from-amber-500 to-orange-500",
+    valueText: "text-amber-700",
+    chipBg: "bg-amber-50",
+    chipText: "text-amber-700",
+    chipRing: "ring-amber-200",
+  },
+  success: {
+    blob: "bg-emerald-200",
+    iconBg: "bg-emerald-100",
+    iconText: "text-emerald-700",
+    iconRing: "ring-emerald-200",
+    bar: "bg-gradient-to-r from-emerald-500 to-teal-500",
+    valueText: "text-emerald-700",
+    chipBg: "bg-emerald-50",
+    chipText: "text-emerald-700",
+    chipRing: "ring-emerald-200",
+  },
+  danger: {
+    blob: "bg-rose-200",
+    iconBg: "bg-rose-100",
+    iconText: "text-rose-700",
+    iconRing: "ring-rose-200",
+    bar: "bg-gradient-to-r from-rose-500 to-pink-500",
+    valueText: "text-rose-700",
+    chipBg: "bg-rose-50",
+    chipText: "text-rose-700",
+    chipRing: "ring-rose-200",
+  },
+};
+
+function BoardingCard({ progress }: { progress: BoardingProgress }) {
+  const t = TONE_STYLES[progress.tone];
+  const expectedKnown = progress.expected !== null;
+  const percent = progress.percent ?? 0;
+
+  return (
+    <Card className="animate-fade-up stagger-2 lift">
+      <div className={cn("deco-blob -right-12 -top-12 h-40 w-40", t.blob)} />
+      <CardHeader>
+        <CardTitle>
+          <span className="inline-flex items-center gap-2">
+            <span
+              className={cn(
+                "flex h-7 w-7 items-center justify-center rounded-lg ring-1",
+                t.iconBg,
+                t.iconText,
+                t.iconRing,
+              )}
+            >
+              <Gauge className="h-3.5 w-3.5" />
+            </span>
+            Progres Boarding
+            {expectedKnown && (
+              <span
+                className={cn(
+                  "ml-1 rounded-full px-2 py-0.5 text-[11px] font-semibold ring-1",
+                  t.chipBg,
+                  t.chipText,
+                  t.chipRing,
+                )}
+              >
+                {percent}%
+              </span>
+            )}
+          </span>
+        </CardTitle>
+        <span className="text-xs text-slate-500">
+          Dihitung dari boarding pass unik (PNR + Seat + Tiket) yang sudah scan
+          valid.
+        </span>
+      </CardHeader>
+      <CardBody>
+        <div className="flex flex-wrap items-end justify-between gap-4">
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+              Sudah boarding
+            </p>
+            <p className="mt-1 flex items-baseline gap-1">
+              <span className={cn("text-4xl font-bold", t.valueText)}>
+                {progress.boarded}
+              </span>
+              <span className="text-base text-slate-400">
+                {expectedKnown ? `/ ${progress.expected}` : "/ —"}
+              </span>
+            </p>
+          </div>
+          {expectedKnown && (
+            <div className="flex gap-2">
+              <div
+                className={cn(
+                  "rounded-xl px-3 py-2 ring-1",
+                  t.chipBg,
+                  t.chipRing,
+                )}
+              >
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">
+                  Sisa
+                </p>
+                <p className={cn("text-lg font-bold", t.chipText)}>
+                  {progress.remaining}
+                </p>
+              </div>
+              {progress.tone === "success" && (
+                <div className="flex items-center gap-1.5 rounded-xl bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700 ring-1 ring-emerald-200">
+                  <CheckCircle2 className="h-4 w-4" />
+                  Lengkap
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {expectedKnown ? (
+          <div className="mt-4">
+            <div className="h-2.5 w-full overflow-hidden rounded-full bg-slate-100 ring-1 ring-slate-200">
+              <div
+                className={cn("h-full rounded-full transition-all", t.bar)}
+                style={{ width: `${percent}%` }}
+              />
+            </div>
+          </div>
+        ) : (
+          <p className="mt-3 rounded-xl bg-slate-50 px-3 py-2 text-xs text-slate-500 ring-1 ring-slate-200">
+            Expected PAX belum diset untuk flight ini. Edit penerbangan dan isi
+            kapasitas penumpang untuk melihat progres lengkap.
+          </p>
+        )}
+      </CardBody>
+    </Card>
   );
 }

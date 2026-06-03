@@ -26,15 +26,17 @@ import {
   Tr,
 } from "@/components/ui/Table";
 import { FlightStatusBadge } from "@/components/ui/StatusBadge";
-import { Flight, FlightStatus } from "@/lib/types";
+import { Flight, FlightStatus, ScanEvent } from "@/lib/types";
 import {
   deleteFlight,
   getFlights,
+  getScanEvents,
   getSession,
   updateFlight,
 } from "@/lib/storage";
-import { todayDateString, tomorrowDateString } from "@/lib/utils";
+import { todayDateString, tomorrowDateString, cn } from "@/lib/utils";
 import { canManageFlights } from "@/lib/auth";
+import { getBoardingProgress } from "@/lib/boarding";
 
 const STATUSES: FlightStatus[] = [
   "DRAFT",
@@ -46,6 +48,7 @@ const STATUSES: FlightStatus[] = [
 
 export default function FlightsPage() {
   const [flights, setFlights] = useState<Flight[]>([]);
+  const [events, setEvents] = useState<ScanEvent[]>([]);
   const [search, setSearch] = useState("");
   const [dateFilter, setDateFilter] = useState<"all" | "today" | "tomorrow">(
     "all",
@@ -59,6 +62,7 @@ export default function FlightsPage() {
 
   useEffect(() => {
     setFlights(getFlights());
+    setEvents(getScanEvents());
   }, []);
 
   const filtered = useMemo(() => {
@@ -191,6 +195,7 @@ export default function FlightsPage() {
                   <Th>Tanggal</Th>
                   <Th>Waktu</Th>
                   <Th>Gate</Th>
+                  <Th>Boarding</Th>
                   <Th>Status</Th>
                   <Th className="text-right">Aksi</Th>
                 </Tr>
@@ -199,7 +204,7 @@ export default function FlightsPage() {
                 {filtered.length === 0 ? (
                   <Tr>
                     <Td
-                      colSpan={7}
+                      colSpan={8}
                       className="py-10 text-center text-slate-500"
                     >
                       Tidak ada penerbangan sesuai filter.
@@ -240,6 +245,11 @@ export default function FlightsPage() {
                       </Td>
                       <Td>{f.departureTime}</Td>
                       <Td>{f.gateOrCheckpoint}</Td>
+                      <Td>
+                        <ProgressMini
+                          progress={getBoardingProgress(f, events)}
+                        />
+                      </Td>
                       <Td>
                         {canManage ? (
                           <Select
@@ -301,5 +311,48 @@ export default function FlightsPage() {
         </Card>
       </div>
     </AppShell>
+  );
+}
+
+const MINI_TONE: Record<
+  "neutral" | "info" | "warning" | "success" | "danger",
+  { bar: string; text: string }
+> = {
+  neutral: { bar: "bg-slate-400", text: "text-slate-700" },
+  info: { bar: "bg-blue-500", text: "text-blue-700" },
+  warning: { bar: "bg-amber-500", text: "text-amber-700" },
+  success: { bar: "bg-emerald-500", text: "text-emerald-700" },
+  danger: { bar: "bg-rose-500", text: "text-rose-700" },
+};
+
+function ProgressMini({
+  progress,
+}: {
+  progress: ReturnType<typeof getBoardingProgress>;
+}) {
+  if (progress.expected === null) {
+    return (
+      <span className="text-xs italic text-slate-400">
+        {progress.boarded} / —
+      </span>
+    );
+  }
+  const t = MINI_TONE[progress.tone];
+  const percent = progress.percent ?? 0;
+  return (
+    <div className="min-w-[110px]">
+      <div className={cn("text-xs font-semibold", t.text)}>
+        {progress.boarded} / {progress.expected}{" "}
+        <span className="text-[10px] font-medium text-slate-400">
+          ({percent}%)
+        </span>
+      </div>
+      <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-slate-100 ring-1 ring-slate-200">
+        <div
+          className={cn("h-full rounded-full transition-all", t.bar)}
+          style={{ width: `${percent}%` }}
+        />
+      </div>
+    </div>
   );
 }
