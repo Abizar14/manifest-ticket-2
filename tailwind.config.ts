@@ -6,6 +6,7 @@ const config: Config = {
     "./src/components/**/*.{js,ts,jsx,tsx,mdx}",
     "./src/**/*.{js,ts,jsx,tsx,mdx}",
   ],
+  darkMode: ["class", '[data-theme="dark"]'],
   theme: {
     extend: {
       fontFamily: {
@@ -23,6 +24,27 @@ const config: Config = {
           700: "#1d4ed8",
           800: "#1e40af",
           900: "#1e3a8a",
+        },
+        // Semantic theme tokens (driven by CSS variables in globals.css)
+        surface: {
+          DEFAULT: "rgb(var(--surface) / <alpha-value>)",
+          2: "rgb(var(--surface-2) / <alpha-value>)",
+          elev: "rgb(var(--surface-elev) / <alpha-value>)",
+        },
+        hairline: {
+          DEFAULT: "rgb(var(--hairline) / <alpha-value>)",
+          soft: "rgb(var(--hairline-soft) / <alpha-value>)",
+        },
+        ink: {
+          DEFAULT: "rgb(var(--text) / <alpha-value>)",
+          muted: "rgb(var(--text-muted) / <alpha-value>)",
+          subtle: "rgb(var(--text-subtle) / <alpha-value>)",
+        },
+        brandvar: {
+          DEFAULT: "rgb(var(--brand) / <alpha-value>)",
+          2: "rgb(var(--brand-2) / <alpha-value>)",
+          3: "rgb(var(--brand-3) / <alpha-value>)",
+          fg: "rgb(var(--brand-fg) / <alpha-value>)",
         },
       },
       boxShadow: {

@@ -20,7 +20,11 @@ import {
   DoorOpen,
   AlarmClockCheck,
   DoorClosed,
+  Palette,
+  Plane,
+  Moon,
 } from "lucide-react";
+import type { ThemeMode } from "@/lib/theme";
 import { AppShell } from "@/components/layout/AppShell";
 import { Card, CardBody, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -275,6 +279,22 @@ export default function SettingsPage() {
                   </div>
 
                   <SectionDivider
+                    icon={<Palette className="h-3.5 w-3.5" />}
+                    label={t("settings.section.appearance")}
+                  />
+
+                  <div className="space-y-3">
+                    <ThemeRow
+                      value={settings.theme}
+                      onChange={(v) => update({ theme: v })}
+                      airportLabel={t("settings.pref.theme.airport")}
+                      darkLabel={t("settings.pref.theme.dark")}
+                      title={t("settings.pref.theme")}
+                      description={t("settings.pref.theme.desc")}
+                    />
+                  </div>
+
+                  <SectionDivider
                     icon={<CalendarCheck className="h-3.5 w-3.5" />}
                     label={t("settings.section.boarding")}
                   />
@@ -401,6 +421,93 @@ function ReadOnly({ label, value }: { label: string; value: string }) {
         {label}
       </p>
       <p className="mt-0.5 text-sm font-medium text-slate-800">{value}</p>
+    </div>
+  );
+}
+
+function ThemeRow({
+  value,
+  onChange,
+  airportLabel,
+  darkLabel,
+  title,
+  description,
+}: {
+  value: ThemeMode;
+  onChange: (v: ThemeMode) => void;
+  airportLabel: string;
+  darkLabel: string;
+  title: string;
+  description?: string;
+}) {
+  const opts: { id: ThemeMode; icon: React.ReactNode; label: string; accent: string }[] = [
+    {
+      id: "airport",
+      icon: <Plane className="h-4 w-4" />,
+      label: airportLabel,
+      accent: "from-blue-600 to-cyan-500",
+    },
+    {
+      id: "dark",
+      icon: <Moon className="h-4 w-4" />,
+      label: darkLabel,
+      accent: "from-slate-700 to-slate-900",
+    },
+  ];
+  return (
+    <div className="rounded-2xl bg-slate-50 p-4 ring-1 ring-slate-100 dark:bg-surface-2 dark:ring-hairline">
+      <div className="flex items-start gap-3">
+        <div className="mt-0.5 flex h-8 w-8 items-center justify-center rounded-xl bg-white text-slate-600 ring-1 ring-slate-200 dark:bg-surface dark:text-ink-muted dark:ring-hairline">
+          <Palette className="h-4 w-4" />
+        </div>
+        <div className="min-w-0">
+          <p className="text-sm font-semibold text-slate-800 dark:text-ink">
+            {title}
+          </p>
+          {description && (
+            <p className="text-xs text-slate-500 dark:text-ink-muted">
+              {description}
+            </p>
+          )}
+        </div>
+      </div>
+      <div className="mt-3 grid grid-cols-2 gap-2">
+        {opts.map((o) => {
+          const active = value === o.id;
+          return (
+            <button
+              key={o.id}
+              type="button"
+              onClick={() => onChange(o.id)}
+              className={cn(
+                "group relative flex items-center gap-2.5 overflow-hidden rounded-xl border px-3 py-2.5 text-left text-sm font-semibold transition",
+                active
+                  ? "border-transparent bg-gradient-to-br text-white shadow-lift ring-2 ring-white/50 " +
+                      o.accent
+                  : "border-slate-200 bg-white text-slate-700 hover:border-blue-200 hover:bg-blue-50 dark:border-hairline dark:bg-surface dark:text-ink dark:hover:border-sky-400/40",
+              )}
+            >
+              <span
+                className={cn(
+                  "flex h-7 w-7 items-center justify-center rounded-lg transition",
+                  active
+                    ? "bg-white/15 text-white ring-1 ring-white/30"
+                    : "bg-slate-100 text-slate-600 ring-1 ring-slate-200 dark:bg-surface-2 dark:text-ink-muted dark:ring-hairline",
+                )}
+              >
+                {o.icon}
+              </span>
+              <span className="truncate">{o.label}</span>
+              {active && (
+                <span
+                  aria-hidden
+                  className="ml-auto inline-flex h-2 w-2 rounded-full bg-white/95 shadow-[0_0_8px_rgba(255,255,255,0.8)]"
+                />
+              )}
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }

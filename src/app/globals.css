@@ -2,20 +2,120 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ===================================================================
+   Theme tokens — Airport Brand Mode (default) & Dark Mode
+   Use as: bg-[rgb(var(--surface))] / text-[rgb(var(--text))]
+   or via Tailwind semantic classes (see tailwind.config.ts).
+   =================================================================== */
+:root,
+:root[data-theme="airport"] {
+  /* Background gradient stops */
+  --bg-page-from: 248 250 252;       /* #F8FAFC */
+  --bg-page-mid:  238 246 255;       /* #EEF6FF */
+  --bg-page-to:   240 253 255;       /* #F0FDFF */
+
+  /* Radial accent overlays */
+  --radial-1: 37 99 235;             /* brand blue */
+  --radial-2: 6 182 212;             /* cyan */
+  --radial-3: 16 185 129;            /* emerald */
+  --radial-a1: 0.10;
+  --radial-a2: 0.08;
+  --radial-a3: 0.06;
+
+  /* Surfaces */
+  --surface: 255 255 255;
+  --surface-2: 249 250 251;
+  --surface-elev: 255 255 255;
+  --glass-alpha: 0.85;
+
+  /* Borders */
+  --hairline: 226 232 240;           /* slate-200 */
+  --hairline-soft: 241 245 249;      /* slate-100 */
+
+  /* Brand */
+  --brand: 37 99 235;                /* #2563EB */
+  --brand-2: 56 189 248;             /* #38BDF8 */
+  --brand-3: 6 182 212;              /* #06B6D4 */
+  --brand-fg: 255 255 255;
+
+  /* Text */
+  --text: 15 23 42;                  /* slate-900 */
+  --text-muted: 100 116 139;         /* slate-500 */
+  --text-subtle: 148 163 184;        /* slate-400 */
+
+  /* Shadows */
+  --shadow-card-color: 15 23 42;
+  --shadow-card-alpha: 0.06;
+
+  color-scheme: light;
+}
+
+:root[data-theme="dark"] {
+  /* Background gradient stops — midnight aviation */
+  --bg-page-from: 8 18 36;           /* deep navy */
+  --bg-page-mid:  11 26 46;          /* midnight */
+  --bg-page-to:   6 16 32;
+
+  /* Radial accent overlays — brighter, cyan biased */
+  --radial-1: 56 189 248;
+  --radial-2: 14 165 233;
+  --radial-3: 99 102 241;
+  --radial-a1: 0.16;
+  --radial-a2: 0.12;
+  --radial-a3: 0.08;
+
+  /* Surfaces — SOLID navy, no transparency reliance */
+  --surface: 17 32 53;               /* #112035 elevated panel */
+  --surface-2: 23 41 67;             /* #172943 elevated 2 */
+  --surface-elev: 26 46 76;
+  --glass-alpha: 0.92;               /* high for dark, keep text legible */
+
+  /* Borders */
+  --hairline: 30 58 99;              /* navy border */
+  --hairline-soft: 23 41 67;
+
+  /* Brand — slightly lifted for contrast on dark bg */
+  --brand: 96 165 250;               /* blue-400 */
+  --brand-2: 56 189 248;
+  --brand-3: 34 211 238;
+  --brand-fg: 8 18 36;
+
+  /* Text */
+  --text: 226 232 240;               /* slate-200 */
+  --text-muted: 148 163 184;         /* slate-400 */
+  --text-subtle: 100 116 139;        /* slate-500 */
+
+  /* Shadows — deeper, also colored glow */
+  --shadow-card-color: 0 0 0;
+  --shadow-card-alpha: 0.45;
+
+  color-scheme: dark;
+}
+
 html,
 body {
   height: 100%;
   font-family: "Poppins", ui-sans-serif, system-ui, sans-serif;
-  color: #0f172a;
-  background: #f6f8fc;
+  color: rgb(var(--text));
+  background: rgb(var(--bg-page-from));
+  transition: background-color 300ms ease, color 300ms ease;
 }
 
 body {
   background:
-    radial-gradient(circle at top left, rgba(37, 99, 235, 0.10), transparent 30%),
-    radial-gradient(circle at top right, rgba(6, 182, 212, 0.08), transparent 28%),
-    radial-gradient(circle at bottom left, rgba(16, 185, 129, 0.06), transparent 32%),
-    linear-gradient(135deg, #f8fafc 0%, #eef6ff 45%, #f0fdff 100%);
+    radial-gradient(circle at top left,
+      rgb(var(--radial-1) / var(--radial-a1)),
+      transparent 30%),
+    radial-gradient(circle at top right,
+      rgb(var(--radial-2) / var(--radial-a2)),
+      transparent 28%),
+    radial-gradient(circle at bottom left,
+      rgb(var(--radial-3) / var(--radial-a3)),
+      transparent 32%),
+    linear-gradient(135deg,
+      rgb(var(--bg-page-from)) 0%,
+      rgb(var(--bg-page-mid)) 45%,
+      rgb(var(--bg-page-to)) 100%);
   background-attachment: fixed;
   min-height: 100vh;
 }
@@ -29,11 +129,15 @@ body {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: linear-gradient(180deg, #cbd5e1, #94a3b8);
+  background: linear-gradient(180deg,
+    rgb(var(--hairline)),
+    rgb(var(--hairline-soft)));
   border-radius: 999px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: linear-gradient(180deg, #93c5fd, #2563eb);
+  background: linear-gradient(180deg,
+    rgb(var(--brand-2)),
+    rgb(var(--brand)));
 }
 
 /* Utility tweaks */
@@ -62,6 +166,9 @@ body {
   opacity: 0.55;
   pointer-events: none;
 }
+:root[data-theme="dark"] .deco-blob {
+  opacity: 0.28;
+}
 
 /* Hover lift utility shortcut */
 .lift {
@@ -70,6 +177,42 @@ body {
 .lift:hover {
   transform: translateY(-2px);
   box-shadow: 0 16px 40px rgba(37, 99, 235, 0.12);
+}
+:root[data-theme="dark"] .lift:hover {
+  box-shadow: 0 16px 40px rgba(56, 189, 248, 0.22);
+}
+
+/* ===================================================================
+   Aviation ornament — subtle plane silhouette + concentric rings.
+   Designed to sit behind hero content. White stroke with low opacity
+   reads as a soft watermark on ANY colored hero gradient (blue, cyan,
+   emerald, amber, rose). Solid surfaces (cards) can also use it; in
+   dark mode the stroke shifts to sky-300 so it shows on navy.
+   =================================================================== */
+.aviation-ornament {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.14;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 400 400'><g fill='none' stroke='%23ffffff' stroke-width='1.1' opacity='0.85'><path d='M50 220 L160 200 L200 150 L240 200 L350 220 L240 240 L210 280 L190 280 L160 240 Z'/><circle cx='200' cy='200' r='180'/><circle cx='200' cy='200' r='130'/><circle cx='200' cy='200' r='80'/></g></svg>");
+  background-repeat: no-repeat;
+  background-position: center right;
+  background-size: 70% auto;
+}
+/* Surface variant — for use on plain cards (not on colored heroes). */
+.aviation-ornament-surface {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.06;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 400 400'><g fill='none' stroke='%232563eb' stroke-width='1.2' opacity='0.7'><path d='M50 220 L160 200 L200 150 L240 200 L350 220 L240 240 L210 280 L190 280 L160 240 Z'/><circle cx='200' cy='200' r='180'/><circle cx='200' cy='200' r='130'/></g></svg>");
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: contain;
+}
+:root[data-theme="dark"] .aviation-ornament-surface {
+  opacity: 0.08;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 400 400'><g fill='none' stroke='%2338bdf8' stroke-width='1.2' opacity='0.75'><path d='M50 220 L160 200 L200 150 L240 200 L350 220 L240 240 L210 280 L190 280 L160 240 Z'/><circle cx='200' cy='200' r='180'/><circle cx='200' cy='200' r='130'/></g></svg>");
 }
 
 /* Print stylesheet — for ground ops hard-copy manifest. Hide chrome,
@@ -131,4 +274,281 @@ body {
 }
 .print-only {
   display: none;
+}
+
+/* ===================================================================
+   Dark-mode legibility lifts.
+   Hardcoded slate text in card bodies/lists would be unreadable on the
+   navy surface. Lift the foreground without touching gradients (which
+   use slate as gradient stops, not text color).
+   =================================================================== */
+:root[data-theme="dark"] :is(p, h1, h2, h3, h4, h5, h6, span, li, td, th, label, dt, dd).text-slate-900,
+:root[data-theme="dark"] :is(p, h1, h2, h3, h4, h5, h6, span, li, td, th, label, dt, dd).text-slate-800 {
+  color: rgb(var(--text));
+}
+:root[data-theme="dark"] :is(p, h1, h2, h3, h4, h5, h6, span, li, td, th, label, dt, dd).text-slate-700,
+:root[data-theme="dark"] :is(p, h1, h2, h3, h4, h5, h6, span, li, td, th, label, dt, dd).text-slate-600 {
+  color: rgb(var(--text-muted));
+}
+:root[data-theme="dark"] :is(p, h1, h2, h3, h4, h5, h6, span, li, td, th, label, dt, dd).text-slate-500,
+:root[data-theme="dark"] :is(p, h1, h2, h3, h4, h5, h6, span, li, td, th, label, dt, dd).text-slate-400 {
+  color: rgb(var(--text-subtle));
+}
+
+/* ===================================================================
+   Dark-mode surface & hairline auto-lifts.
+   Most pages use hardcoded slate borders/rings/divides on bg-white or
+   bg-slate-50 surfaces. Lift them to the dark navy hairline+surface
+   palette without touching every page. Scoped so it doesn't override
+   the colored hero gradient buttons (which use bg-white text-blue-700
+   on a colored gradient and stay legible in both themes — bg-white
+   is intentionally NOT auto-rewritten globally).
+   =================================================================== */
+:root[data-theme="dark"] .border-slate-100,
+:root[data-theme="dark"] .border-slate-200,
+:root[data-theme="dark"] .border-slate-300 {
+  border-color: rgb(var(--hairline));
+}
+:root[data-theme="dark"] .ring-slate-100,
+:root[data-theme="dark"] .ring-slate-200,
+:root[data-theme="dark"] .ring-slate-300 {
+  --tw-ring-color: rgb(var(--hairline));
+}
+:root[data-theme="dark"] .divide-slate-100 > :not([hidden]) ~ :not([hidden]),
+:root[data-theme="dark"] .divide-slate-200 > :not([hidden]) ~ :not([hidden]) {
+  border-color: rgb(var(--hairline-soft));
+}
+:root[data-theme="dark"] .bg-slate-50,
+:root[data-theme="dark"] .bg-slate-100 {
+  background-color: rgb(var(--surface-2));
+}
+:root[data-theme="dark"] .bg-slate-200 {
+  background-color: rgb(var(--surface-elev));
+}
+/* Slate opacity variants used as separators / soft tints. */
+:root[data-theme="dark"] [class*="bg-slate-200/"],
+:root[data-theme="dark"] [class*="bg-slate-100/"] {
+  background-color: rgb(var(--hairline) / 0.6);
+}
+/* Border opacity variants. */
+:root[data-theme="dark"] [class*="border-slate-200/"],
+:root[data-theme="dark"] [class*="border-slate-100/"] {
+  border-color: rgb(var(--hairline) / 0.7);
+}
+
+/* Pastel "chip" backgrounds (bg-{color}-50/100) become very washed-out
+   on navy. Deepen them while keeping the colored text legible. These
+   are the small status / route / gate pills used everywhere. */
+:root[data-theme="dark"] .bg-blue-50    { background-color: rgb(30 58 138 / 0.45); }    /* blue-900 */
+:root[data-theme="dark"] .bg-blue-100   { background-color: rgb(30 64 175 / 0.55); }    /* blue-800 */
+:root[data-theme="dark"] .bg-sky-50     { background-color: rgb(12 74 110 / 0.50); }    /* sky-900 */
+:root[data-theme="dark"] .bg-sky-100    { background-color: rgb(7 89 133 / 0.55); }     /* sky-800 */
+:root[data-theme="dark"] .bg-cyan-50    { background-color: rgb(22 78 99 / 0.50); }     /* cyan-900 */
+:root[data-theme="dark"] .bg-cyan-100   { background-color: rgb(21 94 117 / 0.55); }    /* cyan-800 */
+:root[data-theme="dark"] .bg-emerald-50 { background-color: rgb(6 78 59 / 0.50); }      /* emerald-900 */
+:root[data-theme="dark"] .bg-emerald-100{ background-color: rgb(6 95 70 / 0.55); }      /* emerald-800 */
+:root[data-theme="dark"] .bg-amber-50   { background-color: rgb(120 53 15 / 0.45); }    /* amber-900 */
+:root[data-theme="dark"] .bg-amber-100  { background-color: rgb(146 64 14 / 0.55); }    /* amber-800 */
+:root[data-theme="dark"] .bg-orange-50  { background-color: rgb(124 45 18 / 0.45); }
+:root[data-theme="dark"] .bg-orange-100 { background-color: rgb(154 52 18 / 0.55); }
+:root[data-theme="dark"] .bg-rose-50    { background-color: rgb(136 19 55 / 0.45); }    /* rose-900 */
+:root[data-theme="dark"] .bg-rose-100   { background-color: rgb(159 18 57 / 0.55); }    /* rose-800 */
+:root[data-theme="dark"] .bg-pink-50    { background-color: rgb(131 24 67 / 0.45); }
+:root[data-theme="dark"] .bg-pink-100   { background-color: rgb(157 23 77 / 0.55); }
+:root[data-theme="dark"] .bg-violet-50  { background-color: rgb(76 29 149 / 0.45); }
+:root[data-theme="dark"] .bg-violet-100 { background-color: rgb(91 33 182 / 0.55); }
+:root[data-theme="dark"] .bg-indigo-50  { background-color: rgb(49 46 129 / 0.45); }
+:root[data-theme="dark"] .bg-indigo-100 { background-color: rgb(55 48 163 / 0.55); }
+
+/* Pastel chip text gets lifted one shade so it pops on the deeper
+   pastel background (the dark mode text safety-net already handles
+   slate; this covers the colored variants). */
+:root[data-theme="dark"] .text-blue-600,
+:root[data-theme="dark"] .text-blue-700,
+:root[data-theme="dark"] .text-blue-800,
+:root[data-theme="dark"] .text-blue-900    { color: rgb(147 197 253); }   /* blue-300 */
+:root[data-theme="dark"] .text-sky-600,
+:root[data-theme="dark"] .text-sky-700,
+:root[data-theme="dark"] .text-sky-800,
+:root[data-theme="dark"] .text-sky-900     { color: rgb(125 211 252); }   /* sky-300 */
+:root[data-theme="dark"] .text-cyan-600,
+:root[data-theme="dark"] .text-cyan-700,
+:root[data-theme="dark"] .text-cyan-800,
+:root[data-theme="dark"] .text-cyan-900    { color: rgb(103 232 249); }   /* cyan-300 */
+:root[data-theme="dark"] .text-emerald-600,
+:root[data-theme="dark"] .text-emerald-700,
+:root[data-theme="dark"] .text-emerald-800,
+:root[data-theme="dark"] .text-emerald-900 { color: rgb(110 231 183); }   /* emerald-300 */
+:root[data-theme="dark"] .text-amber-600,
+:root[data-theme="dark"] .text-amber-700,
+:root[data-theme="dark"] .text-amber-800,
+:root[data-theme="dark"] .text-amber-900   { color: rgb(252 211 77); }    /* amber-300 */
+:root[data-theme="dark"] .text-orange-600,
+:root[data-theme="dark"] .text-orange-700,
+:root[data-theme="dark"] .text-orange-800  { color: rgb(253 186 116); }   /* orange-300 */
+:root[data-theme="dark"] .text-rose-600,
+:root[data-theme="dark"] .text-rose-700,
+:root[data-theme="dark"] .text-rose-800,
+:root[data-theme="dark"] .text-rose-900    { color: rgb(253 164 175); }   /* rose-300 */
+:root[data-theme="dark"] .text-pink-600,
+:root[data-theme="dark"] .text-pink-700,
+:root[data-theme="dark"] .text-pink-800    { color: rgb(249 168 212); }
+:root[data-theme="dark"] .text-violet-600,
+:root[data-theme="dark"] .text-violet-700,
+:root[data-theme="dark"] .text-violet-800  { color: rgb(196 181 253); }
+:root[data-theme="dark"] .text-indigo-600,
+:root[data-theme="dark"] .text-indigo-700,
+:root[data-theme="dark"] .text-indigo-800  { color: rgb(165 180 252); }
+
+/* Lift colored rings to the deeper-pastel border so chips look unified. */
+:root[data-theme="dark"] .ring-blue-200    { --tw-ring-color: rgb(30 64 175 / 0.6); }
+:root[data-theme="dark"] .ring-sky-200     { --tw-ring-color: rgb(7 89 133 / 0.6); }
+:root[data-theme="dark"] .ring-cyan-200    { --tw-ring-color: rgb(21 94 117 / 0.6); }
+:root[data-theme="dark"] .ring-emerald-200 { --tw-ring-color: rgb(6 95 70 / 0.6); }
+:root[data-theme="dark"] .ring-amber-200   { --tw-ring-color: rgb(146 64 14 / 0.6); }
+:root[data-theme="dark"] .ring-orange-200  { --tw-ring-color: rgb(154 52 18 / 0.6); }
+:root[data-theme="dark"] .ring-rose-200    { --tw-ring-color: rgb(159 18 57 / 0.6); }
+:root[data-theme="dark"] .ring-pink-200    { --tw-ring-color: rgb(157 23 77 / 0.6); }
+:root[data-theme="dark"] .ring-violet-200  { --tw-ring-color: rgb(91 33 182 / 0.6); }
+:root[data-theme="dark"] .ring-indigo-200  { --tw-ring-color: rgb(55 48 163 / 0.6); }
+
+/* Hover surfaces (used on row hover in lists / dashboards) become
+   gentle dark tints instead of pastel light. */
+:root[data-theme="dark"] .hover\:bg-blue-50:hover,
+:root[data-theme="dark"] .hover\:bg-slate-50:hover     { background-color: rgb(var(--surface-elev)); }
+:root[data-theme="dark"] .hover\:bg-blue-50\/60:hover  { background-color: rgb(var(--surface-elev) / 0.85); }
+:root[data-theme="dark"] .hover\:bg-blue-100:hover     { background-color: rgb(30 64 175 / 0.5); }
+:root[data-theme="dark"] .hover\:bg-emerald-100:hover  { background-color: rgb(6 95 70 / 0.5); }
+:root[data-theme="dark"] .hover\:bg-amber-100:hover    { background-color: rgb(146 64 14 / 0.5); }
+:root[data-theme="dark"] .hover\:bg-rose-100:hover     { background-color: rgb(159 18 57 / 0.5); }
+
+/* Standalone bg-white cards inside body content (mobile flight list,
+   raw list rows) become navy. Hero buttons inside a colored gradient
+   keep their explicit dark text (text-blue-700, text-cyan-700, etc.)
+   so we only retint the surface, the foreground stays correct because
+   the buttons live on a colored hero — but to avoid breaking them, we
+   only lift bg-white when it sits adjacent to a slate ring/border (the
+   "card-ish" pattern). The .ring-slate-{n} auto-lift above already
+   recolors the ring; pair it with this so the surface follows.
+   Heuristic: bg-white + (ring-1 or border) without explicit ring color
+   is the standalone card pattern. We approximate by matching bg-white
+   that ALSO carries shadow-card or rounded-2xl. */
+:root[data-theme="dark"] .bg-white.shadow-card,
+:root[data-theme="dark"] .bg-white.rounded-2xl,
+:root[data-theme="dark"] .bg-white\/80,
+:root[data-theme="dark"] .bg-white\/85,
+:root[data-theme="dark"] .bg-white\/90,
+:root[data-theme="dark"] .bg-white\/95 {
+  background-color: rgb(var(--surface));
+}
+/* bg-white.rounded-xl is mostly the hero CTA button pattern. Lift it
+   to surface-elev so the button reads as a themed elevated chip on
+   the colored hero gradient (instead of a stark white block that
+   clashes with the chip text auto-lift). */
+:root[data-theme="dark"] .bg-white.rounded-xl {
+  background-color: rgb(var(--surface-elev));
+}
+:root[data-theme="dark"] .bg-white\/70,
+:root[data-theme="dark"] .bg-white\/60,
+:root[data-theme="dark"] .bg-white\/50 {
+  background-color: rgb(var(--surface) / 0.85);
+}
+:root[data-theme="dark"] .bg-white\/40,
+:root[data-theme="dark"] .bg-white\/30,
+:root[data-theme="dark"] .bg-white\/20 {
+  background-color: rgb(var(--surface-2) / 0.6);
+}
+
+/* Inputs / selects / textareas use bg-white inline — lift surface
+   without changing text since field text classes are dark-aware. */
+:root[data-theme="dark"] input.bg-white,
+:root[data-theme="dark"] textarea.bg-white,
+:root[data-theme="dark"] select.bg-white {
+  background-color: rgb(var(--surface));
+  color: rgb(var(--text));
+}
+
+/* ===================================================================
+   Dark-mode gradient card lifts.
+   Pages use pastel gradients like `bg-gradient-to-br from-emerald-50
+   via-white to-green-100` for status cards (scan results, toasts).
+   Our solid-bg auto-lifts above don't catch gradient stops, so the
+   middle `via-white` paints a stark white band on dark navy. Strategy:
+   when a gradient is COMBINED with `via-white` AND a colored from-*
+   stop, kill the gradient image entirely and paint a solid surface-2
+   panel — the colored border (auto-lifted above) keeps the accent.
+
+   Exclusions:
+   - `.from-transparent.via-white` — sheen/shimmer overlays, keep them
+   - `.bg-clip-text` — text gradients (login title), keep them
+   =================================================================== */
+:root[data-theme="dark"] [class*="bg-gradient-"].via-white:not(.from-transparent):not(.bg-clip-text) {
+  background-image: none;
+  background-color: rgb(var(--surface-2));
+}
+/* Slate-50→slate-100 mini gradient pills used as empty-state icon
+   bubbles (e.g. scan page "Menunggu scan"). No via-white involved. */
+:root[data-theme="dark"] [class*="bg-gradient-"].from-slate-50,
+:root[data-theme="dark"] [class*="bg-gradient-"].from-slate-100 {
+  background-image: none;
+  background-color: rgb(var(--surface-2));
+}
+
+/* Pastel auto-lifts for the green / yellow / teal / fuchsia / purple
+   families that some accent UI uses but weren't covered above. Keeps
+   chip pills readable across all status colors in dark mode. */
+:root[data-theme="dark"] .bg-green-50    { background-color: rgb(20 83 45 / 0.50); }
+:root[data-theme="dark"] .bg-green-100   { background-color: rgb(22 101 52 / 0.55); }
+:root[data-theme="dark"] .bg-yellow-50   { background-color: rgb(113 63 18 / 0.45); }
+:root[data-theme="dark"] .bg-yellow-100  { background-color: rgb(133 77 14 / 0.55); }
+:root[data-theme="dark"] .bg-teal-50     { background-color: rgb(19 78 74 / 0.50); }
+:root[data-theme="dark"] .bg-teal-100    { background-color: rgb(17 94 89 / 0.55); }
+:root[data-theme="dark"] .bg-fuchsia-50  { background-color: rgb(112 26 117 / 0.45); }
+:root[data-theme="dark"] .bg-fuchsia-100 { background-color: rgb(134 25 143 / 0.55); }
+:root[data-theme="dark"] .bg-purple-50   { background-color: rgb(88 28 135 / 0.45); }
+:root[data-theme="dark"] .bg-purple-100  { background-color: rgb(107 33 168 / 0.55); }
+:root[data-theme="dark"] .bg-lime-50     { background-color: rgb(54 83 20 / 0.50); }
+:root[data-theme="dark"] .bg-lime-100    { background-color: rgb(63 98 18 / 0.55); }
+
+:root[data-theme="dark"] .text-green-600,
+:root[data-theme="dark"] .text-green-700,
+:root[data-theme="dark"] .text-green-800,
+:root[data-theme="dark"] .text-green-900     { color: rgb(134 239 172); }
+:root[data-theme="dark"] .text-yellow-600,
+:root[data-theme="dark"] .text-yellow-700,
+:root[data-theme="dark"] .text-yellow-800,
+:root[data-theme="dark"] .text-yellow-900    { color: rgb(253 224 71); }
+:root[data-theme="dark"] .text-teal-600,
+:root[data-theme="dark"] .text-teal-700,
+:root[data-theme="dark"] .text-teal-800,
+:root[data-theme="dark"] .text-teal-900      { color: rgb(94 234 212); }
+:root[data-theme="dark"] .text-fuchsia-600,
+:root[data-theme="dark"] .text-fuchsia-700,
+:root[data-theme="dark"] .text-fuchsia-800   { color: rgb(240 171 252); }
+:root[data-theme="dark"] .text-purple-600,
+:root[data-theme="dark"] .text-purple-700,
+:root[data-theme="dark"] .text-purple-800    { color: rgb(216 180 254); }
+
+:root[data-theme="dark"] .ring-green-200    { --tw-ring-color: rgb(22 101 52 / 0.6); }
+:root[data-theme="dark"] .ring-yellow-200   { --tw-ring-color: rgb(133 77 14 / 0.6); }
+:root[data-theme="dark"] .ring-teal-200     { --tw-ring-color: rgb(17 94 89 / 0.6); }
+:root[data-theme="dark"] .ring-fuchsia-200  { --tw-ring-color: rgb(134 25 143 / 0.6); }
+:root[data-theme="dark"] .ring-purple-200   { --tw-ring-color: rgb(107 33 168 / 0.6); }
+
+:root[data-theme="dark"] .border-green-200,
+:root[data-theme="dark"] .border-yellow-200,
+:root[data-theme="dark"] .border-teal-200,
+:root[data-theme="dark"] .border-fuchsia-200,
+:root[data-theme="dark"] .border-purple-200,
+:root[data-theme="dark"] .border-blue-200,
+:root[data-theme="dark"] .border-sky-200,
+:root[data-theme="dark"] .border-cyan-200,
+:root[data-theme="dark"] .border-emerald-200,
+:root[data-theme="dark"] .border-amber-200,
+:root[data-theme="dark"] .border-orange-200,
+:root[data-theme="dark"] .border-rose-200,
+:root[data-theme="dark"] .border-pink-200,
+:root[data-theme="dark"] .border-violet-200,
+:root[data-theme="dark"] .border-indigo-200 {
+  border-color: rgb(var(--hairline));
 }

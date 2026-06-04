@@ -115,6 +115,8 @@ export function PageHero({
     >
       <div className={cn("deco-blob -right-10 -top-10 h-44 w-44", t.blob1)} />
       <div className={cn("deco-blob -bottom-12 -left-12 h-56 w-56", t.blob2)} />
+      {/* aviation ornament — subtle plane silhouette + concentric rings */}
+      <div aria-hidden className="aviation-ornament" />
       {/* subtle diagonal sheen */}
       <div
         aria-hidden

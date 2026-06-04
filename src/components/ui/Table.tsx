@@ -25,6 +25,7 @@ export function THead({
     <thead
       className={cn(
         "bg-gradient-to-r from-slate-50/80 via-blue-50/40 to-slate-50/80 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-600",
+        "dark:from-surface-2 dark:via-surface dark:to-surface-2 dark:text-ink-muted",
         className,
       )}
       {...props}

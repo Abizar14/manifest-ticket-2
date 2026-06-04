@@ -212,19 +212,19 @@ export function BottomNav({ onMoreClick }: Props) {
       >
         <div className="relative mx-auto max-w-md">
           {/* outer glow halo */}
-          <div className="pointer-events-none absolute -inset-1 rounded-[2rem] bg-gradient-to-r from-blue-400/20 via-violet-400/20 to-amber-400/20 blur-xl" />
+          <div className="pointer-events-none absolute -inset-1 rounded-[2rem] bg-gradient-to-r from-blue-400/20 via-violet-400/20 to-amber-400/20 blur-xl dark:from-sky-500/25 dark:via-cyan-500/20 dark:to-indigo-500/25" />
 
           {/* multi-color gradient ring */}
-          <div className="pointer-events-none absolute inset-0 rounded-[1.75rem] bg-gradient-to-r from-blue-400/40 via-violet-400/40 to-amber-400/40 p-px">
+          <div className="pointer-events-none absolute inset-0 rounded-[1.75rem] bg-gradient-to-r from-blue-400/40 via-violet-400/40 to-amber-400/40 p-px dark:from-sky-400/35 dark:via-cyan-400/30 dark:to-indigo-400/35">
             <div className="h-full w-full rounded-[1.7rem] bg-white/0" />
           </div>
 
           {/* main dock */}
-          <div className="relative rounded-[1.75rem] border border-white/70 bg-gradient-to-b from-white/95 to-white/85 backdrop-blur-2xl shadow-[0_20px_50px_-12px_rgba(15,23,42,0.35),0_0_0_1px_rgba(255,255,255,0.5)_inset]">
+          <div className="relative rounded-[1.75rem] border border-white/70 bg-gradient-to-b from-white/95 to-white/85 backdrop-blur-2xl shadow-[0_20px_50px_-12px_rgba(15,23,42,0.35),0_0_0_1px_rgba(255,255,255,0.5)_inset] dark:border-hairline dark:from-surface dark:to-surface-2 dark:backdrop-blur-none dark:shadow-[0_20px_50px_-12px_rgba(0,0,0,0.6),0_0_0_1px_rgba(56,189,248,0.12)_inset]">
             {/* inner top highlight */}
-            <div className="pointer-events-none absolute inset-x-8 top-0 h-px bg-gradient-to-r from-transparent via-white to-transparent" />
+            <div className="pointer-events-none absolute inset-x-8 top-0 h-px bg-gradient-to-r from-transparent via-white to-transparent dark:via-sky-400/30" />
             {/* inner bottom shadow */}
-            <div className="pointer-events-none absolute inset-x-8 bottom-0 h-px bg-gradient-to-r from-transparent via-slate-900/10 to-transparent" />
+            <div className="pointer-events-none absolute inset-x-8 bottom-0 h-px bg-gradient-to-r from-transparent via-slate-900/10 to-transparent dark:via-black/30" />
 
             <div className="relative grid grid-cols-5">
               {LEFT_TABS.map((tab) => (
@@ -316,7 +316,9 @@ function NavItem({ tab, active }: { tab: Tab; active: boolean }) {
       href={tab.href}
       className={cn(
         "group relative flex flex-col items-center justify-center gap-0.5 py-2.5 text-[10px] font-semibold transition active:scale-95",
-        active ? t.text : "text-slate-500 hover:text-slate-700",
+        active
+          ? cn(t.text, "dark:text-sky-300")
+          : "text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200",
       )}
     >
       {/* bottom indicator dot */}
@@ -333,7 +335,7 @@ function NavItem({ tab, active }: { tab: Tab; active: boolean }) {
           "relative flex h-8 w-8 items-center justify-center rounded-2xl transition-all duration-300",
           active
             ? cn("bg-gradient-to-br shadow-inner scale-110", t.iconBg)
-            : "text-slate-500 group-hover:bg-slate-100/80",
+            : "text-slate-500 group-hover:bg-slate-100/80 dark:text-slate-400 dark:group-hover:bg-white/5",
         )}
       >
         <Icon className="h-[18px] w-[18px]" />
@@ -352,12 +354,12 @@ function MoreItem({ onClick }: { onClick: () => void }) {
       type="button"
       onClick={onClick}
       className={cn(
-        "group relative flex flex-col items-center justify-center gap-0.5 py-2.5 text-[10px] font-semibold text-slate-500 transition hover:text-slate-700 active:scale-95",
+        "group relative flex flex-col items-center justify-center gap-0.5 py-2.5 text-[10px] font-semibold text-slate-500 transition hover:text-slate-700 active:scale-95 dark:text-slate-400 dark:hover:text-slate-200",
       )}
     >
       <span
         className={cn(
-          "relative flex h-8 w-8 items-center justify-center rounded-2xl transition-all duration-300 group-hover:bg-gradient-to-br group-hover:shadow-inner",
+          "relative flex h-8 w-8 items-center justify-center rounded-2xl transition-all duration-300 group-hover:bg-gradient-to-br group-hover:shadow-inner dark:group-hover:bg-white/5",
           t.iconBg.replace("text-violet-700", "group-hover:text-violet-700"),
         )}
       >

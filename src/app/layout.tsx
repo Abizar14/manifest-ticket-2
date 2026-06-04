@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { PWARegister } from "@/components/PWARegister";
 import { Providers } from "@/components/providers/Providers";
+import { THEME_INIT_SCRIPT } from "@/lib/theme";
 
 export const metadata: Metadata = {
   title: "Airport Flight Validation System",
@@ -32,8 +33,11 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="id">
+    <html lang="id" data-theme="airport" suppressHydrationWarning>
       <head>
+        <script
+          dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }}
+        />
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link
           rel="preconnect"
@@ -45,7 +49,7 @@ export default function RootLayout({
           rel="stylesheet"
         />
       </head>
-      <body className="font-sans antialiased">
+      <body className="font-sans antialiased text-ink">
         <Providers>{children}</Providers>
         <PWARegister />
       </body>

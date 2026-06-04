@@ -31,6 +31,7 @@ import { logout } from "@/lib/auth";
 import { cn } from "@/lib/utils";
 import { useT, useLocale } from "@/lib/useT";
 import { BottomNav } from "./BottomNav";
+import { ThemeSwitch } from "@/components/ui/ThemeSwitch";
 
 interface NavItem {
   href: string;
@@ -178,7 +179,7 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
   if (!ready || !session) {
     return (
       <div className="flex h-screen items-center justify-center">
-        <div className="flex items-center gap-3 rounded-2xl bg-white/80 px-5 py-3 text-sm text-slate-600 shadow-card ring-1 ring-slate-200 backdrop-blur">
+        <div className="flex items-center gap-3 rounded-2xl bg-surface/90 px-5 py-3 text-sm text-ink-muted shadow-card ring-1 ring-hairline backdrop-blur">
           <span className="h-2 w-2 animate-pulse rounded-full bg-blue-500" />
           {t("common.loading")}
         </div>
@@ -212,6 +213,7 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
       <aside
         className={cn(
           "fixed inset-y-0 left-0 z-40 flex transform flex-col border-r border-slate-200/60 bg-white/85 shadow-soft backdrop-blur-md transition-all duration-300 lg:static lg:translate-x-0 print:hidden",
+          "dark:border-hairline dark:bg-surface/95 dark:backdrop-blur-none",
           collapsed ? "w-[76px]" : "w-72",
           open ? "translate-x-0" : "-translate-x-full",
         )}
@@ -305,7 +307,7 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
                           : "gap-3 px-3 py-2",
                         active
                           ? "bg-gradient-to-r from-blue-500 to-cyan-500 text-white shadow-lift"
-                          : "text-slate-600 hover:bg-blue-50 hover:text-blue-700",
+                          : "text-slate-600 hover:bg-blue-50 hover:text-blue-700 dark:text-ink-muted dark:hover:bg-surface-elev dark:hover:text-sky-300",
                       )}
                       style={{ animationDelay: `${(sIdx * 3 + idx) * 30}ms` }}
                     >
@@ -315,7 +317,7 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
                           collapsed ? "h-9 w-9" : "h-7 w-7",
                           active
                             ? "bg-white/15 text-white ring-1 ring-white/20"
-                            : "bg-slate-100 text-slate-600 ring-1 ring-slate-200 group-hover:bg-white group-hover:text-blue-700 group-hover:ring-blue-200",
+                            : "bg-slate-100 text-slate-600 ring-1 ring-slate-200 group-hover:bg-white group-hover:text-blue-700 group-hover:ring-blue-200 dark:bg-surface-2 dark:text-ink-muted dark:ring-hairline dark:group-hover:bg-surface-elev dark:group-hover:text-sky-300 dark:group-hover:ring-sky-800",
                         )}
                       >
                         <Icon
@@ -367,7 +369,7 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
               </button>
             </div>
           ) : (
-            <div className="relative overflow-hidden rounded-2xl border border-slate-200/70 bg-gradient-to-br from-blue-50 via-white to-cyan-50 p-3 shadow-card">
+            <div className="relative overflow-hidden rounded-2xl border border-slate-200/70 bg-gradient-to-br from-blue-50 via-white to-cyan-50 p-3 shadow-card dark:border-hairline dark:from-surface-2 dark:via-surface dark:to-surface-2">
               <div className="deco-blob -right-6 -top-6 h-20 w-20 bg-blue-300 opacity-40" />
               <div className="relative z-[1]">
                 <div className="flex items-center gap-3">
@@ -423,7 +425,7 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
       {/* Main */}
       <div className="flex min-w-0 flex-1 flex-col">
         {/* Topbar */}
-        <header className="sticky top-0 z-20 border-b border-slate-200/60 bg-gradient-to-r from-white/85 via-white/75 to-blue-50/70 backdrop-blur-md print:hidden">
+        <header className="sticky top-0 z-20 border-b border-slate-200/60 bg-gradient-to-r from-white/85 via-white/75 to-blue-50/70 backdrop-blur-md print:hidden dark:border-hairline dark:bg-none dark:bg-surface/95">
           <div
             aria-hidden
             className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-blue-400/60 to-transparent"
@@ -438,7 +440,7 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
                 <Menu className="h-5 w-5" />
               </button>
               <div className="min-w-0">
-                <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-blue-600/80">
+                <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-brandvar">
                   <span className="inline-flex items-center gap-1">
                     <span className="relative flex h-1.5 w-1.5">
                       <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
@@ -446,12 +448,12 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
                     </span>
                     {t("topbar.operational")}
                   </span>
-                  <ChevronRight className="h-3 w-3 text-slate-300" />
-                  <span className="truncate text-slate-500">
+                  <ChevronRight className="h-3 w-3 text-ink-subtle" />
+                  <span className="truncate text-ink-muted">
                     {breadcrumbTail(pathname, t)}
                   </span>
                 </div>
-                <h1 className="truncate bg-gradient-to-r from-slate-900 via-slate-800 to-blue-700 bg-clip-text text-base font-bold tracking-tight text-transparent sm:text-lg">
+                <h1 className="truncate text-base font-bold tracking-tight text-ink sm:text-lg">
                   {currentTitle(pathname, t)}
                 </h1>
               </div>
@@ -507,8 +509,11 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
                 )}
               </div>
 
+              {/* Theme switch — visible mobile + desktop */}
+              <ThemeSwitch />
+
               {/* User chip */}
-              <div className="hidden items-center gap-2 rounded-xl bg-white/80 px-2 py-1 ring-1 ring-slate-200 backdrop-blur sm:inline-flex">
+              <div className="hidden items-center gap-2 rounded-xl bg-white/80 px-2 py-1 ring-1 ring-slate-200 backdrop-blur sm:inline-flex dark:bg-surface-2/90 dark:ring-hairline">
                 <div className="flex h-7 w-7 items-center justify-center rounded-full bg-gradient-to-br from-blue-600 to-cyan-500 text-[11px] font-bold text-white ring-2 ring-white">
                   {session.name.charAt(0).toUpperCase()}
                 </div>

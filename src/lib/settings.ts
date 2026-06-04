@@ -1,11 +1,13 @@
 "use client";
 
 export type Locale = "id" | "en";
+export type ThemeMode = "airport" | "dark";
 
 export interface AppSettings {
   soundOn: boolean;
   hapticOn: boolean;
   locale: Locale;
+  theme: ThemeMode;
   flightListShowOnlyToday: boolean;
   autoClosePastDayFlights: boolean;
   boardingOpenMinutesBefore: number;
@@ -19,6 +21,7 @@ const DEFAULTS: AppSettings = {
   soundOn: true,
   hapticOn: true,
   locale: "id",
+  theme: "airport",
   flightListShowOnlyToday: true,
   autoClosePastDayFlights: true,
   boardingOpenMinutesBefore: 60,

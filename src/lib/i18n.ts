@@ -40,6 +40,12 @@ const ID: Dict = {
   "settings.pref.sound": "Suara feedback scan",
   "settings.pref.haptic": "Getaran (mobile)",
   "settings.pref.locale": "Bahasa",
+  "settings.section.appearance": "Tampilan",
+  "settings.pref.theme": "Tema aplikasi",
+  "settings.pref.theme.desc":
+    "Airport Brand untuk operasional siang; Dark untuk pos malam atau pencahayaan rendah.",
+  "settings.pref.theme.airport": "Airport Brand",
+  "settings.pref.theme.dark": "Dark",
   "settings.section.boarding": "Jadwal & Boarding",
   "settings.pref.flightOnlyToday": "Tampilkan hanya jadwal hari ini",
   "settings.pref.flightOnlyToday.desc":
@@ -101,6 +107,12 @@ const EN: Dict = {
   "settings.pref.sound": "Scan feedback sound",
   "settings.pref.haptic": "Haptic feedback (mobile)",
   "settings.pref.locale": "Language",
+  "settings.section.appearance": "Appearance",
+  "settings.pref.theme": "App theme",
+  "settings.pref.theme.desc":
+    "Airport Brand for daytime operations; Dark for night-shift posts or low-light environments.",
+  "settings.pref.theme.airport": "Airport Brand",
+  "settings.pref.theme.dark": "Dark",
   "settings.section.boarding": "Schedule & Boarding",
   "settings.pref.flightOnlyToday": "Show only today's flights",
   "settings.pref.flightOnlyToday.desc":
