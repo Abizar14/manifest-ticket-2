@@ -23,6 +23,7 @@ import {
   Clock as ClockIcon,
   PanelLeftClose,
   PanelLeft,
+  Ticket,
 } from "lucide-react";
 import { SessionUser, UserRole } from "@/lib/types";
 import { archiveOldScanEvents, ensureSeed, getSession } from "@/lib/storage";
@@ -32,6 +33,7 @@ import { cn } from "@/lib/utils";
 import { useT, useLocale } from "@/lib/useT";
 import { BottomNav } from "./BottomNav";
 import { ThemeSwitch } from "@/components/ui/ThemeSwitch";
+import { InstallPrompt } from "@/components/InstallPrompt";
 
 interface NavItem {
   href: string;
@@ -95,6 +97,12 @@ const NAV_SECTIONS: NavSection[] = [
   {
     labelKey: "nav.section.system",
     items: [
+      {
+        href: "/seeders/boarding-pass",
+        labelKey: "nav.boardingPassSeeder",
+        icon: Ticket,
+        roles: ["admin", "supervisor", "security"],
+      },
       {
         href: "/settings",
         labelKey: "nav.settings",
@@ -212,8 +220,8 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
       {/* Sidebar */}
       <aside
         className={cn(
-          "fixed inset-y-0 left-0 z-40 flex transform flex-col border-r border-slate-200/60 bg-white/85 shadow-soft backdrop-blur-md transition-all duration-300 lg:static lg:translate-x-0 print:hidden",
-          "dark:border-hairline dark:bg-surface/95 dark:backdrop-blur-none",
+          "fixed inset-y-0 left-0 z-40 flex transform flex-col border-r border-slate-200/60 bg-white shadow-soft transition-all duration-300 lg:sticky lg:top-0 lg:h-screen lg:translate-x-0 print:hidden",
+          "dark:border-hairline dark:bg-surface",
           collapsed ? "w-[76px]" : "w-72",
           open ? "translate-x-0" : "-translate-x-full",
         )}
@@ -272,7 +280,7 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
 
         <nav
           className={cn(
-            "flex-1 overflow-y-auto py-4",
+            "overflow-y-auto py-4",
             collapsed ? "px-2" : "px-3",
           )}
         >
@@ -306,8 +314,8 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
                           ? "justify-center px-1.5 py-2"
                           : "gap-3 px-3 py-2",
                         active
-                          ? "bg-gradient-to-r from-blue-500 to-cyan-500 text-white shadow-lift"
-                          : "text-slate-600 hover:bg-blue-50 hover:text-blue-700 dark:text-ink-muted dark:hover:bg-surface-elev dark:hover:text-sky-300",
+                          ? "bg-blue-50 text-blue-700 ring-1 ring-blue-100 shadow-[0_4px_12px_-4px_rgba(37,99,235,0.25)] dark:bg-sky-500/10 dark:text-sky-200 dark:ring-sky-500/25"
+                          : "text-slate-600 hover:bg-slate-50 hover:text-blue-700 dark:text-ink-muted dark:hover:bg-surface-elev dark:hover:text-sky-300",
                       )}
                       style={{ animationDelay: `${(sIdx * 3 + idx) * 30}ms` }}
                     >
@@ -316,7 +324,7 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
                           "flex items-center justify-center rounded-lg transition",
                           collapsed ? "h-9 w-9" : "h-7 w-7",
                           active
-                            ? "bg-white/15 text-white ring-1 ring-white/20"
+                            ? "bg-white text-blue-700 ring-1 ring-blue-200 shadow-sm dark:bg-sky-500/20 dark:text-sky-200 dark:ring-sky-400/40"
                             : "bg-slate-100 text-slate-600 ring-1 ring-slate-200 group-hover:bg-white group-hover:text-blue-700 group-hover:ring-blue-200 dark:bg-surface-2 dark:text-ink-muted dark:ring-hairline dark:group-hover:bg-surface-elev dark:group-hover:text-sky-300 dark:group-hover:ring-sky-800",
                         )}
                       >
@@ -328,10 +336,10 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
                         <span className="truncate">{t(item.labelKey)}</span>
                       )}
                       {active && !collapsed && (
-                        <span className="absolute right-3 h-1.5 w-1.5 rounded-full bg-white" />
+                        <span className="absolute right-3 hidden h-1.5 w-1.5 rounded-full bg-sky-300 shadow-[0_0_10px_rgba(125,211,252,0.95)] dark:block" />
                       )}
                       {active && collapsed && (
-                        <span className="absolute right-0 top-1/2 h-6 w-1 -translate-y-1/2 rounded-l-full bg-blue-500" />
+                        <span className="absolute right-0 top-1/2 h-6 w-1 -translate-y-1/2 rounded-l-full bg-blue-500 shadow-[0_0_8px_rgba(37,99,235,0.6)] dark:bg-sky-300 dark:shadow-[0_0_10px_rgba(125,211,252,0.85)]" />
                       )}
                     </Link>
                   );
@@ -341,7 +349,8 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
           ))}
         </nav>
 
-        <div className={cn("p-3", !collapsed && "p-4")}>
+
+        <div className={cn("mt-auto p-3 pt-6", !collapsed && "p-4 pt-8")}>
           {collapsed ? (
             <div className="flex flex-col items-center gap-2">
               <div
@@ -369,45 +378,42 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
               </button>
             </div>
           ) : (
-            <div className="relative overflow-hidden rounded-2xl border border-slate-200/70 bg-gradient-to-br from-blue-50 via-white to-cyan-50 p-3 shadow-card dark:border-hairline dark:from-surface-2 dark:via-surface dark:to-surface-2">
-              <div className="deco-blob -right-6 -top-6 h-20 w-20 bg-blue-300 opacity-40" />
-              <div className="relative z-[1]">
-                <div className="flex items-center gap-3">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-blue-600 to-cyan-500 text-sm font-bold text-white shadow-sm ring-2 ring-white">
-                    {session.name.charAt(0).toUpperCase()}
-                  </div>
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-semibold text-slate-800">
-                      {session.name}
-                    </p>
-                    <span
-                      className={cn(
-                        "mt-0.5 inline-block rounded-full px-2 py-0.5 text-[10px] font-semibold ring-1",
-                        roleTone[session.role],
-                      )}
-                    >
-                      {roleLabel[session.role]}
-                    </span>
-                  </div>
+            <div className="rounded-2xl border border-slate-200/80 bg-white p-3 shadow-[0_4px_16px_-6px_rgba(15,42,98,0.18)] dark:border-hairline dark:bg-surface">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-blue-600 to-cyan-500 text-sm font-bold text-white shadow-[0_4px_10px_-2px_rgba(37,99,235,0.5)] ring-2 ring-white dark:ring-surface-elev">
+                  {session.name.charAt(0).toUpperCase()}
                 </div>
-                <div className="mt-3 flex gap-2">
-                  <button
-                    onClick={handleLogout}
-                    className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-white/90 px-3 py-2 text-xs font-semibold text-slate-700 ring-1 ring-slate-200 transition hover:bg-rose-50 hover:text-rose-700 hover:ring-rose-200"
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-semibold text-slate-800 dark:text-ink">
+                    {session.name}
+                  </p>
+                  <span
+                    className={cn(
+                      "mt-0.5 inline-block rounded-full px-2 py-0.5 text-[10px] font-semibold ring-1",
+                      roleTone[session.role],
+                    )}
                   >
-                    <LogOut className="h-3.5 w-3.5" />
-                    {t("common.logout")}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={toggleCollapsed}
-                    title="Ciutkan sidebar"
-                    aria-label="Ciutkan sidebar"
-                    className="hidden h-[34px] w-[34px] items-center justify-center rounded-xl bg-white/90 text-slate-600 ring-1 ring-slate-200 transition hover:bg-blue-50 hover:text-blue-700 hover:ring-blue-200 lg:flex"
-                  >
-                    <PanelLeftClose className="h-3.5 w-3.5" />
-                  </button>
+                    {roleLabel[session.role]}
+                  </span>
                 </div>
+              </div>
+              <div className="mt-3 flex gap-2">
+                <button
+                  onClick={handleLogout}
+                  className="flex flex-1 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:border-rose-200 hover:bg-rose-50 hover:text-rose-700 dark:border-hairline dark:bg-surface-2 dark:text-ink-muted dark:hover:bg-rose-500/10 dark:hover:text-rose-300"
+                >
+                  <LogOut className="h-3.5 w-3.5" />
+                  {t("common.logout")}
+                </button>
+                <button
+                  type="button"
+                  onClick={toggleCollapsed}
+                  title="Ciutkan sidebar"
+                  aria-label="Ciutkan sidebar"
+                  className="hidden h-[34px] w-[34px] items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700 dark:border-hairline dark:bg-surface-2 dark:text-ink-muted dark:hover:bg-sky-500/10 dark:hover:text-sky-300 lg:flex"
+                >
+                  <PanelLeftClose className="h-3.5 w-3.5" />
+                </button>
               </div>
             </div>
           )}
@@ -425,7 +431,14 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
       {/* Main */}
       <div className="flex min-w-0 flex-1 flex-col">
         {/* Topbar */}
-        <header className="sticky top-0 z-20 border-b border-slate-200/60 bg-gradient-to-r from-white/85 via-white/75 to-blue-50/70 backdrop-blur-md print:hidden dark:border-hairline dark:bg-none dark:bg-surface/95">
+        <header
+          className="sticky top-0 z-20 border-b border-slate-200/60 bg-gradient-to-r from-white/85 via-white/75 to-blue-50/70 backdrop-blur-md print:hidden dark:border-hairline dark:bg-none dark:bg-surface/95"
+          style={{
+            paddingTop: "env(safe-area-inset-top)",
+            paddingLeft: "env(safe-area-inset-left)",
+            paddingRight: "env(safe-area-inset-right)",
+          }}
+        >
           <div
             aria-hidden
             className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-blue-400/60 to-transparent"
@@ -530,11 +543,18 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
           </div>
         </header>
 
-        <main className="flex-1 px-4 pt-4 sm:px-6 sm:pt-6 print:p-0 pb-[calc(env(safe-area-inset-bottom)+6rem)] lg:pb-6">
+        <main
+          className="flex-1 px-4 pt-4 sm:px-6 sm:pt-6 print:p-0 pb-[calc(env(safe-area-inset-bottom)+6rem)] lg:pb-6"
+          style={{
+            paddingLeft: "max(1rem, env(safe-area-inset-left))",
+            paddingRight: "max(1rem, env(safe-area-inset-right))",
+          }}
+        >
           {children}
         </main>
       </div>
 
+      <InstallPrompt />
       <BottomNav onMoreClick={() => setOpen(true)} />
     </div>
   );

@@ -1,0 +1,412 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Boarding Pass — GA123</title>
+  <style>
+    :root {
+      --ink: #0f172a;
+      --muted: #64748b;
+      --line: #e2e8f0;
+      --accent: #0369a1;
+      --accent-2: #0ea5e9;
+      --bg: #f1f5f9;
+    }
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      padding: 0;
+      background: var(--bg);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      color: var(--ink);
+      -webkit-font-smoothing: antialiased;
+    }
+    .page {
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 32px 16px;
+    }
+    .pass {
+      width: 100%;
+      max-width: 880px;
+      background: #fff;
+      border-radius: 24px;
+      box-shadow: 0 30px 80px -30px rgba(15, 23, 42, 0.35);
+      overflow: hidden;
+      display: grid;
+      grid-template-columns: 1fr 280px;
+      position: relative;
+    }
+    .pass::before,
+    .pass::after {
+      content: "";
+      position: absolute;
+      top: 50%;
+      width: 28px;
+      height: 28px;
+      background: var(--bg);
+      border-radius: 50%;
+      transform: translateY(-50%);
+      z-index: 2;
+    }
+    .pass::before { left: calc(100% - 280px - 14px); }
+    .pass::after  { right: 280px; display: none; }
+    .main { padding: 28px 32px; }
+    .stub { padding: 28px 24px; background: linear-gradient(160deg, #0369a1, #0ea5e9); color: #fff; position: relative; }
+    .stub::before {
+      content: "";
+      position: absolute;
+      left: 0; top: 0; bottom: 0;
+      width: 2px;
+      background-image: linear-gradient(to bottom, transparent 0, transparent 50%, rgba(255,255,255,.6) 50%);
+      background-size: 1px 12px;
+      background-repeat: repeat-y;
+    }
+    .brand {
+      display: flex; align-items: center; justify-content: space-between;
+      padding-bottom: 16px;
+      border-bottom: 1px dashed var(--line);
+    }
+    .brand-left { display: flex; align-items: center; gap: 12px; }
+    .brand-mark {
+      width: 44px; height: 44px;
+      border-radius: 12px;
+      background: linear-gradient(135deg, #0369a1, #0ea5e9);
+      color: #fff;
+      display: grid; place-items: center;
+      font-weight: 800; font-size: 18px;
+      letter-spacing: 0.5px;
+    }
+    .brand-name { font-weight: 700; font-size: 16px; }
+    .brand-sub { font-size: 12px; color: var(--muted); margin-top: 2px; }
+    .doc-label {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.16em;
+      color: var(--muted);
+      text-transform: uppercase;
+    }
+    .route {
+      display: grid;
+      grid-template-columns: 1fr auto 1fr;
+      align-items: center;
+      gap: 16px;
+      margin-top: 22px;
+    }
+    .airport {
+      text-align: left;
+    }
+    .airport.dest { text-align: right; }
+    .iata {
+      font-size: 48px;
+      font-weight: 800;
+      letter-spacing: 1px;
+      line-height: 1;
+    }
+    .city {
+      font-size: 12px;
+      color: var(--muted);
+      margin-top: 6px;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+    }
+    .plane {
+      color: var(--accent);
+      opacity: 0.85;
+    }
+    .meta {
+      margin-top: 24px;
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 18px 16px;
+    }
+    .meta .item .label {
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.14em;
+      color: var(--muted);
+      text-transform: uppercase;
+    }
+    .meta .item .value {
+      font-size: 16px;
+      font-weight: 600;
+      margin-top: 4px;
+    }
+    .passenger {
+      margin-top: 22px;
+      padding-top: 18px;
+      border-top: 1px dashed var(--line);
+    }
+    .passenger .label {
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.14em;
+      color: var(--muted);
+      text-transform: uppercase;
+    }
+    .passenger .name {
+      font-size: 22px;
+      font-weight: 700;
+      margin-top: 4px;
+    }
+    .barcode-strip {
+      margin-top: 18px;
+      background: repeating-linear-gradient(
+        90deg,
+        #0f172a 0,
+        #0f172a 2px,
+        transparent 2px,
+        transparent 4px,
+        #0f172a 4px,
+        #0f172a 5px,
+        transparent 5px,
+        transparent 9px
+      );
+      height: 36px;
+      border-radius: 6px;
+      opacity: 0.9;
+    }
+    .payload {
+      margin-top: 8px;
+      font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+      font-size: 11px;
+      color: var(--muted);
+      letter-spacing: 0.04em;
+    }
+
+    /* Stub */
+    .stub-row { display: flex; align-items: center; justify-content: space-between; }
+    .stub-row .stub-label {
+      font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; opacity: 0.85;
+    }
+    .stub-flight {
+      font-size: 22px; font-weight: 800; margin-top: 4px;
+    }
+    .qr-wrap {
+      margin-top: 16px;
+      background: #fff;
+      border-radius: 12px;
+      padding: 12px;
+      display: grid; place-items: center;
+    }
+    #qrcode { width: 220px; height: 220px; display: grid; place-items: center; }
+    #qrcode canvas, #qrcode img, #qrcode svg { width: 220px !important; height: 220px !important; display: block; }
+    #qrcode .qr-err { font-size: 11px; color: #b91c1c; text-align: center; padding: 8px; }
+    .stub-grid {
+      margin-top: 16px;
+      display: grid; grid-template-columns: 1fr 1fr; gap: 14px;
+    }
+    .stub-grid .label {
+      font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; opacity: 0.85;
+    }
+    .stub-grid .value {
+      font-size: 15px; font-weight: 700; margin-top: 3px;
+    }
+    .stub-foot {
+      margin-top: 18px;
+      font-size: 10px;
+      opacity: 0.85;
+      letter-spacing: 0.04em;
+    }
+
+    .toolbar {
+      max-width: 880px;
+      width: 100%;
+      margin: 0 auto 16px;
+      display: flex; justify-content: space-between; align-items: center; gap: 12px;
+      flex-wrap: wrap;
+    }
+    .toolbar h1 {
+      font-size: 16px; margin: 0; color: var(--muted); font-weight: 600;
+    }
+    .toolbar .actions { display: flex; gap: 8px; }
+    .btn {
+      background: #0f172a; color: #fff; border: 0;
+      padding: 8px 14px; border-radius: 10px; font-weight: 600; font-size: 13px; cursor: pointer;
+    }
+    .btn.outline { background: #fff; color: #0f172a; border: 1px solid var(--line); }
+
+    @media (max-width: 720px) {
+      .pass { grid-template-columns: 1fr; }
+      .pass::before { display: none; }
+      .stub::before { display: none; }
+      .meta { grid-template-columns: repeat(2, 1fr); }
+      .iata { font-size: 40px; }
+    }
+
+    @media print {
+      body { background: #fff; }
+      .toolbar { display: none; }
+      .pass { box-shadow: none; border: 1px solid var(--line); }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <div style="width:100%; max-width: 880px;">
+      <div class="toolbar">
+        <h1>Sample boarding pass — scan QR di kanan</h1>
+        <div class="actions">
+          <button class="btn outline" onclick="window.print()">Print</button>
+          <button class="btn" onclick="copyPayload()">Copy payload</button>
+        </div>
+      </div>
+
+      <div class="pass">
+        <!-- MAIN -->
+        <div class="main">
+          <div class="brand">
+            <div class="brand-left">
+              <div class="brand-mark">GA</div>
+              <div>
+                <div class="brand-name">Garuda Indonesia</div>
+                <div class="brand-sub">Member of SkyTeam</div>
+              </div>
+            </div>
+            <div class="doc-label">Boarding Pass</div>
+          </div>
+
+          <div class="route">
+            <div class="airport">
+              <div class="iata">CGK</div>
+              <div class="city">Jakarta</div>
+            </div>
+            <svg class="plane" width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M17.8 19.2 16 11l3.5-3.5C21 6 21.5 4 21 3c-1-.5-3 0-4.5 1.5L13 8 4.8 6.2c-.5-.1-.9.1-1.1.5l-.3.5c-.2.4 0 .9.4 1.1L11 12l-2 3-3-.4-1 1.4L8 18l1.4 2 1.4-1 -.4-3 3-2 3.6 7.2c.2.4.7.6 1.1.4l.5-.3c.4-.2.6-.6.4-1.1z"/>
+            </svg>
+            <div class="airport dest">
+              <div class="iata">DPS</div>
+              <div class="city">Denpasar</div>
+            </div>
+          </div>
+
+          <div class="meta">
+            <div class="item">
+              <div class="label">Flight</div>
+              <div class="value">GA 123</div>
+            </div>
+            <div class="item">
+              <div class="label">Date</div>
+              <div class="value" id="m-date">—</div>
+            </div>
+            <div class="item">
+              <div class="label">Boarding</div>
+              <div class="value">08:00</div>
+            </div>
+            <div class="item">
+              <div class="label">Gate</div>
+              <div class="value">A1</div>
+            </div>
+            <div class="item">
+              <div class="label">Seat</div>
+              <div class="value">12A</div>
+            </div>
+            <div class="item">
+              <div class="label">Class</div>
+              <div class="value">Economy</div>
+            </div>
+            <div class="item">
+              <div class="label">PNR</div>
+              <div class="value">AB12CD</div>
+            </div>
+            <div class="item">
+              <div class="label">Ticket</div>
+              <div class="value">990001</div>
+            </div>
+          </div>
+
+          <div class="passenger">
+            <div class="label">Passenger</div>
+            <div class="name">Budi Santoso</div>
+          </div>
+
+          <div class="barcode-strip"></div>
+          <div class="payload">PAYLOAD: <span id="payload-text">GA123|AB12CD|990001|12A</span></div>
+        </div>
+
+        <!-- STUB -->
+        <div class="stub">
+          <div class="stub-row">
+            <div>
+              <div class="stub-label">Flight</div>
+              <div class="stub-flight">GA 123</div>
+            </div>
+            <div style="text-align:right">
+              <div class="stub-label">Gate</div>
+              <div class="stub-flight">A1</div>
+            </div>
+          </div>
+
+          <div class="qr-wrap">
+            <div id="qrcode"></div>
+          </div>
+
+          <div class="stub-grid">
+            <div>
+              <div class="label">Seat</div>
+              <div class="value">12A</div>
+            </div>
+            <div>
+              <div class="label">PNR</div>
+              <div class="value">AB12CD</div>
+            </div>
+            <div>
+              <div class="label">From</div>
+              <div class="value">CGK</div>
+            </div>
+            <div>
+              <div class="label">To</div>
+              <div class="value">DPS</div>
+            </div>
+          </div>
+
+          <div class="stub-foot">Boarding closes 10 min before departure.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const PAYLOAD = "GA123|AB12CD|990001|12A";
+
+    // Set today's date (matches default flights in mockData seeded as "today")
+    (function setDate(){
+      const d = new Date();
+      const opts = { day: "2-digit", month: "short", year: "numeric" };
+      document.getElementById("m-date").textContent = d.toLocaleDateString("en-GB", opts).toUpperCase();
+    })();
+
+    // Render QR — try multiple sources, fallback chain
+    (function renderQR() {
+      const host = document.getElementById("qrcode");
+      const encoded = encodeURIComponent(PAYLOAD);
+      const sources = [
+        "https://api.qrserver.com/v1/create-qr-code/?size=440x440&margin=8&data=" + encoded,
+        "https://quickchart.io/qr?size=440&margin=2&text=" + encoded,
+      ];
+      let idx = 0;
+      const img = document.createElement("img");
+      img.alt = "QR " + PAYLOAD;
+      img.onerror = function () {
+        idx++;
+        if (idx < sources.length) {
+          img.src = sources[idx];
+        } else {
+          host.innerHTML = '<div class="qr-err">QR gagal dimuat. Pastikan ada koneksi internet, atau scan barcode strip / ketik payload manual:<br><strong>' + PAYLOAD + '</strong></div>';
+        }
+      };
+      img.src = sources[0];
+      host.appendChild(img);
+    })();
+
+    function copyPayload() {
+      navigator.clipboard.writeText(PAYLOAD).then(() => {
+        alert("Payload disalin:\n" + PAYLOAD);
+      });
+    }
+  </script>
+</body>
+</html>

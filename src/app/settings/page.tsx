@@ -47,6 +47,14 @@ import { SessionUser, UserRole } from "@/lib/types";
 import { useT } from "@/lib/useT";
 import { cn } from "@/lib/utils";
 import { PageHero, HeroChip } from "@/components/layout/PageHero";
+import { LargeTitle } from "@/components/mobile/LargeTitle";
+import {
+  ListSection,
+  ListRow,
+  ListSwitch,
+  ListStepper,
+} from "@/components/mobile/GroupedList";
+import { SegmentedControl } from "@/components/mobile/SegmentedControl";
 
 const ROLE_LABEL: Record<UserRole, string> = {
   admin: "Administrator",
@@ -144,9 +152,258 @@ export default function SettingsPage() {
 
   if (!session) return null;
 
+  const mobileTabOptions = TABS.map((tabDef) => ({
+    value: tabDef.id,
+    label: t(tabDef.key),
+    icon: <tabDef.icon className="h-3.5 w-3.5" />,
+  }));
+
   return (
     <AppShell>
-      <div className="space-y-6">
+      {/* ============ MOBILE — iOS-native layout ============ */}
+      <div className="space-y-5 lg:hidden">
+        <LargeTitle
+          eyebrow={ROLE_LABEL[session.role]}
+          title={t("settings.title")}
+          subtitle={t("settings.subtitle")}
+        />
+        <SegmentedControl
+          value={tab}
+          onChange={(v) => setTab(v as TabId)}
+          options={mobileTabOptions}
+        />
+
+        {tab === "profile" && (
+          <ListSection header="Akun">
+            <ListRow
+              icon={<UserIcon className="h-4 w-4" />}
+              title={t("settings.profile.name")}
+              value={session.name}
+            />
+            <ListRow
+              icon={<UserIcon className="h-4 w-4" />}
+              iconBg="bg-sky-100 text-sky-700"
+              title={t("settings.profile.email")}
+              value={session.email}
+            />
+            <ListRow
+              icon={<UserIcon className="h-4 w-4" />}
+              iconBg="bg-violet-100 text-violet-700"
+              title={t("settings.profile.role")}
+              value={ROLE_LABEL[session.role]}
+            />
+          </ListSection>
+        )}
+
+        {tab === "preferences" && (
+          <div className="space-y-5">
+            <ListSection
+              header="Umum"
+              caption="Beep dan getaran akan menyala tiap kali scanner menerima atau menolak boarding pass."
+            >
+              <ListRow
+                icon={
+                  settings.soundOn ? (
+                    <Volume2 className="h-4 w-4" />
+                  ) : (
+                    <VolumeX className="h-4 w-4" />
+                  )
+                }
+                iconBg="bg-amber-100 text-amber-700"
+                title={t("settings.pref.sound")}
+                trailing={
+                  <ListSwitch
+                    checked={settings.soundOn}
+                    onChange={(v) => update({ soundOn: v })}
+                    ariaLabel={t("settings.pref.sound")}
+                  />
+                }
+              />
+              <ListRow
+                icon={<Vibrate className="h-4 w-4" />}
+                iconBg="bg-rose-100 text-rose-700"
+                title={t("settings.pref.haptic")}
+                trailing={
+                  <ListSwitch
+                    checked={settings.hapticOn}
+                    onChange={(v) => update({ hapticOn: v })}
+                    ariaLabel={t("settings.pref.haptic")}
+                  />
+                }
+              />
+              <ListRow
+                icon={<Languages className="h-4 w-4" />}
+                iconBg="bg-blue-100 text-blue-700"
+                title={t("settings.pref.locale")}
+                trailing={
+                  <SegmentedControl
+                    size="sm"
+                    value={settings.locale}
+                    onChange={(v) => update({ locale: v as Locale })}
+                    options={[
+                      { value: "id", label: "ID" },
+                      { value: "en", label: "EN" },
+                    ]}
+                    className="w-[88px]"
+                  />
+                }
+              />
+            </ListSection>
+
+            <ListSection header={t("settings.section.appearance")}>
+              <ListRow
+                icon={<Plane className="h-4 w-4" />}
+                iconBg="bg-blue-100 text-blue-700"
+                title={t("settings.pref.theme.airport")}
+                onClick={() => update({ theme: "airport" })}
+                trailing={
+                  <ThemeCheck active={settings.theme === "airport"} />
+                }
+              />
+              <ListRow
+                icon={<Moon className="h-4 w-4" />}
+                iconBg="bg-slate-700 text-white"
+                title={t("settings.pref.theme.dark")}
+                onClick={() => update({ theme: "dark" })}
+                trailing={<ThemeCheck active={settings.theme === "dark"} />}
+              />
+            </ListSection>
+
+            <ListSection
+              header={t("settings.section.boarding")}
+              caption="Jendela waktu menentukan kapan boarding pass dianggap valid relatif ke jadwal departure."
+            >
+              <ListRow
+                icon={<CalendarCheck className="h-4 w-4" />}
+                iconBg="bg-emerald-100 text-emerald-700"
+                title={t("settings.pref.flightOnlyToday")}
+                subtitle={t("settings.pref.flightOnlyToday.desc")}
+                trailing={
+                  <ListSwitch
+                    checked={settings.flightListShowOnlyToday}
+                    onChange={(v) => update({ flightListShowOnlyToday: v })}
+                  />
+                }
+              />
+              <ListRow
+                icon={<Timer className="h-4 w-4" />}
+                iconBg="bg-amber-100 text-amber-700"
+                title={t("settings.pref.autoClose")}
+                subtitle={t("settings.pref.autoClose.desc")}
+                trailing={
+                  <ListSwitch
+                    checked={settings.autoClosePastDayFlights}
+                    onChange={(v) => update({ autoClosePastDayFlights: v })}
+                  />
+                }
+              />
+              <ListRow
+                icon={<DoorOpen className="h-4 w-4" />}
+                iconBg="bg-cyan-100 text-cyan-700"
+                title={t("settings.pref.openWindow")}
+                subtitle={t("settings.pref.openWindow.desc")}
+                trailing={
+                  <ListStepper
+                    value={settings.boardingOpenMinutesBefore}
+                    min={0}
+                    max={240}
+                    suffix="m"
+                    onChange={(v) => update({ boardingOpenMinutesBefore: v })}
+                  />
+                }
+              />
+              <ListRow
+                icon={<AlarmClockCheck className="h-4 w-4" />}
+                iconBg="bg-sky-100 text-sky-700"
+                title={t("settings.pref.activeWindow")}
+                subtitle={t("settings.pref.activeWindow.desc")}
+                trailing={
+                  <ListStepper
+                    value={settings.boardingActiveMinutesBefore}
+                    min={0}
+                    max={Math.max(0, settings.boardingOpenMinutesBefore)}
+                    suffix="m"
+                    onChange={(v) =>
+                      update({ boardingActiveMinutesBefore: v })
+                    }
+                  />
+                }
+              />
+              <ListRow
+                icon={<DoorClosed className="h-4 w-4" />}
+                iconBg="bg-rose-100 text-rose-700"
+                title={t("settings.pref.closeWindow")}
+                subtitle={t("settings.pref.closeWindow.desc")}
+                trailing={
+                  <ListStepper
+                    value={settings.boardingCloseMinutesAfter}
+                    min={0}
+                    max={120}
+                    suffix="m"
+                    onChange={(v) =>
+                      update({ boardingCloseMinutesAfter: v })
+                    }
+                  />
+                }
+              />
+            </ListSection>
+          </div>
+        )}
+
+        {tab === "data" && (
+          <div className="space-y-5">
+            <ListSection
+              header="Backup & Arsip"
+              caption="Backup berisi semua flight, scan event, audit log, dan pengaturan dalam satu file JSON."
+            >
+              <ListRow
+                icon={<Download className="h-4 w-4" />}
+                iconBg="bg-blue-100 text-blue-700"
+                title={t("settings.data.export")}
+                subtitle="Backup semua data ke JSON"
+                onClick={onExportAll}
+                showChevron
+              />
+              <ListRow
+                icon={<Archive className="h-4 w-4" />}
+                iconBg="bg-violet-100 text-violet-700"
+                title={t("settings.data.archiveExport")}
+                subtitle="Scan event yang sudah diarsipkan"
+                value={archiveCount > 0 ? String(archiveCount) : "Kosong"}
+                onClick={onExportArchive}
+                showChevron
+              />
+              {archiveCount > 0 && (
+                <ListRow
+                  icon={<Trash2 className="h-4 w-4" />}
+                  tone="danger"
+                  title="Hapus Arsip"
+                  subtitle={`${archiveCount} event akan dihapus permanen`}
+                  onClick={onPurgeArchive}
+                  showChevron
+                />
+              )}
+            </ListSection>
+
+            <ListSection
+              header="Berbahaya"
+              caption="Aksi ini akan menghapus semua data lokal dan logout sesi. Pastikan kamu sudah backup."
+            >
+              <ListRow
+                icon={<RefreshCw className="h-4 w-4" />}
+                tone="danger"
+                title={t("settings.data.reset")}
+                subtitle="Kembalikan ke seed awal"
+                onClick={onReset}
+                showChevron
+              />
+            </ListSection>
+          </div>
+        )}
+      </div>
+
+      {/* ============ DESKTOP — original layout ============ */}
+      <div className="hidden lg:block space-y-6">
         <PageHero
           tone="slate"
           eyebrow={t("settings.title")}
@@ -411,6 +668,27 @@ export default function SettingsPage() {
         </div>
       </div>
     </AppShell>
+  );
+}
+
+function ThemeCheck({ active }: { active: boolean }) {
+  if (!active) {
+    return (
+      <span className="inline-flex h-5 w-5 items-center justify-center rounded-full ring-1 ring-hairline" />
+    );
+  }
+  return (
+    <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-blue-600 text-white">
+      <svg
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth={3}
+        className="h-3 w-3"
+      >
+        <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+      </svg>
+    </span>
   );
 }
 

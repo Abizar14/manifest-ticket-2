@@ -22,15 +22,15 @@
   --radial-a2: 0.08;
   --radial-a3: 0.06;
 
-  /* Surfaces */
-  --surface: 255 255 255;
-  --surface-2: 249 250 251;
+  /* Surfaces — cool tint so cards harmonize with the page gradient */
+  --surface: 247 250 255;            /* visible cool tint, still reads as white */
+  --surface-2: 237 244 252;          /* deeper cool wash for inputs/hover */
   --surface-elev: 255 255 255;
   --glass-alpha: 0.85;
 
-  /* Borders */
-  --hairline: 226 232 240;           /* slate-200 */
-  --hairline-soft: 241 245 249;      /* slate-100 */
+  /* Borders — blue-tinted slate for airport cohesion */
+  --hairline: 209 222 240;           /* blue-tinted slate */
+  --hairline-soft: 226 235 247;
 
   /* Brand */
   --brand: 37 99 235;                /* #2563EB */
@@ -43,9 +43,9 @@
   --text-muted: 100 116 139;         /* slate-500 */
   --text-subtle: 148 163 184;        /* slate-400 */
 
-  /* Shadows */
-  --shadow-card-color: 15 23 42;
-  --shadow-card-alpha: 0.06;
+  /* Shadows — brand-blue tinted for a branded "lift" feel */
+  --shadow-card-color: 37 99 235;    /* brand blue */
+  --shadow-card-alpha: 0.08;
 
   color-scheme: light;
 }
@@ -99,7 +99,55 @@ body {
   color: rgb(var(--text));
   background: rgb(var(--bg-page-from));
   transition: background-color 300ms ease, color 300ms ease;
+  /* Native-app feel on mobile: no blue tap flash, no rubber-band scroll. */
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior-y: none;
+  -webkit-touch-callout: none;
+  -webkit-text-size-adjust: 100%;
 }
+/* Allow text selection in content areas; suppress on chrome (nav, headers,
+   buttons) for an app feel. Inputs/textareas always get selection. */
+button,
+nav,
+header,
+aside,
+[role="button"] {
+  -webkit-user-select: none;
+  user-select: none;
+}
+input,
+textarea,
+[contenteditable="true"] {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+/* PWA standalone-mode tweaks: only apply when launched as installed app. */
+@media (display-mode: standalone) {
+  html,
+  body {
+    /* No bounce/overscroll, no browser refresh pull-down. */
+    overscroll-behavior: none;
+  }
+  /* Hide elements only meaningful in a browser tab. */
+  .browser-only {
+    display: none !important;
+  }
+}
+@media not all and (display-mode: standalone) {
+  .standalone-only {
+    display: none !important;
+  }
+}
+
+/* Safe-area helpers — use as utility classes on layout elements. */
+.safe-pt   { padding-top: env(safe-area-inset-top); }
+.safe-pb   { padding-bottom: env(safe-area-inset-bottom); }
+.safe-pl   { padding-left: env(safe-area-inset-left); }
+.safe-pr   { padding-right: env(safe-area-inset-right); }
+.safe-px   { padding-left: env(safe-area-inset-left); padding-right: env(safe-area-inset-right); }
+.safe-mt   { margin-top: env(safe-area-inset-top); }
+.safe-mb   { margin-bottom: env(safe-area-inset-bottom); }
 
 body {
   background:
@@ -270,6 +318,297 @@ body {
   }
   thead {
     display: table-header-group;
+  }
+
+  /* =================================================================
+     PrintManifest — dedicated A4 boarding manifest document.
+     Class prefix: .pm-*
+     ================================================================= */
+  @page {
+    size: A4 portrait;
+    margin: 14mm 12mm 14mm 12mm;
+  }
+  .print-manifest {
+    font-family: "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
+    color: #0f172a !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  .print-manifest * {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  /* --- Brand strip --- */
+  .pm-strip {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12pt;
+    padding: 8pt 10pt;
+    background: #0b3b8c !important;
+    color: #ffffff !important;
+    border-radius: 4pt;
+  }
+  .pm-brand {
+    display: flex;
+    align-items: center;
+    gap: 10pt;
+  }
+  .pm-brand-mark {
+    font-weight: 900;
+    font-size: 16pt;
+    letter-spacing: 1pt;
+    background: #ffffff !important;
+    color: #0b3b8c !important;
+    padding: 3pt 8pt;
+    border-radius: 3pt;
+  }
+  .pm-brand-name {
+    font-size: 11pt;
+    font-weight: 700;
+    line-height: 1.1;
+    color: #ffffff !important;
+  }
+  .pm-brand-sub {
+    font-size: 8pt;
+    opacity: 0.85;
+    color: #e0eaff !important;
+    margin-top: 1pt;
+  }
+  .pm-strip-meta {
+    text-align: right;
+    color: #ffffff !important;
+  }
+  .pm-strip-label {
+    font-size: 7pt;
+    letter-spacing: 1.5pt;
+    opacity: 0.75;
+    color: #e0eaff !important;
+  }
+  .pm-strip-val {
+    font-family: "JetBrains Mono", "Consolas", "Courier New", monospace;
+    font-size: 10pt;
+    font-weight: 700;
+    color: #ffffff !important;
+    margin-top: 1pt;
+  }
+
+  /* --- Title bar --- */
+  .pm-title-bar {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 16pt;
+    margin: 10pt 0 8pt 0;
+    padding-bottom: 6pt;
+    border-bottom: 1.5pt solid #0b3b8c;
+  }
+  .pm-title-eyebrow {
+    font-size: 8pt;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1pt;
+    color: #475569 !important;
+  }
+  .pm-title {
+    font-size: 22pt;
+    font-weight: 900;
+    line-height: 1.1;
+    color: #0b3b8c !important;
+    margin-top: 2pt;
+  }
+  .pm-title-route {
+    font-size: 14pt;
+    font-weight: 600;
+    color: #1e3a8a !important;
+  }
+  .pm-status {
+    text-align: right;
+  }
+  .pm-status-label {
+    font-size: 7pt;
+    letter-spacing: 1.5pt;
+    color: #64748b !important;
+    margin-bottom: 2pt;
+  }
+  .pm-status-val {
+    display: inline-block;
+    padding: 3pt 8pt;
+    border-radius: 3pt;
+    font-size: 9pt;
+    font-weight: 800;
+    letter-spacing: 0.5pt;
+    text-transform: uppercase;
+    background: #0b3b8c !important;
+    color: #ffffff !important;
+  }
+  .pm-status-draft { background: #475569 !important; }
+  .pm-status-open { background: #0e7490 !important; }
+  .pm-status-active { background: #b45309 !important; }
+  .pm-status-closed { background: #166534 !important; }
+  .pm-status-cancelled { background: #b91c1c !important; }
+
+  /* --- Info grid --- */
+  .pm-info {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 10pt;
+    font-size: 9.5pt;
+  }
+  .pm-info td {
+    border: 0.5pt solid #cbd5e1;
+    padding: 5pt 8pt;
+    vertical-align: top;
+  }
+  .pm-info-label {
+    width: 18%;
+    background: #f1f5f9 !important;
+    font-size: 8pt;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5pt;
+    color: #475569 !important;
+  }
+  .pm-info-val {
+    font-weight: 600;
+    color: #0f172a !important;
+  }
+
+  /* --- Section title --- */
+  .pm-section-title {
+    font-size: 10pt;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 1pt;
+    color: #0b3b8c !important;
+    margin: 8pt 0 4pt 0;
+    padding-bottom: 3pt;
+    border-bottom: 1pt solid #0b3b8c;
+  }
+  .pm-section-count {
+    font-weight: 600;
+    color: #64748b !important;
+    letter-spacing: 0.2pt;
+  }
+
+  /* --- Passenger table --- */
+  .pm-pax {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 9pt;
+  }
+  .pm-pax thead th {
+    background: #0b3b8c !important;
+    color: #ffffff !important;
+    font-size: 8pt;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.4pt;
+    padding: 5pt 6pt;
+    text-align: left;
+    border: 0.5pt solid #0b3b8c;
+  }
+  .pm-pax tbody td {
+    border: 0.4pt solid #cbd5e1;
+    padding: 4pt 6pt;
+    vertical-align: middle;
+    color: #0f172a !important;
+  }
+  .pm-pax tbody tr:nth-child(even) td {
+    background: #f8fafc !important;
+  }
+  .pm-cell-num {
+    text-align: center;
+    font-weight: 700;
+    color: #475569 !important;
+    width: 5%;
+  }
+  .pm-cell-seat {
+    font-weight: 800;
+    font-family: "JetBrains Mono", "Consolas", monospace;
+    color: #0b3b8c !important;
+    text-align: center;
+  }
+  .pm-mono {
+    font-family: "JetBrains Mono", "Consolas", monospace;
+    font-size: 8.5pt;
+  }
+  .pm-small {
+    font-size: 8pt;
+    color: #475569 !important;
+  }
+  .pm-italic {
+    font-style: italic;
+    color: #94a3b8 !important;
+  }
+  .pm-sig-cell {
+    min-height: 18pt;
+    border-bottom: 0.5pt dotted #94a3b8;
+  }
+  .pm-empty {
+    padding: 18pt;
+    text-align: center;
+    color: #64748b !important;
+    font-style: italic;
+    border: 0.5pt dashed #cbd5e1;
+    border-radius: 3pt;
+  }
+
+  /* --- Footer / signatures --- */
+  .pm-footer {
+    display: flex;
+    justify-content: space-between;
+    gap: 24pt;
+    margin-top: 26pt;
+    page-break-inside: avoid;
+  }
+  .pm-sig {
+    flex: 1;
+    text-align: center;
+  }
+  .pm-sig-line {
+    border-bottom: 0.8pt solid #0f172a;
+    height: 28pt;
+    margin-bottom: 4pt;
+  }
+  .pm-sig-label {
+    font-size: 8pt;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.6pt;
+    color: #475569 !important;
+  }
+  .pm-sig-name {
+    font-size: 9pt;
+    font-weight: 600;
+    color: #0f172a !important;
+    margin-top: 2pt;
+  }
+
+  .pm-printed-meta {
+    margin-top: 14pt;
+    padding-top: 6pt;
+    border-top: 0.4pt solid #cbd5e1;
+    font-size: 7.5pt;
+    color: #64748b !important;
+    text-align: center;
+    font-style: italic;
+  }
+
+  /* The .print-only .print-manifest must override the generic flatten
+     rule above that forces bg-white/bg-gradient backgrounds to #fff. */
+  .print-manifest .pm-strip,
+  .print-manifest .pm-status-val,
+  .print-manifest .pm-pax thead th {
+    background: #0b3b8c !important;
+    color: #ffffff !important;
+  }
+  .print-manifest .pm-info-label {
+    background: #f1f5f9 !important;
+  }
+  .print-manifest .pm-pax tbody tr:nth-child(even) td {
+    background: #f8fafc !important;
   }
 }
 .print-only {

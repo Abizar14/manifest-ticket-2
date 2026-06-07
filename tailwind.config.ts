@@ -49,8 +49,8 @@ const config: Config = {
       },
       boxShadow: {
         soft: "0 8px 24px -12px rgba(15, 23, 42, 0.12)",
-        card: "0 10px 30px rgba(15, 23, 42, 0.06)",
-        lift: "0 16px 40px rgba(37, 99, 235, 0.12)",
+        card: "0 6px 18px -8px rgba(37, 99, 235, 0.18), 0 2px 6px rgba(37, 99, 235, 0.06)",
+        lift: "0 16px 40px rgba(37, 99, 235, 0.14)",
         glow: "0 0 0 6px rgba(37, 99, 235, 0.12)",
       },
       backgroundImage: {
@@ -137,6 +137,19 @@ const config: Config = {
           "0%": { transform: "translateY(100%)", opacity: "0" },
           "100%": { transform: "translateY(0)", opacity: "1" },
         },
+        ripple: {
+          "0%": { transform: "scale(0.6)", opacity: "0.7" },
+          "100%": { transform: "scale(2.2)", opacity: "0" },
+        },
+        "orbit-dot": {
+          "0%": { transform: "rotate(0deg) translateX(var(--orbit-r,60px)) rotate(0deg)" },
+          "100%": { transform: "rotate(360deg) translateX(var(--orbit-r,60px)) rotate(-360deg)" },
+        },
+        "check-pop": {
+          "0%": { transform: "scale(0.4) rotate(-12deg)", opacity: "0" },
+          "55%": { transform: "scale(1.15) rotate(2deg)", opacity: "1" },
+          "100%": { transform: "scale(1) rotate(0deg)", opacity: "1" },
+        },
       },
       animation: {
         "fade-up": "fade-up 0.5s ease-out both",
@@ -154,6 +167,9 @@ const config: Config = {
         "tilt-soft": "tilt-soft 6s ease-in-out infinite",
         "bp-rise": "bp-rise 0.7s cubic-bezier(0.2, 0.8, 0.2, 1) both",
         "sheet-up": "sheet-up 0.35s cubic-bezier(0.2, 0.8, 0.2, 1) both",
+        ripple: "ripple 2.4s ease-out infinite",
+        "orbit-dot": "orbit-dot 8s linear infinite",
+        "check-pop": "check-pop 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) both",
       },
     },
   },

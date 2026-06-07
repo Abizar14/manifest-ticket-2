@@ -20,7 +20,8 @@ import { getEffectiveFlightStatus } from "./flightStatus";
  * 1. IATA BCBP (Bar Coded Boarding Pass) — standar boarding pass asli
  *    contoh: "M1YUSUF/AJIE MUH      EUHXURZ AAPBEJIW 1484 153Y001C0035 100"
  * 2. Format MVP pipe-separated:
- *    "FLIGHT|PNR|TICKET|SEAT"  contoh: "GA123|AB12CD|990001|12A"
+ *    "FLIGHT|PNR|TICKET|SEAT"             contoh: "GA123|AB12CD|990001|12A"
+ *    "FLIGHT|PNR|TICKET|SEAT|NAME"        contoh: "GA123|AB12CD|990001|12A|BUDI SANTOSO"
  */
 export function parseBarcode(raw: string): ParsedBarcode | null {
   const trimmed = (raw ?? "").trim();
@@ -30,17 +31,17 @@ export function parseBarcode(raw: string): ParsedBarcode | null {
   if (bcbp) return bcbp;
 
   const parts = trimmed.split("|");
-  if (parts.length === 4) {
-    const [flightNumber, pnr, ticketNumber, seatNumber] = parts.map((p) =>
-      p.trim(),
-    );
+  if (parts.length === 4 || parts.length === 5) {
+    const [flightNumber, pnr, ticketNumber, seatNumber, passengerName] =
+      parts.map((p) => p.trim());
     if (flightNumber && pnr && ticketNumber && seatNumber) {
       return {
         flightNumber,
         pnr,
         ticketNumber,
         seatNumber,
-        passengerName: null,
+        passengerName:
+          passengerName && passengerName.length > 0 ? passengerName : null,
       };
     }
   }

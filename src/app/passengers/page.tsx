@@ -29,6 +29,9 @@ import { getFlights, getScanEvents } from "@/lib/storage";
 import { cn, formatDateTime } from "@/lib/utils";
 import { PageHero, HeroChip } from "@/components/layout/PageHero";
 import { Pagination } from "@/components/ui/Pagination";
+import { LargeTitle } from "@/components/mobile/LargeTitle";
+import { ListSection } from "@/components/mobile/GroupedList";
+import { SegmentedControl } from "@/components/mobile/SegmentedControl";
 
 type SearchField = "any" | "pnr" | "seat" | "ticket" | "name";
 
@@ -141,7 +144,95 @@ export default function PassengersPage() {
 
   return (
     <AppShell>
-      <div className="space-y-6">
+      {/* ---------- MOBILE ---------- */}
+      <div className="space-y-4 lg:hidden">
+        <LargeTitle
+          eyebrow="Penumpang"
+          title="Pencarian"
+          subtitle="PNR, kursi, tiket, atau nama — lintas semua flight"
+        />
+
+        <div className="rounded-2xl bg-surface ring-1 ring-hairline shadow-card p-3 space-y-2.5">
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-ink-subtle" />
+            <input
+              type="text"
+              autoFocus
+              placeholder="Ketik PNR / Seat / Tiket / Nama…"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              className="h-11 w-full rounded-xl bg-surface-2 pl-9 pr-3 text-[15px] font-medium text-ink ring-1 ring-hairline placeholder:font-normal placeholder:text-ink-subtle focus:bg-surface focus:outline-none focus:ring-2 focus:ring-blue-300"
+            />
+          </div>
+          <SegmentedControl<SearchField>
+            value={field}
+            onChange={setField}
+            size="sm"
+            options={[
+              { value: "any", label: "Semua" },
+              { value: "pnr", label: "PNR" },
+              { value: "seat", label: "Seat" },
+              { value: "ticket", label: "Tiket" },
+              { value: "name", label: "Nama" },
+            ]}
+          />
+        </div>
+
+        {query.trim() === "" ? (
+          <div className="rounded-2xl bg-surface ring-1 ring-hairline shadow-card px-5 py-10 text-center">
+            <span className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-blue-100 text-blue-700">
+              <Search className="h-5 w-5" />
+            </span>
+            <p className="mt-3 text-[15px] font-semibold text-ink">
+              Mulai mengetik untuk mencari
+            </p>
+            <p className="mt-1 text-[12.5px] text-ink-muted">
+              Ketik PNR, nomor kursi, tiket, atau nama penumpang.
+            </p>
+          </div>
+        ) : matches.length === 0 ? (
+          <div className="rounded-2xl bg-surface ring-1 ring-hairline shadow-card px-5 py-10 text-center">
+            <span className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-amber-100 text-amber-700">
+              <XCircle className="h-5 w-5" />
+            </span>
+            <p className="mt-3 text-[15px] font-semibold text-ink">
+              Tidak ada hasil
+            </p>
+            <p className="mt-1 text-[12.5px] text-ink-muted">
+              Coba kata kunci lain atau ubah field pencarian.
+            </p>
+          </div>
+        ) : (
+          <ListSection
+            header={
+              <span className="flex items-center justify-between">
+                <span>Hasil pencarian</span>
+                <span className="text-ink-subtle normal-case tracking-normal text-[11px] font-semibold">
+                  {matches.length} ditemukan
+                </span>
+              </span>
+            }
+          >
+            {paginated.map((m) => (
+              <PassengerMobileRow key={m.key} match={m} />
+            ))}
+          </ListSection>
+        )}
+
+        {matches.length > 0 && (
+          <Pagination
+            page={currentPage}
+            totalPages={totalPages}
+            total={matches.length}
+            pageSize={PAGE_SIZE}
+            onPageChange={setPage}
+            label="penumpang"
+          />
+        )}
+      </div>
+
+      {/* ---------- DESKTOP ---------- */}
+      <div className="space-y-6 hidden lg:block">
         <PageHero
           tone="violet"
           eyebrow="Cari Penumpang"
@@ -412,5 +503,69 @@ export default function PassengersPage() {
         </Card>
       </div>
     </AppShell>
+  );
+}
+
+function PassengerMobileRow({ match }: { match: Match }) {
+  const { flight } = match;
+  const inner = (
+    <div className="flex items-start gap-3 px-3.5 py-3">
+      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-100 text-[12px] font-bold text-blue-700">
+        {match.seat !== "—" ? match.seat : "?"}
+      </span>
+      <div className="min-w-0 flex-1">
+        <div className="flex items-start justify-between gap-2">
+          <span className="truncate text-[14.5px] font-bold text-ink">
+            {match.passengerName ?? (
+              <span className="italic font-normal text-ink-subtle">(nama tidak ada)</span>
+            )}
+          </span>
+          {match.boarded ? (
+            <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 ring-1 ring-emerald-200">
+              <CheckCircle2 className="h-3 w-3" />
+              Boarded
+            </span>
+          ) : (
+            <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-rose-50 px-2 py-0.5 text-[10px] font-semibold text-rose-700 ring-1 ring-rose-200">
+              <XCircle className="h-3 w-3" />
+              Belum
+            </span>
+          )}
+        </div>
+        {flight ? (
+          <p className="mt-0.5 flex items-center gap-1 text-[12px] font-semibold text-blue-600">
+            <Plane className="h-3 w-3" />
+            {flight.flightNumber}
+            <span className="font-normal text-ink-muted">
+              · {flight.originAirport} → {flight.destinationAirport}
+            </span>
+          </p>
+        ) : (
+          <p className="mt-0.5 text-[12px] text-ink-muted">{match.flightNumber ?? "—"}</p>
+        )}
+        <div className="mt-1.5 flex items-center gap-1.5 text-[11px] text-ink-muted">
+          <span className="font-mono font-semibold text-ink/85">{match.pnr}</span>
+          <span className="text-ink-subtle">·</span>
+          <span className="font-mono">{match.ticketNumber}</span>
+        </div>
+        <div className="mt-1 flex items-center justify-between text-[10.5px] text-ink-subtle">
+          <span className="inline-flex items-center gap-1">
+            <Clock className="h-3 w-3" />
+            {formatDateTime(match.lastScannedAt)}
+          </span>
+          <span className={cn(match.scanCount > 1 ? "text-amber-600 font-semibold" : undefined)}>
+            {match.scanCount}× scan
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+
+  return flight ? (
+    <Link href={`/flights/${flight.id}`} className="block transition active:bg-surface-2">
+      {inner}
+    </Link>
+  ) : (
+    inner
   );
 }

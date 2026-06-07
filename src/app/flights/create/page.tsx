@@ -30,6 +30,14 @@ import { Flight, FlightStatus } from "@/lib/types";
 import { addFlight, getFlights, getSession } from "@/lib/storage";
 import { todayDateString, tomorrowDateString, uid, cn } from "@/lib/utils";
 import { canManageFlights } from "@/lib/auth";
+import { LargeTitle } from "@/components/mobile/LargeTitle";
+import { ListSection } from "@/components/mobile/GroupedList";
+import {
+  FormFieldRow,
+  FieldInput,
+  FieldSelect,
+} from "@/components/mobile/FormFieldRow";
+import { StickyActionBar } from "@/components/mobile/StickyActionBar";
 
 const STATUSES: FlightStatus[] = [
   "DRAFT",
@@ -173,7 +181,205 @@ export default function CreateFlightPage() {
 
   return (
     <AppShell>
-      <div className="space-y-6">
+      {/* ============ MOBILE — iOS-native form ============ */}
+      <form
+        onSubmit={submit}
+        className="space-y-4 lg:hidden"
+        style={{ paddingBottom: "5rem" }}
+      >
+        <LargeTitle
+          eyebrow="Penerbangan Baru"
+          title="Tambah Flight"
+          subtitle={`${completion}% terisi`}
+          trailing={
+            <Link
+              href="/flights"
+              className="flex h-9 w-9 items-center justify-center rounded-full bg-surface-2 ring-1 ring-hairline active:scale-95"
+              aria-label="Kembali"
+            >
+              <ArrowLeft className="h-4 w-4 text-ink" />
+            </Link>
+          }
+        />
+
+        {/* progress bar */}
+        <div className="h-1.5 overflow-hidden rounded-full bg-surface-2 ring-1 ring-hairline">
+          <div
+            className="h-full rounded-full bg-gradient-to-r from-blue-500 to-cyan-400 transition-all duration-500"
+            style={{ width: `${completion}%` }}
+          />
+        </div>
+
+        {error && (
+          <div className="flex items-start gap-2 rounded-2xl bg-rose-50 px-3 py-2.5 text-[13px] text-rose-700 ring-1 ring-rose-200">
+            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+            <span>{error}</span>
+          </div>
+        )}
+
+        <ListSection header="Identitas">
+          <FormFieldRow
+            icon={<Hash className="h-4 w-4" />}
+            label="Flight #"
+            required
+          >
+            <FieldInput
+              value={flightNumber}
+              onChange={(e) => setFlightNumber(e.target.value)}
+              placeholder="GA123"
+              autoCapitalize="characters"
+              required
+            />
+          </FormFieldRow>
+          <FormFieldRow
+            icon={<Building2 className="h-4 w-4" />}
+            label="Airline"
+          >
+            <FieldInput
+              value={airlineCode}
+              onChange={(e) => setAirlineCode(e.target.value)}
+              placeholder="GA"
+              autoCapitalize="characters"
+            />
+          </FormFieldRow>
+        </ListSection>
+
+        <ListSection header="Rute">
+          <FormFieldRow
+            icon={<MapPin className="h-4 w-4" />}
+            label="Asal (IATA)"
+          >
+            <FieldInput
+              value={originAirport}
+              onChange={(e) => setOriginAirport(e.target.value)}
+              placeholder="CGK"
+              maxLength={3}
+              autoCapitalize="characters"
+            />
+          </FormFieldRow>
+          <FormFieldRow
+            icon={<MapPin className="h-4 w-4" />}
+            label="Tujuan (IATA)"
+            required
+          >
+            <FieldInput
+              value={destinationAirport}
+              onChange={(e) => setDestinationAirport(e.target.value)}
+              placeholder="DPS"
+              maxLength={3}
+              autoCapitalize="characters"
+              required
+            />
+          </FormFieldRow>
+        </ListSection>
+
+        <ListSection header="Jadwal & Lokasi">
+          <FormFieldRow
+            icon={<Calendar className="h-4 w-4" />}
+            label="Tanggal"
+            required
+          >
+            <FieldInput
+              type="date"
+              min={todayDateString()}
+              max={tomorrowDateString()}
+              value={departureDate}
+              onChange={(e) => setDepartureDate(e.target.value)}
+              required
+            />
+          </FormFieldRow>
+          <FormFieldRow
+            icon={<Clock className="h-4 w-4" />}
+            label="Waktu"
+            required
+          >
+            <FieldInput
+              type="time"
+              value={departureTime}
+              onChange={(e) => setDepartureTime(e.target.value)}
+              required
+            />
+          </FormFieldRow>
+          <FormFieldRow
+            icon={<DoorOpen className="h-4 w-4" />}
+            label="Gate"
+            required
+          >
+            <FieldInput
+              value={gateOrCheckpoint}
+              onChange={(e) => setGateOrCheckpoint(e.target.value)}
+              placeholder="Gate A1"
+              required
+            />
+          </FormFieldRow>
+          <FormFieldRow
+            icon={<Activity className="h-4 w-4" />}
+            label="Status"
+          >
+            <FieldSelect
+              value={status}
+              onChange={(e) => setStatus(e.target.value as FlightStatus)}
+            >
+              {STATUSES.map((s) => (
+                <option key={s} value={s}>
+                  {s}
+                </option>
+              ))}
+            </FieldSelect>
+          </FormFieldRow>
+        </ListSection>
+
+        <ListSection
+          header="Kapasitas"
+          caption="Opsional — dipakai untuk progres boarding."
+        >
+          <FormFieldRow
+            icon={<Users className="h-4 w-4" />}
+            label="Expected PAX"
+          >
+            <FieldInput
+              type="number"
+              min={1}
+              step={1}
+              inputMode="numeric"
+              value={expectedPax}
+              onChange={(e) => setExpectedPax(e.target.value)}
+              placeholder="180"
+            />
+          </FormFieldRow>
+        </ListSection>
+
+        <button
+          type="button"
+          onClick={fillDemo}
+          className="flex w-full items-center justify-center gap-2 rounded-2xl bg-surface-2 px-4 py-3 text-[13px] font-semibold text-ink-muted ring-1 ring-hairline active:bg-hairline/40"
+        >
+          <Wand2 className="h-4 w-4" />
+          Isi data contoh
+        </button>
+
+        <StickyActionBar>
+          <Link
+            href="/flights"
+            className="flex h-11 flex-1 items-center justify-center rounded-2xl bg-surface-2 text-[14px] font-semibold text-ink-muted ring-1 ring-hairline active:bg-hairline/40"
+          >
+            Batal
+          </Link>
+          <button
+            type="submit"
+            className="flex h-11 flex-[2] items-center justify-center gap-1.5 rounded-2xl bg-blue-600 text-[14px] font-semibold text-white shadow-lift active:scale-[0.98] disabled:opacity-60"
+            disabled={
+              !flightNumber.trim() || !destinationAirport.trim()
+            }
+          >
+            <Save className="h-4 w-4" />
+            Simpan
+          </button>
+        </StickyActionBar>
+      </form>
+
+      {/* ============ DESKTOP — original layout ============ */}
+      <div className="hidden lg:block space-y-6">
         {/* Hero header */}
         <div className="relative animate-fade-up overflow-hidden rounded-3xl border border-slate-200/70 bg-gradient-to-br from-blue-600 via-blue-500 to-cyan-500 px-6 py-6 text-white shadow-lift sm:px-8 sm:py-7">
           <div className="deco-blob -right-10 -top-10 h-44 w-44 bg-white/30" />

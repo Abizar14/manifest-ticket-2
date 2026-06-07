@@ -60,6 +60,13 @@ import { useToast } from "@/components/ui/Toast";
 import { useConfirm } from "@/components/ui/ConfirmDialog";
 import { AirlineLogo } from "@/components/ui/AirlineLogo";
 import { getAirlineMeta } from "@/lib/airlines";
+import { LargeTitle } from "@/components/mobile/LargeTitle";
+import { ListSection, ListRow } from "@/components/mobile/GroupedList";
+import { StickyActionBar } from "@/components/mobile/StickyActionBar";
+import { downloadXlsx } from "@/lib/xlsxExport";
+import { PrintManifest } from "@/components/print/PrintManifest";
+import { SeatMap } from "@/components/flights/SeatMap";
+import { PassengerDetailModal } from "@/components/flights/PassengerDetailModal";
 
 export default function FlightDetailPage() {
   const router = useRouter();
@@ -78,6 +85,8 @@ export default function FlightDetailPage() {
   const [showAudit, setShowAudit] = useState(false);
   const [settings, setSettings] = useState(() => getSettings());
   const [now, setNow] = useState(() => new Date());
+  const [activePassenger, setActivePassenger] =
+    useState<PassengerRecord | null>(null);
 
   useEffect(() => {
     if (!id) return;
@@ -262,46 +271,351 @@ export default function FlightDetailPage() {
     refreshAll(flight.id);
   };
 
-  const onExportCsv = () => {
-    const rows = [
-      ["Seat", "Nama", "PNR", "Tiket", "Pertama Scan", "Terakhir Scan", "Scan"],
-      ...passengers.map((p) => [
-        p.seatNumber,
-        p.passengerName ?? "",
-        p.pnr,
-        p.ticketNumber,
-        p.firstScannedAt,
-        p.lastScannedAt,
-        String(p.scanCount),
-      ]),
-    ];
-    const csv = rows
-      .map((row) =>
-        row
-          .map((cell) => {
-            const s = String(cell ?? "");
-            return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-          })
-          .join(","),
-      )
-      .join("\n");
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `manifest_${flight.flightNumber}_${flight.departureDate}.csv`;
-    a.click();
-    setTimeout(() => URL.revokeObjectURL(url), 0);
-    toast.success("Manifest CSV di-download.");
+  const onExportCsv = async () => {
+    if (!flight) return;
+    const airline = getAirlineMeta(flight.airlineCode);
+    const operator = session?.name ?? session?.email ?? "—";
+    const expectedPax = flight.expectedPax ?? null;
+    const boardedCount = passengers.length;
+    const printedAt = formatDateTime(new Date().toISOString());
+
+    try {
+      await downloadXlsx({
+        filename: `Manifest_${flight.flightNumber}_${flight.departureDate}.xlsx`,
+        sheetName: `Manifest ${flight.flightNumber}`,
+        title: `MANIFEST PENUMPANG · ${flight.flightNumber}`,
+        subtitle: `${airline.name} · ${flight.originAirport} → ${flight.destinationAirport} · ${flight.departureDate} ${flight.departureTime}`,
+        meta: [
+          { label: "Flight", value: flight.flightNumber },
+          { label: "Maskapai", value: `${airline.name} (${flight.airlineCode})` },
+          {
+            label: "Rute",
+            value: `${flight.originAirport} → ${flight.destinationAirport}`,
+          },
+          { label: "Tanggal", value: flight.departureDate },
+          { label: "Jam keberangkatan", value: flight.departureTime },
+          { label: "Gate / Pos", value: flight.gateOrCheckpoint },
+          { label: "Status", value: flight.status },
+          {
+            label: "Kapasitas",
+            value:
+              expectedPax !== null
+                ? `${boardedCount} / ${expectedPax} (${Math.round((boardedCount / Math.max(1, expectedPax)) * 100)}%)`
+                : `${boardedCount} penumpang`,
+          },
+          ...(flight.cancellationReason
+            ? [{ label: "Alasan pembatalan", value: flight.cancellationReason }]
+            : []),
+          { label: "Dicetak", value: printedAt },
+          { label: "Petugas", value: operator },
+        ],
+        columns: [
+          { header: "No.", width: 6, align: "center" },
+          { header: "Seat", width: 8, align: "center" },
+          { header: "Nama Penumpang", width: 28, align: "left" },
+          { header: "PNR", width: 12, align: "center" },
+          { header: "Tiket / SEQ", width: 16, align: "center" },
+          { header: "Pertama Scan", width: 20, align: "left" },
+          { header: "Terakhir Scan", width: 20, align: "left" },
+          { header: "Jumlah Scan", width: 12, align: "center" },
+        ],
+        rows: passengers.map((p, i) => [
+          i + 1,
+          { value: p.seatNumber, tone: "info" as const },
+          p.passengerName ?? { value: "(nama tidak tersedia)", tone: "muted" as const },
+          { value: p.pnr, tone: "mono" as const },
+          { value: p.ticketNumber, tone: "mono" as const },
+          formatDateTime(p.firstScannedAt),
+          formatDateTime(p.lastScannedAt),
+          { value: p.scanCount, tone: p.scanCount > 1 ? ("warning" as const) : undefined },
+        ]),
+        totals: [
+          "TOTAL",
+          "",
+          `${passengers.length} penumpang`,
+          "",
+          "",
+          "",
+          "",
+          passengers.reduce((sum, p) => sum + p.scanCount, 0),
+        ],
+      });
+      toast.success(`Manifest ${flight.flightNumber} (${boardedCount} pax) di-export.`);
+    } catch (err) {
+      toast.error("Gagal export Excel — coba lagi.");
+      console.error(err);
+    }
   };
 
   const onPrint = () => {
     window.print();
   };
 
+  const airlineMeta = getAirlineMeta(flight.airlineCode);
+  const statusEff = effective?.status ?? flight.status;
+
   return (
     <AppShell>
-      <div className="space-y-6">
+      {/* ============ PRINT — dedicated manifest document ============ */}
+      <PrintManifest flight={flight} passengers={passengers} session={session} />
+
+      {/* ============ MOBILE — iOS-native detail ============ */}
+      <div
+        className="space-y-4 lg:hidden print-hide"
+        style={{ paddingBottom: "5rem" }}
+      >
+        {/* Hero card */}
+        <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-blue-600 via-blue-500 to-cyan-500 px-4 py-4 text-white shadow-lift">
+          <div className="deco-blob -right-8 -top-10 h-32 w-32 bg-white/25" />
+          <div className="deco-blob -bottom-8 -left-6 h-32 w-32 bg-cyan-300/30" />
+          <div className="relative">
+            <div className="flex items-center justify-between gap-2">
+              <Link
+                href="/flights"
+                className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-white/15 text-white ring-1 ring-white/25 backdrop-blur active:scale-95"
+                aria-label="Kembali"
+              >
+                <ArrowLeft className="h-4 w-4" />
+              </Link>
+              <FlightStatusBadge status={statusEff} />
+            </div>
+
+            <div className="mt-3 flex items-center gap-3">
+              <div className="rounded-xl bg-white/90 p-1.5 ring-1 ring-white/40">
+                <AirlineLogo code={flight.airlineCode} size="md" />
+              </div>
+              <div className="min-w-0">
+                <h2 className="text-2xl font-extrabold tracking-tight">
+                  {flight.flightNumber}
+                </h2>
+                <p className="truncate text-[12px] text-white/85">
+                  {airlineMeta.name}
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-3 flex items-center gap-2 text-[14px] font-bold">
+              <span>{flight.originAirport}</span>
+              <Plane className="h-3.5 w-3.5 rotate-90 text-white/70" />
+              <span>{flight.destinationAirport}</span>
+              <span className="ml-auto rounded-full bg-white/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ring-1 ring-white/25">
+                {flight.gateOrCheckpoint}
+              </span>
+            </div>
+
+            <div className="mt-3 grid grid-cols-3 gap-2 border-t border-dashed border-white/25 pt-3 text-[11px]">
+              <HeroCell label="Tanggal" value={flight.departureDate} />
+              <HeroCell label="Waktu" value={flight.departureTime} />
+              <HeroCell
+                label="PAX"
+                value={
+                  flight.expectedPax ? String(flight.expectedPax) : "—"
+                }
+              />
+            </div>
+
+            {effective && effective.status !== flight.status && (
+              <p className="mt-2 rounded-lg bg-white/15 px-2 py-1 text-[11px] text-white/90 ring-1 ring-white/25">
+                Auto: {effective.description} · Manual: {flight.status}
+              </p>
+            )}
+          </div>
+        </div>
+
+        {/* Cancellation banner */}
+        {flight.status === "CANCELLED" && flight.cancellationReason && (
+          <div className="flex items-start gap-2 rounded-2xl bg-amber-50 px-3 py-2.5 text-[12.5px] text-amber-800 ring-1 ring-amber-200">
+            <Ban className="mt-0.5 h-4 w-4 shrink-0" />
+            <div>
+              <p className="font-semibold uppercase tracking-wider text-[10px]">
+                Penerbangan Dibatalkan
+              </p>
+              <p>{flight.cancellationReason}</p>
+            </div>
+          </div>
+        )}
+
+        {/* Boarding progress */}
+        {progress && (
+          <BoardingMobileCard progress={progress} />
+        )}
+
+        {/* Seat map */}
+        {passengers.length > 0 && (
+          <div className="px-1">
+            <SeatMap
+              passengers={passengers}
+              expectedPax={flight.expectedPax ?? null}
+              onSeatClick={(p) => setActivePassenger(p)}
+            />
+          </div>
+        )}
+
+        {/* Passengers list */}
+        <ListSection
+          header={`Penumpang (${passengers.length})`}
+          caption="Diisi otomatis dari boarding pass yang sudah scan valid."
+        >
+          {passengers.length === 0 ? (
+            <div className="px-4 py-6 text-center text-[13px] text-ink-muted">
+              Belum ada penumpang tercatat.
+            </div>
+          ) : (
+            passengers.map((p) => (
+              <button
+                type="button"
+                key={`${p.pnr}-${p.seatNumber}-${p.ticketNumber}`}
+                onClick={() => setActivePassenger(p)}
+                className="flex w-full items-center gap-3 px-4 py-3 text-left transition active:bg-blue-50/60"
+              >
+                <span className="flex h-9 min-w-[2.75rem] items-center justify-center rounded-lg bg-blue-50 px-2 text-[12px] font-bold tabular-nums text-blue-700 ring-1 ring-blue-200">
+                  {p.seatNumber}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-[14px] font-semibold text-ink">
+                    {p.passengerName ?? (
+                      <span className="italic text-ink-subtle">
+                        (tanpa nama)
+                      </span>
+                    )}
+                  </p>
+                  <p className="truncate text-[11.5px] text-ink-muted">
+                    PNR {p.pnr} · {p.ticketNumber}
+                  </p>
+                  <p className="text-[10.5px] text-ink-subtle">
+                    Scan: {formatDateTime(p.lastScannedAt)}
+                  </p>
+                </div>
+                {p.scanCount > 1 && (
+                  <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-bold text-amber-700 ring-1 ring-amber-200">
+                    {p.scanCount}×
+                  </span>
+                )}
+              </button>
+            ))
+          )}
+        </ListSection>
+
+        {/* Audit trail */}
+        <ListSection header={`Riwayat (${auditEvents.length})`}>
+          {auditEvents.length === 0 ? (
+            <div className="px-4 py-6 text-center text-[13px] text-ink-muted">
+              Belum ada perubahan status.
+            </div>
+          ) : (
+            auditEvents.map((a) => (
+              <div
+                key={a.id}
+                className="flex items-start gap-3 px-4 py-3"
+              >
+                <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-violet-100 text-violet-700">
+                  <History className="h-4 w-4" />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="text-[13.5px] font-semibold text-ink">
+                    {ACTION_LABEL[a.action] ?? a.action}
+                    {a.fromStatus && a.toStatus && (
+                      <span className="ml-1.5 text-[11.5px] font-normal text-ink-muted">
+                        {a.fromStatus} → {a.toStatus}
+                      </span>
+                    )}
+                  </p>
+                  <p className="text-[11px] text-ink-subtle">
+                    oleh {a.userName} · {formatDateTime(a.at)}
+                  </p>
+                  {a.note && (
+                    <p className="mt-1 rounded-lg bg-surface-2 px-2 py-1 text-[11.5px] text-ink-muted ring-1 ring-hairline">
+                      {a.note}
+                    </p>
+                  )}
+                </div>
+              </div>
+            ))
+          )}
+        </ListSection>
+
+        {/* Secondary actions */}
+        <ListSection>
+          <ListRow
+            icon={<Download className="h-4 w-4" />}
+            title="Export Excel manifest"
+            onClick={onExportCsv}
+            showChevron
+          />
+          <ListRow
+            icon={<Printer className="h-4 w-4" />}
+            title="Print manifest"
+            onClick={onPrint}
+            showChevron
+          />
+          {canManage && (
+            <>
+              <ListRow
+                icon={<Pencil className="h-4 w-4" />}
+                title="Edit penerbangan"
+                onClick={() => router.push(`/flights/${flight.id}/edit`)}
+                showChevron
+              />
+              <ListRow
+                icon={<Trash2 className="h-4 w-4" />}
+                title="Hapus penerbangan"
+                tone="danger"
+                onClick={onDelete}
+                showChevron
+              />
+            </>
+          )}
+        </ListSection>
+
+        {/* Sticky primary action */}
+        {canManage && (canCloseBoarding || canReopenBoarding || canCancel) && (
+          <StickyActionBar>
+            {canCloseBoarding && (
+              <button
+                type="button"
+                onClick={onCloseBoarding}
+                className="flex h-11 flex-1 items-center justify-center gap-1.5 rounded-2xl bg-amber-500 text-[14px] font-semibold text-white shadow-lift active:scale-[0.98]"
+              >
+                <PowerOff className="h-4 w-4" />
+                Tutup Boarding
+              </button>
+            )}
+            {canReopenBoarding && (
+              <button
+                type="button"
+                onClick={onReopenBoarding}
+                className="flex h-11 flex-1 items-center justify-center gap-1.5 rounded-2xl bg-emerald-600 text-[14px] font-semibold text-white shadow-lift active:scale-[0.98]"
+              >
+                <PlayCircle className="h-4 w-4" />
+                Buka Kembali
+              </button>
+            )}
+            {canCancel && !canCloseBoarding && !canReopenBoarding && (
+              <button
+                type="button"
+                onClick={() => setCancelOpen(true)}
+                className="flex h-11 flex-1 items-center justify-center gap-1.5 rounded-2xl bg-rose-600 text-[14px] font-semibold text-white shadow-lift active:scale-[0.98]"
+              >
+                <Ban className="h-4 w-4" />
+                Batalkan
+              </button>
+            )}
+            {canCancel && (canCloseBoarding || canReopenBoarding) && (
+              <button
+                type="button"
+                onClick={() => setCancelOpen(true)}
+                className="flex h-11 w-11 items-center justify-center rounded-2xl bg-surface-2 ring-1 ring-hairline active:scale-[0.98]"
+                aria-label="Batalkan penerbangan"
+              >
+                <Ban className="h-4 w-4 text-rose-600" />
+              </button>
+            )}
+          </StickyActionBar>
+        )}
+      </div>
+
+      {/* ============ DESKTOP — original layout ============ */}
+      <div className="hidden lg:block space-y-6 print-hide">
         <div className="flex flex-col items-stretch gap-3 animate-fade-up sm:flex-row sm:items-center sm:justify-between print-hide">
           <Link
             href="/flights"
@@ -313,7 +627,7 @@ export default function FlightDetailPage() {
           <div className="flex flex-wrap items-center gap-2">
             <Button size="sm" variant="outline" onClick={onExportCsv}>
               <Download className="h-3.5 w-3.5" />
-              Export CSV
+              Export Excel
             </Button>
             <Button size="sm" variant="outline" onClick={onPrint}>
               <Printer className="h-3.5 w-3.5" />
@@ -364,26 +678,6 @@ export default function FlightDetailPage() {
               </>
             )}
           </div>
-        </div>
-
-        {/* Print-only header (visible only when printing) */}
-        <div className="print-only">
-          <h1 style={{ fontSize: "18pt", fontWeight: 700, margin: 0 }}>
-            Manifest {flight.flightNumber} — {flight.originAirport} →{" "}
-            {flight.destinationAirport}
-          </h1>
-          <p style={{ margin: "4px 0 0", fontSize: "11pt", color: "#374151" }}>
-            {flight.departureDate} {flight.departureTime} · Gate{" "}
-            {flight.gateOrCheckpoint} · Status {flight.status}
-            {flight.cancellationReason
-              ? ` · Alasan: ${flight.cancellationReason}`
-              : ""}
-          </p>
-          <p
-            style={{ margin: "2px 0 12px", fontSize: "10pt", color: "#6b7280" }}
-          >
-            Dicetak: {formatDateTime(new Date().toISOString())}
-          </p>
         </div>
 
         {/* Flight summary hero */}
@@ -549,7 +843,15 @@ export default function FlightDetailPage() {
                 }
               />
             ) : (
-              <Table>
+              <>
+                <div className="px-5 py-4 print-hide">
+                  <SeatMap
+                    passengers={passengers}
+                    expectedPax={flight.expectedPax ?? null}
+                    onSeatClick={(p) => setActivePassenger(p)}
+                  />
+                </div>
+                <Table>
                 <THead>
                   <Tr>
                     <Th>Seat</Th>
@@ -565,8 +867,9 @@ export default function FlightDetailPage() {
                   {passengers.map((p, idx) => (
                     <Tr
                       key={`${p.pnr}-${p.seatNumber}-${p.ticketNumber}`}
-                      className="animate-fade-up"
+                      className="animate-fade-up cursor-pointer transition hover:bg-emerald-50/40"
                       style={{ animationDelay: `${idx * 30}ms` }}
+                      onClick={() => setActivePassenger(p)}
                     >
                       <Td>
                         <span className="inline-flex items-center justify-center rounded-lg bg-blue-50 px-2 py-0.5 font-semibold text-blue-700 ring-1 ring-blue-200">
@@ -597,6 +900,7 @@ export default function FlightDetailPage() {
                   ))}
                 </TBody>
               </Table>
+              </>
             )}
           </CardBody>
         </Card>
@@ -670,6 +974,12 @@ export default function FlightDetailPage() {
           )}
         </Card>
       </div>
+      <PassengerDetailModal
+        open={!!activePassenger}
+        passenger={activePassenger}
+        flight={flight}
+        onClose={() => setActivePassenger(null)}
+      />
     </AppShell>
   );
 }
@@ -680,6 +990,111 @@ const ACTION_LABEL: Record<string, string> = {
   REOPEN_BOARDING: "Boarding dibuka kembali",
   CANCEL_FLIGHT: "Penerbangan dibatalkan",
 };
+
+function HeroCell({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <p className="text-[9.5px] font-semibold uppercase tracking-wider text-white/60">
+        {label}
+      </p>
+      <p className="mt-0.5 text-[13px] font-bold tabular-nums">{value}</p>
+    </div>
+  );
+}
+
+const MOBILE_TONE: Record<
+  BoardingProgress["tone"],
+  { bar: string; text: string; bg: string; ring: string }
+> = {
+  neutral: {
+    bar: "bg-slate-400",
+    text: "text-slate-700",
+    bg: "bg-slate-50",
+    ring: "ring-slate-200",
+  },
+  info: {
+    bar: "bg-blue-500",
+    text: "text-blue-700",
+    bg: "bg-blue-50",
+    ring: "ring-blue-200",
+  },
+  warning: {
+    bar: "bg-amber-500",
+    text: "text-amber-700",
+    bg: "bg-amber-50",
+    ring: "ring-amber-200",
+  },
+  success: {
+    bar: "bg-emerald-500",
+    text: "text-emerald-700",
+    bg: "bg-emerald-50",
+    ring: "ring-emerald-200",
+  },
+  danger: {
+    bar: "bg-rose-500",
+    text: "text-rose-700",
+    bg: "bg-rose-50",
+    ring: "ring-rose-200",
+  },
+};
+
+function BoardingMobileCard({ progress }: { progress: BoardingProgress }) {
+  const t = MOBILE_TONE[progress.tone];
+  const expected = progress.expected;
+  const percent = progress.percent ?? 0;
+  return (
+    <div className="rounded-2xl bg-surface px-4 py-3.5 ring-1 ring-hairline shadow-card">
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-[10.5px] font-bold uppercase tracking-wider text-ink-muted">
+            Boarding Progress
+          </p>
+          <p className="mt-0.5 flex items-baseline gap-1">
+            <span className={cn("text-2xl font-extrabold", t.text)}>
+              {progress.boarded}
+            </span>
+            <span className="text-[14px] text-ink-subtle">
+              / {expected ?? "—"}
+            </span>
+          </p>
+        </div>
+        {expected !== null && (
+          <div
+            className={cn(
+              "rounded-xl px-2.5 py-1.5 text-center ring-1",
+              t.bg,
+              t.ring,
+            )}
+          >
+            <p
+              className={cn(
+                "text-[10px] font-bold uppercase tracking-wider",
+                t.text,
+              )}
+            >
+              {percent}%
+            </p>
+            <p className="text-[10.5px] text-ink-muted">
+              sisa {progress.remaining}
+            </p>
+          </div>
+        )}
+      </div>
+      {expected !== null ? (
+        <div className="mt-2.5 h-2 overflow-hidden rounded-full bg-surface-2 ring-1 ring-hairline">
+          <div
+            className={cn("h-full rounded-full transition-all", t.bar)}
+            style={{ width: `${percent}%` }}
+          />
+        </div>
+      ) : (
+        <p className="mt-2 rounded-lg bg-surface-2 px-2 py-1.5 text-[11.5px] text-ink-muted ring-1 ring-hairline">
+          Expected PAX belum diset.
+        </p>
+      )}
+    </div>
+  );
+}
 
 function Info({
   icon,

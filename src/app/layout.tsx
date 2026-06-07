@@ -13,18 +13,30 @@ export const metadata: Metadata = {
   appleWebApp: {
     capable: true,
     title: "AFVS",
-    statusBarStyle: "default",
+    statusBarStyle: "black-translucent",
   },
   icons: {
     icon: "/icons/icon.svg",
-    apple: "/icons/icon.svg",
+    apple: [
+      { url: "/icons/icon.svg", sizes: "180x180", type: "image/svg+xml" },
+    ],
+  },
+  formatDetection: {
+    telephone: false,
+    email: false,
+    address: false,
   },
 };
 
 export const viewport: Viewport = {
-  themeColor: "#2563eb",
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#2563eb" },
+    { media: "(prefers-color-scheme: dark)", color: "#0b1a2e" },
+  ],
   width: "device-width",
   initialScale: 1,
+  maximumScale: 5,
+  viewportFit: "cover",
 };
 
 export default function RootLayout({

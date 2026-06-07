@@ -24,8 +24,11 @@ import {
 } from "@/lib/types";
 import { getFlights, getScanEvents, getSession } from "@/lib/storage";
 import { canManageFlights } from "@/lib/auth";
-import { todayDateString } from "@/lib/utils";
+import { cn, todayDateString } from "@/lib/utils";
 import { PageHero, HeroChip } from "@/components/layout/PageHero";
+import { LargeTitle } from "@/components/mobile/LargeTitle";
+import { ListSection } from "@/components/mobile/GroupedList";
+import { SegmentedControl } from "@/components/mobile/SegmentedControl";
 
 type RangePreset = "today" | "7d" | "30d" | "all";
 
@@ -169,7 +172,174 @@ export default function AnalyticsPage() {
 
   return (
     <AppShell>
-      <div className="space-y-6">
+      {/* ---------- MOBILE ---------- */}
+      <div className="space-y-4 lg:hidden">
+        <LargeTitle
+          eyebrow="Analitik"
+          title="Statistik"
+          subtitle="Aktivitas scan & distribusi hasil"
+        />
+
+        <SegmentedControl<RangePreset>
+          value={range}
+          onChange={setRange}
+          size="sm"
+          options={[
+            { value: "today", label: "Hari ini" },
+            { value: "7d", label: "7 hari" },
+            { value: "30d", label: "30 hari" },
+            { value: "all", label: "Semua" },
+          ]}
+        />
+
+        <div className="grid grid-cols-2 gap-2">
+          <AnalyticsKpi
+            label="Total scan"
+            value={summary.total}
+            tone="indigo"
+            icon={<TrendingUp className="h-3.5 w-3.5" />}
+          />
+          <AnalyticsKpi
+            label="Valid"
+            value={summary.valid}
+            tone="emerald"
+            icon={<Plane className="h-3.5 w-3.5" />}
+          />
+          <AnalyticsKpi
+            label="Duplikat"
+            value={summary.dup}
+            tone="amber"
+            icon={<Users className="h-3.5 w-3.5" />}
+          />
+          <AnalyticsKpi
+            label="Success rate"
+            value={`${summary.successRate}%`}
+            tone="violet"
+            icon={<TrendingUp className="h-3.5 w-3.5" />}
+          />
+        </div>
+
+        {summary.total === 0 ? (
+          <div className="rounded-2xl bg-surface ring-1 ring-hairline shadow-card px-5 py-10 text-center">
+            <span className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-blue-100 text-blue-700">
+              <BarChart3 className="h-5 w-5" />
+            </span>
+            <p className="mt-3 text-[15px] font-semibold text-ink">
+              Belum ada data untuk rentang ini
+            </p>
+            <p className="mt-1 text-[12.5px] text-ink-muted">
+              Ubah rentang atau jalankan scan untuk melihat statistik.
+            </p>
+          </div>
+        ) : (
+          <>
+            <ListSection header="Scan per Jam (0–23)">
+              <div className="p-3">
+                <MobileHourly data={hourly} />
+              </div>
+            </ListSection>
+
+            <ListSection header="Distribusi Status">
+              <div className="space-y-1.5 px-3 py-2.5">
+                {statusDist.map((d) => {
+                  const pct = Math.round((d.count / summary.total) * 100);
+                  return (
+                    <div key={d.status}>
+                      <div className="flex items-center justify-between text-[12px]">
+                        <span className="flex items-center gap-2 truncate">
+                          <span
+                            className="h-2.5 w-2.5 shrink-0 rounded-sm"
+                            style={{ background: STATUS_COLORS[d.status] }}
+                          />
+                          <span className="truncate text-ink">
+                            {STATUS_LABEL[d.status]}
+                          </span>
+                        </span>
+                        <span className="shrink-0 font-semibold tabular-nums text-ink">
+                          {d.count}
+                          <span className="ml-1 text-[10.5px] font-normal text-ink-subtle">
+                            ({pct}%)
+                          </span>
+                        </span>
+                      </div>
+                      <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-hairline/60">
+                        <div
+                          className="h-full rounded-full transition-all"
+                          style={{
+                            width: `${pct}%`,
+                            background: STATUS_COLORS[d.status],
+                          }}
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </ListSection>
+
+            {topUsers.length > 0 && (
+              <ListSection header="Top User">
+                {topUsers.map((u, i) => (
+                  <div
+                    key={u.user}
+                    className="flex items-center gap-3 px-3.5 py-2.5"
+                  >
+                    <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-amber-100 text-[11px] font-bold text-amber-700">
+                      {i + 1}
+                    </span>
+                    <span className="min-w-0 flex-1 truncate text-[14px] font-semibold text-ink">
+                      {u.user}
+                    </span>
+                    <span className="shrink-0 text-[13px] font-semibold tabular-nums text-ink">
+                      {u.count}
+                    </span>
+                    <span className="shrink-0 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 ring-1 ring-emerald-200">
+                      {u.valid} valid
+                    </span>
+                  </div>
+                ))}
+              </ListSection>
+            )}
+
+            {topFlights.length > 0 && (
+              <ListSection header="Top Flight">
+                {topFlights.map((f, i) => {
+                  const rowInner = (
+                    <div className="flex items-center gap-3 px-3.5 py-2.5">
+                      <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-blue-100 text-[11px] font-bold text-blue-700">
+                        {i + 1}
+                      </span>
+                      <span className="min-w-0 flex-1 truncate text-[14px] font-semibold text-ink">
+                        {f.label}
+                      </span>
+                      <span className="shrink-0 text-[13px] font-semibold tabular-nums text-ink">
+                        {f.count}
+                      </span>
+                      <span className="shrink-0 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 ring-1 ring-emerald-200">
+                        {f.valid} valid
+                      </span>
+                    </div>
+                  );
+                  return f.flight ? (
+                    <Link
+                      key={f.key}
+                      href={`/flights/${f.flight.id}`}
+                      className="block transition active:bg-surface-2"
+                    >
+                      {rowInner}
+                    </Link>
+                  ) : (
+                    <div key={f.key}>{rowInner}</div>
+                  );
+                })}
+              </ListSection>
+            )}
+          </>
+        )}
+      </div>
+
+      {/* ---------- DESKTOP ---------- */}
+      <div className="space-y-6 hidden lg:block">
         <PageHero
           tone="indigo"
           eyebrow="Analitik"
@@ -609,4 +779,76 @@ function arcPath(
     `A ${ir} ${ir} 0 ${large} 0 ${xi2} ${yi2}`,
     "Z",
   ].join(" ");
+}
+
+const ANALYTICS_KPI_TONE: Record<
+  "indigo" | "emerald" | "amber" | "violet",
+  { icon: string; value: string }
+> = {
+  indigo: { icon: "bg-indigo-100 text-indigo-700", value: "text-indigo-700" },
+  emerald: { icon: "bg-emerald-100 text-emerald-700", value: "text-emerald-700" },
+  amber: { icon: "bg-amber-100 text-amber-700", value: "text-amber-700" },
+  violet: { icon: "bg-violet-100 text-violet-700", value: "text-violet-700" },
+};
+
+function AnalyticsKpi({
+  label,
+  value,
+  tone,
+  icon,
+}: {
+  label: string;
+  value: number | string;
+  tone: keyof typeof ANALYTICS_KPI_TONE;
+  icon: React.ReactNode;
+}) {
+  const t = ANALYTICS_KPI_TONE[tone];
+  return (
+    <div className="rounded-2xl bg-surface ring-1 ring-hairline shadow-card px-3.5 py-3">
+      <span
+        className={cn(
+          "inline-flex h-7 w-7 items-center justify-center rounded-lg",
+          t.icon,
+        )}
+      >
+        {icon}
+      </span>
+      <p
+        className={cn(
+          "mt-2 text-[24px] font-extrabold tabular-nums leading-none",
+          t.value,
+        )}
+      >
+        {value}
+      </p>
+      <p className="mt-1 text-[11.5px] font-semibold text-ink-muted">{label}</p>
+    </div>
+  );
+}
+
+function MobileHourly({ data }: { data: number[] }) {
+  const max = Math.max(...data, 1);
+  return (
+    <div className="flex h-28 items-end gap-[2px]">
+      {data.map((v, i) => {
+        const pct = (v / max) * 100;
+        return (
+          <div key={i} className="flex-1 flex flex-col items-center gap-1">
+            <div className="flex h-24 w-full items-end">
+              <div
+                className="w-full rounded-t-sm bg-gradient-to-t from-indigo-300 to-indigo-500"
+                style={{ height: `${Math.max(pct, v > 0 ? 4 : 0)}%` }}
+                title={`${String(i).padStart(2, "0")}:00 — ${v} scan`}
+              />
+            </div>
+            {i % 4 === 0 && (
+              <span className="text-[9px] tabular-nums text-ink-subtle">
+                {String(i).padStart(2, "0")}
+              </span>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
 }

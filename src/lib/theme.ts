@@ -32,7 +32,9 @@ export function subscribeTheme(cb: (theme: ThemeMode) => void): () => void {
   return subscribeSettings((s) => cb(s.theme));
 }
 
-/** Inline script content for anti-FOUC. Reads localStorage before first paint. */
+/** Inline script content for anti-FOUC. Reads localStorage before first paint
+ *  and also syncs the meta theme-color so the mobile status bar matches the
+ *  active theme from the very first frame (no white flash). */
 export const THEME_INIT_SCRIPT = `
 (function() {
   try {
@@ -44,6 +46,16 @@ export const THEME_INIT_SCRIPT = `
     }
     document.documentElement.setAttribute("data-theme", theme);
     document.documentElement.style.colorScheme = theme === "dark" ? "dark" : "light";
+    var color = theme === "dark" ? "#0b1a2e" : "#2563eb";
+    var metas = document.querySelectorAll('meta[name="theme-color"]');
+    if (metas.length) {
+      for (var i = 0; i < metas.length; i++) metas[i].setAttribute("content", color);
+    } else {
+      var m = document.createElement("meta");
+      m.setAttribute("name", "theme-color");
+      m.setAttribute("content", color);
+      document.head.appendChild(m);
+    }
   } catch (e) {
     document.documentElement.setAttribute("data-theme", "airport");
   }

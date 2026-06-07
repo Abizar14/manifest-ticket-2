@@ -14,11 +14,19 @@ import {
   VolumeX,
   Bug,
   Camera,
+  User,
+  Calendar,
+  Route,
+  Armchair,
+  DoorOpen,
+  Printer,
+  Sparkles,
 } from "lucide-react";
 import { AppShell } from "@/components/layout/AppShell";
 import { CameraScanner } from "@/components/scan/CameraScanner";
 import { Card, CardBody, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Input";
+import { Modal } from "@/components/ui/Modal";
 import { FlightStatusBadge } from "@/components/ui/StatusBadge";
 import {
   Flight,
@@ -47,6 +55,11 @@ interface LastResult {
   passengerName: string | null;
   pnr: string | null;
   scannedAt: string;
+  origin: string | null;
+  destination: string | null;
+  gate: string | null;
+  departureDate: string | null;
+  departureTime: string | null;
 }
 
 export default function ScanPage() {
@@ -63,6 +76,7 @@ export default function ScanPage() {
   const [keyLog, setKeyLog] = useState<string[]>([]);
   const [pulseKey, setPulseKey] = useState(0);
   const [cameraOpen, setCameraOpen] = useState(false);
+  const [resultModalOpen, setResultModalOpen] = useState(false);
   const toast = useToast();
 
   useEffect(() => {
@@ -153,10 +167,17 @@ export default function ScanPage() {
       passengerName: outcome.parsed?.passengerName ?? null,
       pnr: outcome.parsed?.pnr ?? null,
       scannedAt: event.scannedAt,
+      origin: outcome.flight?.originAirport ?? null,
+      destination: outcome.flight?.destinationAirport ?? null,
+      gate: outcome.flight?.gateOrCheckpoint ?? null,
+      departureDate: outcome.flight?.departureDate ?? null,
+      departureTime: outcome.flight?.departureTime ?? null,
     });
     setRecent(getScanEvents().slice(0, 8));
     setPulseKey((k) => k + 1);
     setValue("");
+    setCameraOpen(false);
+    setResultModalOpen(true);
     setTimeout(() => inputRef.current?.focus(), 0);
   };
 
@@ -418,8 +439,444 @@ export default function ScanPage() {
         onClose={() => setCameraOpen(false)}
         onDecode={(raw) => submit(raw)}
       />
+      <ScanResultModal
+        open={resultModalOpen}
+        last={last}
+        onClose={() => {
+          setResultModalOpen(false);
+          setTimeout(() => inputRef.current?.focus(), 0);
+        }}
+        onScanAgainCamera={() => {
+          setResultModalOpen(false);
+          setCameraOpen(true);
+        }}
+      />
     </AppShell>
   );
+}
+
+function ScanResultModal({
+  open,
+  last,
+  onClose,
+  onScanAgainCamera,
+}: {
+  open: boolean;
+  last: LastResult | null;
+  onClose: () => void;
+  onScanAgainCamera: () => void;
+}) {
+  const [showDetail, setShowDetail] = useState(false);
+
+  useEffect(() => {
+    if (!open) setShowDetail(false);
+  }, [open]);
+
+  if (!last) return null;
+  const theme = getResultTheme(last.status);
+  const Icon = theme.icon;
+  const isValid = last.status === "VALID_FLIGHT";
+
+  const printPass = () => {
+    if (typeof window === "undefined") return;
+    window.print();
+  };
+
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      size="xl"
+      hideClose
+      closeOnBackdrop
+    >
+      <div className="relative -mx-5 -my-4 overflow-hidden rounded-xl">
+        {/* Soft tinted backdrop */}
+        <div
+          aria-hidden
+          className={cn(
+            "pointer-events-none absolute inset-0 -z-10 opacity-90",
+            theme.bgWash,
+          )}
+        />
+        {/* Decorative concentric circles in background */}
+        <svg
+          aria-hidden
+          viewBox="0 0 400 400"
+          className={cn(
+            "pointer-events-none absolute -left-10 top-1/2 -z-10 h-[340px] w-[340px] -translate-y-1/2 opacity-25",
+            theme.ringStroke,
+          )}
+        >
+          <circle cx="200" cy="200" r="60" fill="none" stroke="currentColor" strokeWidth="1.2" />
+          <circle cx="200" cy="200" r="110" fill="none" stroke="currentColor" strokeWidth="1" strokeDasharray="2 6" />
+          <circle cx="200" cy="200" r="160" fill="none" stroke="currentColor" strokeWidth="0.8" />
+          <circle cx="200" cy="40" r="3" fill="currentColor" />
+          <circle cx="60" cy="200" r="2.5" fill="currentColor" />
+          <circle cx="200" cy="360" r="2" fill="currentColor" />
+        </svg>
+
+        <div className="relative grid gap-6 px-6 py-7 sm:px-8 sm:py-8 md:grid-cols-[210px,1fr] md:items-center">
+          {/* Animated icon */}
+          <div className="relative mx-auto flex h-[200px] w-[200px] items-center justify-center md:mx-0">
+            {/* Ripple rings */}
+            <span
+              aria-hidden
+              className={cn(
+                "absolute inset-0 rounded-full ring-2",
+                theme.ripple,
+              )}
+              style={{ animation: "ripple 2.4s ease-out infinite" }}
+            />
+            <span
+              aria-hidden
+              className={cn(
+                "absolute inset-4 rounded-full ring-2",
+                theme.ripple,
+              )}
+              style={{ animation: "ripple 2.4s ease-out infinite", animationDelay: "0.8s" }}
+            />
+            <span
+              aria-hidden
+              className={cn(
+                "absolute inset-8 rounded-full ring-2",
+                theme.ripple,
+              )}
+              style={{ animation: "ripple 2.4s ease-out infinite", animationDelay: "1.6s" }}
+            />
+
+            {/* Decorative orbit dots */}
+            <span
+              aria-hidden
+              className={cn("absolute left-1/2 top-1/2 h-1.5 w-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full", theme.dot)}
+              style={{ "--orbit-r": "92px", animation: "orbit-dot 6s linear infinite" } as React.CSSProperties}
+            />
+            <span
+              aria-hidden
+              className={cn("absolute left-1/2 top-1/2 h-1 w-1 -translate-x-1/2 -translate-y-1/2 rounded-full", theme.dot)}
+              style={{ "--orbit-r": "76px", animation: "orbit-dot 4s linear infinite reverse" } as React.CSSProperties}
+            />
+
+            {/* Center badge */}
+            <div
+              className={cn(
+                "relative flex h-[110px] w-[110px] items-center justify-center rounded-[28px] shadow-[0_18px_40px_-10px_rgba(0,0,0,0.25)] animate-check-pop",
+                theme.badgeBg,
+              )}
+            >
+              <span
+                aria-hidden
+                className="absolute inset-1 rounded-[24px] bg-white/15 backdrop-blur-sm"
+              />
+              <Icon className="relative h-14 w-14 text-white drop-shadow-[0_2px_6px_rgba(0,0,0,0.25)]" strokeWidth={2.5} />
+            </div>
+
+            {/* Top notch dot */}
+            <span
+              aria-hidden
+              className={cn(
+                "absolute -top-1 left-1/2 h-2 w-2 -translate-x-1/2 rounded-full ring-2 ring-white",
+                theme.dot,
+              )}
+            />
+          </div>
+
+          {/* Content */}
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <span className="text-[10.5px] font-bold uppercase tracking-[0.18em] text-slate-500">
+                Status Validasi
+              </span>
+              <span className={cn("inline-flex items-center gap-1 text-[22px] font-extrabold tracking-tight sm:text-[26px]", theme.titleText)}>
+                {theme.title.toUpperCase()}
+                <span className={cn("ml-0.5 inline-flex h-5 w-5 items-center justify-center rounded-full", theme.badgeBg)}>
+                  <Icon className="h-3 w-3 text-white" strokeWidth={3} />
+                </span>
+              </span>
+            </div>
+
+            <p className="mt-1 text-[13.5px] text-slate-600">
+              {theme.tagline ?? last.message}
+            </p>
+
+            {/* Top chip row: Penumpang / Flight / Tanggal */}
+            <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-3">
+              <DetailChip
+                icon={<User className="h-3.5 w-3.5" />}
+                label="Penumpang"
+                value={last.passengerName ?? "—"}
+                iconBg="bg-slate-100 text-slate-600"
+              />
+              <DetailChip
+                icon={<Plane className="h-3.5 w-3.5" />}
+                label="Flight"
+                value={last.flightNumber ?? "—"}
+                iconBg="bg-blue-100 text-blue-600"
+              />
+              <DetailChip
+                icon={<Calendar className="h-3.5 w-3.5" />}
+                label="Tanggal"
+                value={formatShortDate(last.departureDate)}
+                iconBg="bg-violet-100 text-violet-600"
+              />
+            </div>
+
+            {/* Bottom chip row: Rute / Seat / Gate / Waktu */}
+            <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
+              <DetailChip
+                icon={<Route className="h-3.5 w-3.5" />}
+                label="Rute"
+                value={
+                  last.origin && last.destination
+                    ? `${last.origin} → ${last.destination}`
+                    : "—"
+                }
+                iconBg="bg-cyan-100 text-cyan-600"
+              />
+              <DetailChip
+                icon={<Armchair className="h-3.5 w-3.5" />}
+                label="Seat"
+                value={last.seat ?? "—"}
+                iconBg="bg-amber-100 text-amber-600"
+              />
+              <DetailChip
+                icon={<DoorOpen className="h-3.5 w-3.5" />}
+                label="Gate"
+                value={last.gate ?? "—"}
+                iconBg="bg-rose-100 text-rose-600"
+              />
+              <DetailChip
+                icon={<Clock className="h-3.5 w-3.5" />}
+                label="Waktu"
+                value={last.departureTime ?? formatTime(last.scannedAt).slice(0, 5)}
+                iconBg="bg-emerald-100 text-emerald-600"
+              />
+            </div>
+
+            {/* Detail expansion */}
+            {showDetail && (
+              <div className="mt-3 animate-fade-up rounded-xl bg-white/70 p-3 ring-1 ring-slate-200 backdrop-blur-sm">
+                <p className="text-[10.5px] font-bold uppercase tracking-wider text-slate-500">
+                  Detail Tambahan
+                </p>
+                <dl className="mt-1.5 grid grid-cols-2 gap-2 text-[12px]">
+                  <div>
+                    <dt className="text-slate-500">PNR</dt>
+                    <dd className="font-semibold text-slate-800">{last.pnr ?? "—"}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-slate-500">Scan jam</dt>
+                    <dd className="font-semibold text-slate-800">{formatTime(last.scannedAt)}</dd>
+                  </div>
+                  <div className="col-span-2">
+                    <dt className="text-slate-500">Pesan</dt>
+                    <dd className="font-medium text-slate-700">{last.message}</dd>
+                  </div>
+                  <div className="col-span-2">
+                    <dt className="text-slate-500">Barcode</dt>
+                    <dd>
+                      <code className="mt-0.5 block break-all rounded-md bg-slate-900 px-2 py-1.5 text-[11px] text-emerald-300">
+                        {last.raw || "(empty)"}
+                      </code>
+                    </dd>
+                  </div>
+                </dl>
+              </div>
+            )}
+
+            {/* Actions */}
+            <div className="mt-5 flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setShowDetail((v) => !v)}
+                className="inline-flex items-center gap-1.5 rounded-xl bg-white px-4 py-2.5 text-[12.5px] font-semibold text-slate-700 ring-1 ring-slate-200 shadow-sm transition hover:bg-slate-50 hover:ring-slate-300"
+              >
+                {showDetail ? "Sembunyikan Detail" : "Lihat Detail"}
+              </button>
+              {isValid ? (
+                <button
+                  type="button"
+                  onClick={printPass}
+                  className={cn(
+                    "group inline-flex items-center gap-1.5 rounded-xl px-4 py-2.5 text-[12.5px] font-bold text-white shadow-[0_10px_24px_-6px_rgba(16,185,129,0.55)] ring-1 transition hover:-translate-y-0.5 hover:shadow-[0_14px_28px_-6px_rgba(16,185,129,0.7)]",
+                    theme.ctaBg,
+                    theme.ctaRing,
+                  )}
+                >
+                  <Printer className="h-3.5 w-3.5" />
+                  Cetak / Simpan
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={onScanAgainCamera}
+                  className={cn(
+                    "inline-flex items-center gap-1.5 rounded-xl px-4 py-2.5 text-[12.5px] font-bold text-white shadow-sm ring-1 transition hover:-translate-y-0.5",
+                    theme.ctaBg,
+                    theme.ctaRing,
+                  )}
+                >
+                  <Camera className="h-3.5 w-3.5" />
+                  Scan Ulang
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={onClose}
+                className="inline-flex items-center gap-1.5 rounded-xl bg-slate-900/5 px-3.5 py-2.5 text-[12.5px] font-semibold text-slate-600 transition hover:bg-slate-900/10"
+              >
+                Tutup
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+function DetailChip({
+  icon,
+  label,
+  value,
+  iconBg,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: string;
+  iconBg: string;
+}) {
+  return (
+    <div className="flex items-center gap-2.5 rounded-xl bg-white/85 px-3 py-2 ring-1 ring-slate-200/70 shadow-sm backdrop-blur-sm">
+      <span className={cn("flex h-7 w-7 shrink-0 items-center justify-center rounded-lg ring-1 ring-inset", iconBg)}>
+        {icon}
+      </span>
+      <div className="min-w-0 leading-tight">
+        <p className="text-[9.5px] font-bold uppercase tracking-[0.12em] text-slate-500">
+          {label}
+        </p>
+        <p className="truncate text-[13px] font-bold text-slate-800">{value}</p>
+      </div>
+    </div>
+  );
+}
+
+function formatShortDate(iso: string | null): string {
+  if (!iso) return "—";
+  try {
+    const d = new Date(iso + "T00:00:00");
+    return d.toLocaleDateString("id-ID", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+    });
+  } catch {
+    return iso;
+  }
+}
+
+interface ResultTheme {
+  icon: typeof CheckCircle2;
+  title: string;
+  tagline: string;
+  bgWash: string;
+  ringStroke: string;
+  ripple: string;
+  dot: string;
+  badgeBg: string;
+  titleText: string;
+  ctaBg: string;
+  ctaRing: string;
+}
+
+function getResultTheme(status: ScanResultStatus): ResultTheme {
+  switch (status) {
+    case "VALID_FLIGHT":
+      return {
+        icon: CheckCircle2,
+        title: "Valid Flight",
+        tagline: "Boarding pass valid. Selamat terbang!",
+        bgWash: "bg-gradient-to-br from-emerald-50 via-white to-teal-50",
+        ringStroke: "text-emerald-400",
+        ripple: "ring-emerald-300/60",
+        dot: "bg-emerald-400",
+        badgeBg: "bg-gradient-to-br from-emerald-400 to-teal-500",
+        titleText: "text-emerald-600",
+        ctaBg: "bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600",
+        ctaRing: "ring-emerald-300/60",
+      };
+    case "DUPLICATE_SCAN":
+      return {
+        icon: CopyCheck,
+        title: "Duplicate Scan",
+        tagline: "Boarding pass ini sudah pernah discan sebelumnya.",
+        bgWash: "bg-gradient-to-br from-amber-50 via-white to-orange-50",
+        ringStroke: "text-amber-400",
+        ripple: "ring-amber-300/60",
+        dot: "bg-amber-400",
+        badgeBg: "bg-gradient-to-br from-amber-400 to-orange-500",
+        titleText: "text-amber-600",
+        ctaBg: "bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600",
+        ctaRing: "ring-amber-300/60",
+      };
+    case "FLIGHT_NOT_TODAY":
+      return {
+        icon: AlertTriangle,
+        title: "Bukan Hari Ini",
+        tagline: "Tanggal penerbangan tidak sesuai dengan hari ini.",
+        bgWash: "bg-gradient-to-br from-rose-50 via-white to-pink-50",
+        ringStroke: "text-rose-400",
+        ripple: "ring-rose-300/60",
+        dot: "bg-rose-400",
+        badgeBg: "bg-gradient-to-br from-rose-400 to-pink-500",
+        titleText: "text-rose-600",
+        ctaBg: "bg-gradient-to-r from-rose-500 to-pink-500 hover:from-rose-600 hover:to-pink-600",
+        ctaRing: "ring-rose-300/60",
+      };
+    case "FLIGHT_NOT_ACTIVE":
+      return {
+        icon: AlertTriangle,
+        title: "Flight Tidak Aktif",
+        tagline: "Status flight tidak memperbolehkan validasi saat ini.",
+        bgWash: "bg-gradient-to-br from-rose-50 via-white to-pink-50",
+        ringStroke: "text-rose-400",
+        ripple: "ring-rose-300/60",
+        dot: "bg-rose-400",
+        badgeBg: "bg-gradient-to-br from-rose-400 to-pink-500",
+        titleText: "text-rose-600",
+        ctaBg: "bg-gradient-to-r from-rose-500 to-pink-500 hover:from-rose-600 hover:to-pink-600",
+        ctaRing: "ring-rose-300/60",
+      };
+    case "UNKNOWN_FLIGHT":
+      return {
+        icon: XCircle,
+        title: "Flight Tidak Dikenal",
+        tagline: "Flight number tidak ditemukan di sistem.",
+        bgWash: "bg-gradient-to-br from-rose-50 via-white to-pink-50",
+        ringStroke: "text-rose-400",
+        ripple: "ring-rose-300/60",
+        dot: "bg-rose-400",
+        badgeBg: "bg-gradient-to-br from-rose-400 to-pink-500",
+        titleText: "text-rose-600",
+        ctaBg: "bg-gradient-to-r from-rose-500 to-pink-500 hover:from-rose-600 hover:to-pink-600",
+        ctaRing: "ring-rose-300/60",
+      };
+    case "INVALID_BARCODE":
+    default:
+      return {
+        icon: XCircle,
+        title: "Barcode Invalid",
+        tagline: "Format barcode tidak dapat dibaca. Coba scan ulang.",
+        bgWash: "bg-gradient-to-br from-rose-50 via-white to-pink-50",
+        ringStroke: "text-rose-400",
+        ripple: "ring-rose-300/60",
+        dot: "bg-rose-400",
+        badgeBg: "bg-gradient-to-br from-rose-400 to-pink-500",
+        titleText: "text-rose-600",
+        ctaBg: "bg-gradient-to-r from-rose-500 to-pink-500 hover:from-rose-600 hover:to-pink-600",
+        ctaRing: "ring-rose-300/60",
+      };
+  }
 }
 
 function ResultCard({ last }: { last: LastResult | null }) {

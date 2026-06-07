@@ -35,6 +35,11 @@ import { useCountUp } from "@/lib/useCountUp";
 import { useToast } from "@/components/ui/Toast";
 import { PageHero, HeroChip } from "@/components/layout/PageHero";
 import { Pagination } from "@/components/ui/Pagination";
+import { LargeTitle } from "@/components/mobile/LargeTitle";
+import { ListSection } from "@/components/mobile/GroupedList";
+import { SegmentedControl } from "@/components/mobile/SegmentedControl";
+import { EventRow } from "@/components/mobile/EventRow";
+import { downloadXlsx, type XlsxTone } from "@/lib/xlsxExport";
 
 const STATUSES: ScanResultStatus[] = [
   "VALID_FLIGHT",
@@ -171,60 +176,228 @@ export default function ScanEventsPage() {
     setUserFilter("");
   };
 
-  const onExport = () => {
+  const onExport = async () => {
     if (filtered.length === 0) {
       toast.info("Tidak ada event untuk di-export.");
       return;
     }
-    const rows = [
-      [
-        "Waktu",
-        "Flight",
-        "PNR",
-        "Seat",
-        "Tiket",
-        "Penumpang",
-        "Status",
-        "Pesan",
-        "Petugas",
-        "Barcode",
-      ],
-      ...filtered.map((e) => [
-        e.scannedAt,
-        e.parsedFlightNumber ?? "",
-        e.parsedPnr ?? "",
-        e.parsedSeatNumber ?? "",
-        e.parsedTicketNumber ?? "",
-        e.parsedPassengerName ?? "",
-        e.resultStatus,
-        e.message,
-        e.scannedBy,
-        e.rawBarcode,
-      ]),
-    ];
-    const csv = rows
-      .map((row) =>
-        row
-          .map((cell) => {
-            const s = String(cell ?? "");
-            return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-          })
-          .join(","),
-      )
-      .join("\n");
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `scan_events_${todayDateString()}.csv`;
-    a.click();
-    setTimeout(() => URL.revokeObjectURL(url), 0);
-    toast.success(`${filtered.length} event di-export.`);
+
+    let rangeLabel = "Semua waktu";
+    if (datePreset === "today") rangeLabel = `Hari ini (${today})`;
+    else if (datePreset === "custom") {
+      const f = dateFrom || "—";
+      const t = dateTo || "—";
+      rangeLabel = `${f} s/d ${t}`;
+    }
+    const validN = filtered.filter((e) => e.resultStatus === "VALID_FLIGHT").length;
+    const dupN = filtered.filter((e) => e.resultStatus === "DUPLICATE_SCAN").length;
+    const rejN = filtered.length - validN - dupN;
+
+    const statusTone = (s: string): XlsxTone => {
+      if (s === "VALID_FLIGHT") return "success";
+      if (s === "DUPLICATE_SCAN") return "warning";
+      return "danger";
+    };
+
+    try {
+      await downloadXlsx({
+        filename: `ScanEvents_${todayDateString()}.xlsx`,
+        sheetName: "Scan Events",
+        title: "RIWAYAT SCAN BOARDING PASS",
+        subtitle: `${rangeLabel} · ${filtered.length} event · ${validN} valid · ${dupN} duplikat · ${rejN} ditolak`,
+        meta: [
+          { label: "Rentang waktu", value: rangeLabel },
+          {
+            label: "Status filter",
+            value: statusFilter === "ALL" ? "Semua" : statusFilter,
+          },
+          { label: "Flight filter", value: flightFilter || "(semua)" },
+          { label: "Petugas filter", value: userFilter || "(semua)" },
+          { label: "Pencarian", value: search || "(kosong)" },
+          { label: "Termasuk arsip", value: includeArchive ? "Ya" : "Tidak" },
+          { label: "Total event", value: filtered.length },
+          { label: "  • Valid", value: validN },
+          { label: "  • Duplikat", value: dupN },
+          { label: "  • Ditolak", value: rejN },
+          {
+            label: "Dicetak",
+            value: formatDateTime(new Date().toISOString()),
+          },
+        ],
+        columns: [
+          { header: "No.", width: 6, align: "center" },
+          { header: "Waktu", width: 20, align: "left" },
+          { header: "Flight", width: 10, align: "center" },
+          { header: "PNR", width: 10, align: "center" },
+          { header: "Seat", width: 8, align: "center" },
+          { header: "Tiket / SEQ", width: 14, align: "center" },
+          { header: "Penumpang", width: 24, align: "left" },
+          { header: "Status", width: 16, align: "center" },
+          { header: "Pesan", width: 32, align: "left" },
+          { header: "Petugas", width: 18, align: "left" },
+          { header: "Barcode", width: 30, align: "left" },
+        ],
+        rows: filtered.map((e, i) => [
+          i + 1,
+          formatDateTime(e.scannedAt),
+          { value: e.parsedFlightNumber ?? "", tone: "info" as const },
+          { value: e.parsedPnr ?? "", tone: "mono" as const },
+          { value: e.parsedSeatNumber ?? "", tone: "info" as const },
+          { value: e.parsedTicketNumber ?? "", tone: "mono" as const },
+          e.parsedPassengerName ?? "",
+          { value: e.resultStatus, tone: statusTone(e.resultStatus) },
+          e.message,
+          e.scannedBy,
+          { value: e.rawBarcode, tone: "mono" as const },
+        ]),
+        totals: [
+          "TOTAL",
+          `${filtered.length} event`,
+          "",
+          "",
+          "",
+          "",
+          "",
+          `${validN} ✓ / ${dupN} ⚠ / ${rejN} ✗`,
+          "",
+          "",
+          "",
+        ],
+      });
+      toast.success(`${filtered.length} event di-export.`);
+    } catch (err) {
+      toast.error("Gagal export Excel — coba lagi.");
+      console.error(err);
+    }
   };
 
   return (
     <AppShell>
-      <div className="space-y-6">
+      {/* ============ MOBILE — iOS-native layout ============ */}
+      <div className="space-y-4 lg:hidden">
+        <LargeTitle
+          eyebrow="Riwayat"
+          title="Scan Events"
+          subtitle={`${summary.total} event · ${summary.valid} valid · ${summary.dup} dup · ${summary.rejected} ditolak`}
+          trailing={
+            <button
+              type="button"
+              onClick={onExport}
+              className="flex h-9 w-9 items-center justify-center rounded-full bg-blue-600 text-white shadow-lift active:scale-95"
+              aria-label="Export Excel"
+            >
+              <Download className="h-4 w-4" />
+            </button>
+          }
+        />
+
+        <div className="grid grid-cols-4 gap-2">
+          <MiniStat tone="brand" label="Total" value={summary.total} />
+          <MiniStat tone="emerald" label="Valid" value={summary.valid} />
+          <MiniStat tone="amber" label="Dup" value={summary.dup} />
+          <MiniStat tone="rose" label="Tolak" value={summary.rejected} />
+        </div>
+
+        <div className="relative">
+          <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-ink-subtle" />
+          <Input
+            className="h-11 rounded-2xl pl-9 text-[15px]"
+            placeholder="Cari PNR / nama / barcode / petugas"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+        </div>
+
+        <SegmentedControl
+          value={datePreset}
+          onChange={(v) => setDatePreset(v as "today" | "all" | "custom")}
+          options={[
+            { value: "today", label: "Hari ini" },
+            { value: "all", label: "Semua" },
+            { value: "custom", label: "Range" },
+          ]}
+        />
+
+        {datePreset === "custom" && (
+          <div className="grid grid-cols-2 gap-2">
+            <Input
+              type="date"
+              value={dateFrom}
+              onChange={(e) => setDateFrom(e.target.value)}
+              className="h-11 rounded-2xl text-[14px]"
+            />
+            <Input
+              type="date"
+              value={dateTo}
+              onChange={(e) => setDateTo(e.target.value)}
+              className="h-11 rounded-2xl text-[14px]"
+            />
+          </div>
+        )}
+
+        <SegmentedControl
+          value={statusFilter}
+          onChange={(v) => setStatusFilter(v as ScanResultStatus | "ALL")}
+          options={[
+            { value: "ALL", label: "Semua" },
+            { value: "VALID_FLIGHT", label: "Valid" },
+            { value: "DUPLICATE_SCAN", label: "Dup" },
+            { value: "INVALID_BARCODE", label: "Invalid" },
+          ]}
+          size="sm"
+        />
+
+        <label className="flex items-center gap-2 rounded-2xl bg-surface-2 px-3 py-2.5 text-[12.5px] font-semibold text-ink-muted ring-1 ring-hairline">
+          <input
+            type="checkbox"
+            className="h-3.5 w-3.5 accent-blue-600"
+            checked={includeArchive}
+            onChange={(e) => setIncludeArchive(e.target.checked)}
+          />
+          <Filter className="h-3.5 w-3.5" />
+          Sertakan arsip (hari kemarin & sebelumnya)
+        </label>
+
+        {hasActiveFilter && (
+          <button
+            type="button"
+            onClick={clearFilters}
+            className="inline-flex items-center gap-1.5 rounded-full bg-surface-2 px-3 py-1.5 text-[12px] font-semibold text-ink-muted ring-1 ring-hairline active:bg-hairline/40"
+          >
+            <X className="h-3.5 w-3.5" />
+            Reset filter
+          </button>
+        )}
+
+        {paginated.length === 0 ? (
+          <EmptyState
+            tone="info"
+            icon={<History className="h-6 w-6" />}
+            title="Tidak ada event"
+            description="Coba ubah filter atau reset pencarian."
+          />
+        ) : (
+          <ListSection caption={`${paginated.length} dari ${filtered.length} event · halaman ${currentPage} / ${totalPages}`}>
+            {paginated.map((e) => (
+              <EventRow key={e.id} event={e} />
+            ))}
+          </ListSection>
+        )}
+
+        {filtered.length > 0 && totalPages > 1 && (
+          <Pagination
+            page={currentPage}
+            totalPages={totalPages}
+            total={filtered.length}
+            pageSize={PAGE_SIZE}
+            onPageChange={setPage}
+            label="event"
+          />
+        )}
+      </div>
+
+      {/* ============ DESKTOP — original layout ============ */}
+      <div className="hidden lg:block space-y-6">
         <PageHero
           tone="amber"
           eyebrow="Riwayat"
@@ -294,7 +467,7 @@ export default function ScanEventsPage() {
             <div className="flex items-center gap-2">
               <Button size="sm" variant="outline" onClick={onExport}>
                 <Download className="h-3.5 w-3.5" />
-                Export CSV
+                Export Excel
               </Button>
               {hasActiveFilter && (
                 <Button size="sm" variant="ghost" onClick={clearFilters}>
@@ -527,6 +700,48 @@ function Cell({ label, value }: { label: string; value: string }) {
       </p>
       <p className="truncate text-[11px] font-semibold text-slate-700">
         {value}
+      </p>
+    </div>
+  );
+}
+
+const MINI_STAT_TONE: Record<
+  "brand" | "emerald" | "amber" | "rose",
+  { bg: string; text: string; ring: string }
+> = {
+  brand: { bg: "bg-blue-50", text: "text-blue-700", ring: "ring-blue-200" },
+  emerald: {
+    bg: "bg-emerald-50",
+    text: "text-emerald-700",
+    ring: "ring-emerald-200",
+  },
+  amber: { bg: "bg-amber-50", text: "text-amber-700", ring: "ring-amber-200" },
+  rose: { bg: "bg-rose-50", text: "text-rose-700", ring: "ring-rose-200" },
+};
+
+function MiniStat({
+  label,
+  value,
+  tone,
+}: {
+  label: string;
+  value: number;
+  tone: "brand" | "emerald" | "amber" | "rose";
+}) {
+  const t = MINI_STAT_TONE[tone];
+  return (
+    <div
+      className={`rounded-2xl px-2 py-2.5 ring-1 ${t.bg} ${t.ring} text-center`}
+    >
+      <p
+        className={`text-[16px] font-extrabold leading-none tabular-nums ${t.text}`}
+      >
+        {value}
+      </p>
+      <p
+        className={`mt-1 text-[10px] font-semibold uppercase tracking-wider ${t.text}/80`}
+      >
+        {label}
       </p>
     </div>
   );

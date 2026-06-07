@@ -14,8 +14,16 @@ export function todayDateString(): string {
 }
 
 export function tomorrowDateString(): string {
+  return dateStringFromOffset(1);
+}
+
+export function yesterdayDateString(): string {
+  return dateStringFromOffset(-1);
+}
+
+export function dateStringFromOffset(offsetDays: number): string {
   const t = new Date();
-  t.setDate(t.getDate() + 1);
+  t.setDate(t.getDate() + offsetDays);
   const y = t.getFullYear();
   const m = String(t.getMonth() + 1).padStart(2, "0");
   const d = String(t.getDate()).padStart(2, "0");

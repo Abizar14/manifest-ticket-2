@@ -14,7 +14,7 @@ export interface ModalProps {
   description?: React.ReactNode;
   icon?: React.ReactNode;
   tone?: ModalTone;
-  size?: "sm" | "md" | "lg";
+  size?: "sm" | "md" | "lg" | "xl";
   children?: React.ReactNode;
   footer?: React.ReactNode;
   closeOnBackdrop?: boolean;
@@ -72,6 +72,7 @@ const SIZE: Record<NonNullable<ModalProps["size"]>, string> = {
   sm: "max-w-sm",
   md: "max-w-md",
   lg: "max-w-xl",
+  xl: "max-w-4xl",
 };
 
 export function Modal({
@@ -111,7 +112,7 @@ export function Modal({
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[100] flex items-center justify-center px-4 print:hidden"
+      className="fixed inset-0 z-[100] flex items-center justify-center overflow-y-auto px-4 py-4 print:hidden"
       role="dialog"
       aria-modal="true"
     >
@@ -126,7 +127,7 @@ export function Modal({
       {/* Dialog */}
       <div
         className={cn(
-          "relative w-full overflow-hidden rounded-2xl border border-slate-200/70 bg-white shadow-lift animate-fade-up",
+          "relative my-auto flex max-h-[calc(100dvh-2rem)] w-full flex-col overflow-hidden rounded-2xl border border-slate-200/70 bg-white shadow-lift animate-fade-up",
           SIZE[size],
         )}
         onClick={(e) => e.stopPropagation()}
@@ -134,7 +135,7 @@ export function Modal({
         {/* Accent bar */}
         <div
           className={cn(
-            "h-1 w-full bg-gradient-to-r",
+            "h-1 w-full shrink-0 bg-gradient-to-r",
             t.accent,
           )}
         />
@@ -143,7 +144,7 @@ export function Modal({
         {(title || icon) && (
           <div
             className={cn(
-              "relative flex items-start gap-3 bg-gradient-to-br px-5 py-4",
+              "relative flex shrink-0 items-start gap-3 bg-gradient-to-br px-5 py-4",
               t.headerBg,
             )}
           >
@@ -191,11 +192,15 @@ export function Modal({
         )}
 
         {/* Body */}
-        {children && <div className="px-5 py-4">{children}</div>}
+        {children && (
+          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-4">
+            {children}
+          </div>
+        )}
 
         {/* Footer */}
         {footer && (
-          <div className="flex flex-wrap items-center justify-end gap-2 border-t border-slate-100 bg-slate-50/50 px-5 py-3">
+          <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 border-t border-slate-100 bg-slate-50/50 px-5 py-3">
             {footer}
           </div>
         )}
