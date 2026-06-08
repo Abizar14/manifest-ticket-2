@@ -10,10 +10,12 @@ import {
   addScanEvent,
   getFlights,
   getScanEvents,
+  updateScanEvent,
 } from "./storage";
 import { todayDateString, uid } from "./utils";
 import { getSettings } from "./settings";
 import { getEffectiveFlightStatus } from "./flightStatus";
+import { facePhotoStore } from "./facePhotoStore";
 
 /**
  * Mendukung dua format barcode:
@@ -215,6 +217,35 @@ export function processScan(
     scannedAt: new Date().toISOString(),
   };
   addScanEvent(event);
+  return { outcome, event };
+}
+
+/**
+ * Sama dengan processScan, plus attach foto wajah dari callback getFaceBlob.
+ * Capture berjalan paralel & punya timeout pendek — jika gagal, ScanEvent
+ * tetap tersimpan tanpa foto (capture tidak boleh memblok validasi scan).
+ */
+export async function processScanWithFace(
+  raw: string,
+  scannedBy: string,
+  getFaceBlob: () => Promise<Blob | null>,
+  options?: { timeoutMs?: number },
+): Promise<{ outcome: ValidationOutcome; event: ScanEvent }> {
+  const timeoutMs = options?.timeoutMs ?? 300;
+  const { outcome, event } = processScan(raw, scannedBy);
+  try {
+    const blob = await Promise.race([
+      getFaceBlob(),
+      new Promise<null>((r) => setTimeout(() => r(null), timeoutMs)),
+    ]);
+    if (blob) {
+      await facePhotoStore.save(event.id, blob);
+      updateScanEvent(event.id, { faceCaptureId: event.id });
+      event.faceCaptureId = event.id;
+    }
+  } catch {
+    /* capture gagal — scan tetap valid */
+  }
   return { outcome, event };
 }
 

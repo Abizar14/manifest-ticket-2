@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   ScanLine,
   CheckCircle2,
@@ -21,6 +21,7 @@ import {
   DoorOpen,
   Printer,
   Sparkles,
+  Monitor,
 } from "lucide-react";
 import { AppShell } from "@/components/layout/AppShell";
 import { CameraScanner } from "@/components/scan/CameraScanner";
@@ -63,6 +64,7 @@ interface LastResult {
 }
 
 export default function ScanPage() {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const source = searchParams?.get("source");
   const inputRef = useRef<HTMLInputElement>(null);
@@ -195,6 +197,14 @@ export default function ScanPage() {
             description="Scan barcode dengan scanner USB/Bluetooth. Input tersubmit otomatis saat scanner mengirim Enter."
             actions={
               <>
+                <button
+                  onClick={() => router.push("/scan/kiosk")}
+                  className="inline-flex items-center gap-1.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 px-3 py-2 text-xs font-semibold text-white shadow-sm ring-1 ring-white/20 transition hover:shadow-lift"
+                  title="Buka mode Kiosk fullscreen (scanner USB + capture wajah)"
+                >
+                  <Monitor className="h-3.5 w-3.5" />
+                  Mode Kiosk
+                </button>
                 <button
                   onClick={() => setCameraOpen(true)}
                   className="inline-flex items-center gap-1.5 rounded-xl bg-white px-3 py-2 text-xs font-semibold text-emerald-700 shadow-sm ring-1 ring-white/40 transition hover:shadow-lift"

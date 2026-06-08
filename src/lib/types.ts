@@ -86,6 +86,7 @@ export interface ScanEvent {
   flightId: string | null;
   scannedBy: string; // userId or email
   scannedAt: string; // ISO
+  faceCaptureId?: string | null; // key di facePhotoStore (IndexedDB)
 }
 
 export interface ParsedBarcode {

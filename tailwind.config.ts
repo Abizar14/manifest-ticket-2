@@ -150,6 +150,20 @@ const config: Config = {
           "55%": { transform: "scale(1.15) rotate(2deg)", opacity: "1" },
           "100%": { transform: "scale(1) rotate(0deg)", opacity: "1" },
         },
+        "flash-once": {
+          "0%": { opacity: "0.6" },
+          "100%": { opacity: "0" },
+        },
+        "scan-line": {
+          "0%": { transform: "translateY(0)", opacity: "0" },
+          "10%": { opacity: "0.9" },
+          "90%": { opacity: "0.9" },
+          "100%": { transform: "translateY(280px)", opacity: "0" },
+        },
+        wave: {
+          "0%, 100%": { transform: "scaleY(0.35)" },
+          "50%": { transform: "scaleY(1)" },
+        },
       },
       animation: {
         "fade-up": "fade-up 0.5s ease-out both",
@@ -170,6 +184,9 @@ const config: Config = {
         ripple: "ripple 2.4s ease-out infinite",
         "orbit-dot": "orbit-dot 8s linear infinite",
         "check-pop": "check-pop 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) both",
+        "flash-once": "flash-once 0.35s ease-out forwards",
+        "scan-line": "scan-line 2.4s ease-in-out infinite",
+        wave: "wave 1.1s ease-in-out infinite",
       },
     },
   },

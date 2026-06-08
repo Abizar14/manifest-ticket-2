@@ -23,7 +23,11 @@ import {
   Palette,
   Plane,
   Moon,
+  Monitor,
+  Camera,
+  Image as ImageIcon,
 } from "lucide-react";
+import { facePhotoStore } from "@/lib/facePhotoStore";
 import type { ThemeMode } from "@/lib/theme";
 import { AppShell } from "@/components/layout/AppShell";
 import { Card, CardBody, CardHeader, CardTitle } from "@/components/ui/Card";
@@ -78,6 +82,11 @@ export default function SettingsPage() {
   const [settings, setSettings] = useState<AppSettings>(getSettings);
   const [tab, setTab] = useState<TabId>("profile");
   const [archiveCount, setArchiveCount] = useState(0);
+  const [faceUsage, setFaceUsage] = useState({ count: 0, bytes: 0 });
+
+  const refreshFaceUsage = () => {
+    facePhotoStore.estimateUsage().then(setFaceUsage).catch(() => {});
+  };
 
   useEffect(() => {
     const s = getSession();
@@ -88,6 +97,7 @@ export default function SettingsPage() {
     setSession(s);
     setSettings(getSettings());
     setArchiveCount(getScanEventsArchive().length);
+    refreshFaceUsage();
   }, [router]);
 
   const update = (patch: Partial<AppSettings>) => {
@@ -133,6 +143,24 @@ export default function SettingsPage() {
     purgeScanEventsArchive();
     setArchiveCount(0);
     toast.success("Arsip scan event dihapus.");
+  };
+
+  const onClearFaces = async () => {
+    if (faceUsage.count === 0) {
+      toast.info("Belum ada foto wajah tersimpan.");
+      return;
+    }
+    const res = await confirm({
+      title: "Hapus semua foto wajah?",
+      description: `${faceUsage.count} foto (${formatBytes(faceUsage.bytes)}) akan dihapus dari IndexedDB. Catatan scan tetap tersimpan, hanya thumbnail yang hilang.`,
+      tone: "danger",
+      destructive: true,
+      confirmLabel: "Hapus",
+    });
+    if (!res.confirmed) return;
+    await facePhotoStore.clearAll();
+    refreshFaceUsage();
+    toast.success("Semua foto wajah dihapus.");
   };
 
   const onReset = async () => {
@@ -345,6 +373,47 @@ export default function SettingsPage() {
                     }
                   />
                 }
+              />
+            </ListSection>
+
+            <ListSection
+              header="Mode Kiosk & Capture Wajah"
+              caption="Mode Kiosk fullscreen untuk monitor gate dengan scanner USB. Capture wajah disimpan lokal di IndexedDB perangkat."
+            >
+              <ListRow
+                icon={<Camera className="h-4 w-4" />}
+                iconBg="bg-emerald-100 text-emerald-700"
+                title="Capture wajah saat scan"
+                subtitle="Foto webcam diambil otomatis tiap boarding pass di-scan."
+                trailing={
+                  <ListSwitch
+                    checked={settings.faceCaptureEnabled}
+                    onChange={(v) => update({ faceCaptureEnabled: v })}
+                    ariaLabel="Capture wajah"
+                  />
+                }
+              />
+              <ListRow
+                icon={<Monitor className="h-4 w-4" />}
+                iconBg="bg-blue-100 text-blue-700"
+                title="Auto-enter kiosk saat login"
+                subtitle="Buka /scan/kiosk langsung setelah login."
+                trailing={
+                  <ListSwitch
+                    checked={settings.kioskAutoEnter}
+                    onChange={(v) => update({ kioskAutoEnter: v })}
+                    ariaLabel="Auto-enter kiosk"
+                  />
+                }
+              />
+              <ListRow
+                icon={<ImageIcon className="h-4 w-4" />}
+                iconBg="bg-violet-100 text-violet-700"
+                title="Foto wajah tersimpan"
+                subtitle={`${faceUsage.count} foto · ${formatBytes(faceUsage.bytes)}`}
+                value={faceUsage.count > 0 ? "Hapus" : undefined}
+                onClick={faceUsage.count > 0 ? onClearFaces : undefined}
+                showChevron={faceUsage.count > 0}
               />
             </ListSection>
           </div>
@@ -605,6 +674,44 @@ export default function SettingsPage() {
                       suffix="menit"
                       onChange={(v) =>
                         update({ boardingCloseMinutesAfter: v })
+                      }
+                    />
+                  </div>
+
+                  <SectionDivider
+                    icon={<Monitor className="h-3.5 w-3.5" />}
+                    label="Mode Kiosk & Capture Wajah"
+                  />
+
+                  <div className="space-y-3">
+                    <ToggleRow
+                      icon={<Camera className="h-4 w-4" />}
+                      title="Capture wajah saat scan"
+                      description="Snapshot webcam pada setiap scan boarding pass di mode kiosk. Foto disimpan lokal."
+                      checked={settings.faceCaptureEnabled}
+                      onChange={(v) => update({ faceCaptureEnabled: v })}
+                    />
+                    <ToggleRow
+                      icon={<Monitor className="h-4 w-4" />}
+                      title="Auto-submit scanner USB"
+                      description="Setelah scanner mengirim string, langsung proses tanpa menunggu tombol Enter."
+                      checked={settings.kioskAutoEnter}
+                      onChange={(v) => update({ kioskAutoEnter: v })}
+                    />
+                    <DataRow
+                      icon={<ImageIcon className="h-4 w-4" />}
+                      title="Foto wajah tersimpan"
+                      description={`${faceUsage.count} foto · ${formatBytes(faceUsage.bytes)} di IndexedDB. Catatan scan tetap aman ketika foto dihapus.`}
+                      action={
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={onClearFaces}
+                          disabled={faceUsage.count === 0}
+                        >
+                          <Trash2 className="h-3.5 w-3.5 text-rose-600" />
+                          Hapus semua
+                        </Button>
                       }
                     />
                   </div>
@@ -976,6 +1083,16 @@ function download(filename: string, content: string, mime: string) {
   a.download = filename;
   a.click();
   setTimeout(() => URL.revokeObjectURL(url), 0);
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes <= 0) return "0 B";
+  const units = ["B", "KB", "MB", "GB"];
+  const i = Math.min(
+    units.length - 1,
+    Math.floor(Math.log(bytes) / Math.log(1024)),
+  );
+  return `${(bytes / Math.pow(1024, i)).toFixed(i === 0 ? 0 : 1)} ${units[i]}`;
 }
 
 function stamp() {

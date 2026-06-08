@@ -13,6 +13,10 @@ export interface AppSettings {
   boardingOpenMinutesBefore: number;
   boardingActiveMinutesBefore: number;
   boardingCloseMinutesAfter: number;
+  faceCaptureEnabled: boolean;
+  faceCameraDeviceId: string | null;
+  kioskAutoEnter: boolean;
+  requireFaceForScan: boolean;
 }
 
 const KEY = "afvs.settings";
@@ -27,6 +31,10 @@ const DEFAULTS: AppSettings = {
   boardingOpenMinutesBefore: 60,
   boardingActiveMinutesBefore: 30,
   boardingCloseMinutesAfter: 10,
+  faceCaptureEnabled: true,
+  faceCameraDeviceId: null,
+  kioskAutoEnter: false,
+  requireFaceForScan: true,
 };
 
 function isBrowser() {

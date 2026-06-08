@@ -40,6 +40,8 @@ import { ListSection } from "@/components/mobile/GroupedList";
 import { SegmentedControl } from "@/components/mobile/SegmentedControl";
 import { EventRow } from "@/components/mobile/EventRow";
 import { downloadXlsx, type XlsxTone } from "@/lib/xlsxExport";
+import { FaceThumb } from "@/components/scan/FaceThumb";
+import { Modal } from "@/components/ui/Modal";
 
 const STATUSES: ScanResultStatus[] = [
   "VALID_FLIGHT",
@@ -68,6 +70,7 @@ export default function ScanEventsPage() {
   const [flightFilter, setFlightFilter] = useState("");
   const [userFilter, setUserFilter] = useState("");
   const [page, setPage] = useState(1);
+  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
 
   useEffect(() => {
     setEvents(getScanEvents());
@@ -582,16 +585,26 @@ export default function ScanEventsPage() {
                       className="rounded-2xl bg-white p-3 shadow-card ring-1 ring-slate-200 animate-fade-up dark:bg-surface dark:ring-hairline"
                       style={{ animationDelay: `${idx * 18}ms` }}
                     >
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="min-w-0">
-                          <p className="text-sm font-bold text-slate-800 dark:text-ink">
-                            {e.parsedFlightNumber ?? "—"}
-                          </p>
-                          <p className="mt-0.5 text-[11px] text-slate-500 dark:text-ink-muted">
-                            {formatDateTime(e.scannedAt)}
-                          </p>
+                      <div className="flex items-start gap-3">
+                        <FaceThumb
+                          faceCaptureId={e.faceCaptureId}
+                          size={44}
+                          onClick={setLightboxUrl}
+                          alt={e.parsedPassengerName ?? "Foto wajah"}
+                        />
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="min-w-0">
+                              <p className="text-sm font-bold text-slate-800 dark:text-ink">
+                                {e.parsedFlightNumber ?? "—"}
+                              </p>
+                              <p className="mt-0.5 text-[11px] text-slate-500 dark:text-ink-muted">
+                                {formatDateTime(e.scannedAt)}
+                              </p>
+                            </div>
+                            <ScanStatusBadge status={e.resultStatus} />
+                          </div>
                         </div>
-                        <ScanStatusBadge status={e.resultStatus} />
                       </div>
                       <div className="mt-2 grid grid-cols-3 gap-2 text-[11px]">
                         <Cell label="Penumpang" value={e.parsedPassengerName ?? "—"} />
@@ -617,6 +630,7 @@ export default function ScanEventsPage() {
             <Table>
               <THead>
                 <Tr>
+                  <Th>Foto</Th>
                   <Th>Waktu</Th>
                   <Th>Flight</Th>
                   <Th>Penumpang</Th>
@@ -630,7 +644,7 @@ export default function ScanEventsPage() {
               <TBody>
                 {paginated.length === 0 ? (
                   <Tr>
-                    <Td colSpan={8} className="px-0 py-0">
+                    <Td colSpan={9} className="px-0 py-0">
                       <EmptyState
                         tone="info"
                         icon={<History className="h-6 w-6" />}
@@ -646,6 +660,14 @@ export default function ScanEventsPage() {
                       className="animate-fade-up"
                       style={{ animationDelay: `${idx * 18}ms` }}
                     >
+                      <Td>
+                        <FaceThumb
+                          faceCaptureId={e.faceCaptureId}
+                          size={40}
+                          onClick={setLightboxUrl}
+                          alt={e.parsedPassengerName ?? "Foto wajah"}
+                        />
+                      </Td>
                       <Td className="whitespace-nowrap text-slate-600">
                         {formatDateTime(e.scannedAt)}
                       </Td>
@@ -688,6 +710,24 @@ export default function ScanEventsPage() {
           </CardBody>
         </Card>
       </div>
+
+      <Modal
+        open={Boolean(lightboxUrl)}
+        onClose={() => setLightboxUrl(null)}
+        title="Foto wajah penumpang"
+        size="md"
+      >
+        {lightboxUrl && (
+          <div className="flex justify-center">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={lightboxUrl}
+              alt="Foto wajah penumpang"
+              className="max-h-[70vh] w-auto rounded-2xl object-contain ring-1 ring-slate-200 dark:ring-hairline"
+            />
+          </div>
+        )}
+      </Modal>
     </AppShell>
   );
 }

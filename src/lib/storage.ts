@@ -112,6 +112,13 @@ export function addScanEvent(event: ScanEvent) {
   saveScanEvents(list);
 }
 
+export function updateScanEvent(id: string, patch: Partial<ScanEvent>) {
+  const list = getScanEvents().map((e) =>
+    e.id === id ? { ...e, ...patch } : e,
+  );
+  saveScanEvents(list);
+}
+
 /* Scan Events Archive */
 export function getScanEventsArchive(): ScanEvent[] {
   return read<ScanEvent[]>(KEYS.scanEventsArchive, []);
