@@ -121,7 +121,7 @@ export function ConfirmProvider({ children }: { children: React.ReactNode }) {
       >
         {opts?.requireReason && (
           <label className="block">
-            <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-600">
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-600 dark:text-ink-muted">
               {opts.reasonLabel ?? "Alasan"}
               <span className="text-rose-500"> *</span>
             </span>
@@ -133,7 +133,7 @@ export function ConfirmProvider({ children }: { children: React.ReactNode }) {
                 if (reasonError) setReasonError(null);
               }}
               placeholder={opts.reasonPlaceholder ?? "Tulis alasan singkat…"}
-              className="mt-1.5 h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-800 shadow-sm transition placeholder:text-slate-400 hover:border-blue-200 focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-200"
+              className="mt-1.5 h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-800 shadow-sm transition placeholder:text-slate-400 hover:border-blue-200 focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-hairline dark:bg-surface dark:text-ink dark:placeholder:text-ink-subtle dark:hover:border-sky-500/40 dark:focus:border-sky-400 dark:focus:ring-sky-500/30"
             />
             {reasonError && (
               <span className="mt-1 inline-flex items-center gap-1 text-[11px] font-semibold text-rose-600">

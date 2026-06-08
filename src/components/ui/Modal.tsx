@@ -127,7 +127,7 @@ export function Modal({
       {/* Dialog */}
       <div
         className={cn(
-          "relative my-auto flex max-h-[calc(100dvh-2rem)] w-full flex-col overflow-hidden rounded-2xl border border-slate-200/70 bg-white shadow-lift animate-fade-up",
+          "relative my-auto flex max-h-[calc(100dvh-2rem)] w-full flex-col overflow-hidden rounded-2xl border border-slate-200/70 bg-white shadow-lift animate-fade-up dark:border-hairline dark:bg-surface",
           SIZE[size],
         )}
         onClick={(e) => e.stopPropagation()}
@@ -168,12 +168,12 @@ export function Modal({
             )}
             <div className="relative min-w-0 flex-1">
               {title && (
-                <h3 className="text-base font-semibold tracking-tight text-slate-800">
+                <h3 className="text-base font-semibold tracking-tight text-slate-800 dark:text-ink">
                   {title}
                 </h3>
               )}
               {description && (
-                <p className="mt-0.5 text-xs leading-relaxed text-slate-600">
+                <p className="mt-0.5 text-xs leading-relaxed text-slate-600 dark:text-ink-muted">
                   {description}
                 </p>
               )}
@@ -183,7 +183,7 @@ export function Modal({
                 type="button"
                 onClick={onClose}
                 aria-label="Tutup"
-                className="relative flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-slate-400 transition hover:bg-white/70 hover:text-slate-700"
+                className="relative flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-slate-400 transition hover:bg-white/70 hover:text-slate-700 dark:text-ink-subtle dark:hover:bg-white/5 dark:hover:text-ink"
               >
                 <X className="h-4 w-4" />
               </button>
@@ -200,7 +200,7 @@ export function Modal({
 
         {/* Footer */}
         {footer && (
-          <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 border-t border-slate-100 bg-slate-50/50 px-5 py-3">
+          <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 border-t border-slate-100 bg-slate-50/50 px-5 py-3 dark:border-hairline-soft dark:bg-white/5">
             {footer}
           </div>
         )}

@@ -11,6 +11,12 @@ import {
   Users,
   TrendingUp,
   ShieldAlert,
+  ShieldCheck,
+  Copy,
+  CalendarDays,
+  ChevronDown,
+  ArrowRight,
+  Medal,
 } from "lucide-react";
 import { AppShell } from "@/components/layout/AppShell";
 import { Card, CardBody, CardHeader, CardTitle } from "@/components/ui/Card";
@@ -94,13 +100,79 @@ export default function AnalyticsPage() {
   }, [filteredEvents]);
 
   const hourly = useMemo(() => {
-    const bins = new Array(24).fill(0) as number[];
+    const total = new Array(24).fill(0) as number[];
+    const valid = new Array(24).fill(0) as number[];
     for (const e of filteredEvents) {
       const h = new Date(e.scannedAt).getHours();
-      if (!isNaN(h)) bins[h]++;
+      if (!isNaN(h)) {
+        total[h]++;
+        if (e.resultStatus === "VALID_FLIGHT") valid[h]++;
+      }
     }
-    return bins;
+    return { total, valid };
   }, [filteredEvents]);
+
+  const prevSummary = useMemo(() => {
+    const now = new Date();
+    let start: Date | null = null;
+    let end: Date | null = null;
+    if (range === "today") {
+      start = new Date(now);
+      start.setDate(start.getDate() - 1);
+      start.setHours(0, 0, 0, 0);
+      end = new Date(start);
+      end.setHours(23, 59, 59, 999);
+    } else if (range === "7d") {
+      end = new Date(now);
+      end.setDate(end.getDate() - 7);
+      start = new Date(end);
+      start.setDate(start.getDate() - 7);
+    } else if (range === "30d") {
+      end = new Date(now);
+      end.setDate(end.getDate() - 30);
+      start = new Date(end);
+      start.setDate(start.getDate() - 30);
+    }
+    if (!start || !end)
+      return { total: 0, valid: 0, dup: 0, rejected: 0, successRate: 0 };
+    const startIso = start.toISOString();
+    const endIso = end.toISOString();
+    let total = 0;
+    let valid = 0;
+    let dup = 0;
+    let rejected = 0;
+    for (const e of events) {
+      if (e.scannedAt < startIso || e.scannedAt > endIso) continue;
+      total++;
+      if (e.resultStatus === "VALID_FLIGHT") valid++;
+      else if (e.resultStatus === "DUPLICATE_SCAN") dup++;
+      else rejected++;
+    }
+    const successRate = total > 0 ? Math.round((valid / total) * 100) : 0;
+    return { total, valid, dup, rejected, successRate };
+  }, [events, range]);
+
+  const trends = useMemo(() => {
+    function pct(curr: number, prev: number) {
+      if (prev === 0) return curr === 0 ? 0 : 100;
+      return Math.round(((curr - prev) / prev) * 100);
+    }
+    return {
+      total: pct(summary.total, prevSummary.total),
+      valid: pct(summary.valid, prevSummary.valid),
+      dup: pct(summary.dup, prevSummary.dup),
+      successRate: summary.successRate - prevSummary.successRate,
+    };
+  }, [summary, prevSummary]);
+
+  const prevLabel =
+    range === "today"
+      ? "kemarin"
+      : range === "7d"
+        ? "7 hari sblm"
+        : range === "30d"
+          ? "30 hari sblm"
+          : "periode sblm";
 
   const statusDist = useMemo(() => {
     const map = new Map<ScanResultStatus, number>();
@@ -235,7 +307,7 @@ export default function AnalyticsPage() {
           <>
             <ListSection header="Scan per Jam (0–23)">
               <div className="p-3">
-                <MobileHourly data={hourly} />
+                <MobileHourly data={hourly.total} />
               </div>
             </ListSection>
 
@@ -339,54 +411,65 @@ export default function AnalyticsPage() {
       </div>
 
       {/* ---------- DESKTOP ---------- */}
-      <div className="space-y-6 hidden lg:block">
-        <PageHero
-          tone="indigo"
-          eyebrow="Analitik"
-          eyebrowIcon={<BarChart3 className="h-3.5 w-3.5" />}
-          ghostIcon={<BarChart3 className="h-full w-full" strokeWidth={1.5} />}
-          title="Statistik Operasional"
-          description="Ringkasan aktivitas scan & distribusi hasil — bantu evaluasi throughput dan anomali."
-          meta={
-            <>
-              <HeroChip
-                icon={<TrendingUp className="h-3 w-3" />}
-                label="Total scan"
-                value={summary.total}
-              />
-              <HeroChip
-                icon={<Plane className="h-3 w-3" />}
-                label="Valid"
-                value={summary.valid}
-              />
-              <HeroChip
-                icon={<TrendingUp className="h-3 w-3" />}
-                label="Success"
-                value={`${summary.successRate}%`}
-              />
-            </>
-          }
-          actions={
-            <select
-              value={range}
-              onChange={(e) => setRange(e.target.value as RangePreset)}
-              className="h-10 rounded-xl border-0 bg-white/95 px-3 text-sm font-semibold text-indigo-700 ring-1 ring-white/40 focus:outline-none focus:ring-2 focus:ring-white"
-            >
-              <option value="today">Hari ini ({todayDateString()})</option>
-              <option value="7d">7 hari terakhir</option>
-              <option value="30d">30 hari terakhir</option>
-              <option value="all">Semua waktu</option>
-            </select>
-          }
-        />
+      <div className="space-y-5 hidden lg:block">
+        <section className="relative animate-fade-up overflow-hidden rounded-3xl border border-white/15 px-7 py-6 text-white shadow-lift">
+          {/* photo bg */}
+          <img
+            src="/asset-cards/card-bg-statistik.png"
+            alt=""
+            aria-hidden
+            className="pointer-events-none absolute inset-0 -z-20 h-full w-full object-cover object-center"
+          />
+          {/* soft left-side dark gradient for text legibility */}
+          <div
+            aria-hidden
+            className="pointer-events-none absolute inset-0 -z-10 bg-[linear-gradient(90deg,rgba(5,12,30,0.72)_0%,rgba(5,12,30,0.45)_45%,rgba(5,12,30,0.1)_75%,rgba(5,12,30,0)_100%)]"
+          />
+          <div className="relative flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+            <div className="min-w-0">
+              <div className="inline-flex items-center gap-1.5 rounded-full bg-white/15 px-3 py-1 text-[11px] font-semibold uppercase tracking-wider text-white/95 ring-1 ring-white/25 backdrop-blur">
+                <BarChart3 className="h-3.5 w-3.5" />
+                Analitik
+              </div>
+              <h2 className="mt-3 text-[28px] font-bold tracking-tight drop-shadow-sm">
+                Statistik Operasional
+              </h2>
+              <p className="mt-1 max-w-2xl text-sm text-white/85 drop-shadow-sm">
+                Ringkasan aktivitas scan &amp; distribusi hasil — bantu evaluasi
+                throughput dan anomali.
+              </p>
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <HeroChip
+                  icon={<TrendingUp className="h-3 w-3" />}
+                  label="Total Scan"
+                  value={summary.total}
+                />
+                <HeroChip
+                  icon={<ShieldCheck className="h-3 w-3" />}
+                  label="Valid"
+                  value={summary.valid}
+                />
+                <HeroChip
+                  icon={<TrendingUp className="h-3 w-3" />}
+                  label="Success"
+                  value={`${summary.successRate}%`}
+                />
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+              <HeroDateSelect value={range} onChange={setRange} />
+            </div>
+          </div>
+        </section>
 
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <div className="h-full animate-fade-up stagger-1">
             <StatCard
-              label="Total scan"
+              label="Total Scan"
               value={summary.total}
               tone="brand"
-              icon={<TrendingUp className="h-5 w-5" />}
+              icon={<BarChart3 className="h-5 w-5" />}
+              helper={formatDelta(trends.total, prevLabel)}
             />
           </div>
           <div className="h-full animate-fade-up stagger-2">
@@ -394,7 +477,8 @@ export default function AnalyticsPage() {
               label="Valid"
               value={summary.valid}
               tone="emerald"
-              icon={<Plane className="h-5 w-5" />}
+              icon={<ShieldCheck className="h-5 w-5" />}
+              helper={formatDelta(trends.valid, prevLabel)}
             />
           </div>
           <div className="h-full animate-fade-up stagger-3">
@@ -402,15 +486,17 @@ export default function AnalyticsPage() {
               label="Duplikat"
               value={summary.dup}
               tone="amber"
-              icon={<Users className="h-5 w-5" />}
+              icon={<Copy className="h-5 w-5" />}
+              helper={formatDelta(trends.dup, prevLabel)}
             />
           </div>
           <div className="h-full animate-fade-up stagger-4">
             <StatCard
-              label="Success rate"
+              label="Success Rate"
               value={`${summary.successRate}%`}
               tone="violet"
               icon={<TrendingUp className="h-5 w-5" />}
+              helper={formatDeltaPp(trends.successRate, prevLabel)}
             />
           </div>
         </div>
@@ -428,30 +514,36 @@ export default function AnalyticsPage() {
           </Card>
         ) : (
           <>
-            <Card className="animate-fade-up stagger-1 lift">
-              <div className="deco-blob -right-12 -top-12 h-40 w-40 bg-indigo-200" />
-              <CardHeader>
-                <CardTitle>
-                  <span className="inline-flex items-center gap-2">
-                    <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-indigo-100 text-indigo-700 ring-1 ring-indigo-200">
-                      <Clock className="h-3.5 w-3.5" />
-                    </span>
-                    Scan per Jam (0–23)
-                  </span>
-                </CardTitle>
-              </CardHeader>
-              <CardBody>
-                <HourlyBars data={hourly} />
-              </CardBody>
-            </Card>
+            <div className="grid gap-4 lg:grid-cols-[1.4fr_1fr_1fr]">
+              <Card className="animate-fade-up stagger-1 lift">
+                <CardHeader>
+                  <div className="flex items-center justify-between gap-3">
+                    <CardTitle>
+                      <span className="inline-flex items-center gap-2">
+                        <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-indigo-100 text-indigo-700 ring-1 ring-indigo-200 dark:bg-indigo-500/15 dark:text-indigo-300 dark:ring-indigo-500/30">
+                          <Clock className="h-3.5 w-3.5" />
+                        </span>
+                        Scan per Jam (0–23)
+                      </span>
+                    </CardTitle>
+                    <HeroDateSelect value={range} onChange={setRange} compact />
+                  </div>
+                </CardHeader>
+                <CardBody>
+                  <HourlyCombo
+                    total={hourly.total}
+                    valid={hourly.valid}
+                    peakTotalLabel="Total Scan"
+                    peakValidLabel="Valid Scan"
+                  />
+                </CardBody>
+              </Card>
 
-            <div className="grid gap-4 lg:grid-cols-2">
               <Card className="animate-fade-up stagger-2 lift">
-                <div className="deco-blob -right-12 -top-12 h-40 w-40 bg-emerald-200" />
                 <CardHeader>
                   <CardTitle>
                     <span className="inline-flex items-center gap-2">
-                      <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-100 text-emerald-700 ring-1 ring-emerald-200">
+                      <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-100 text-emerald-700 ring-1 ring-emerald-200 dark:bg-emerald-500/15 dark:text-emerald-300 dark:ring-emerald-500/30">
                         <PieChart className="h-3.5 w-3.5" />
                       </span>
                       Distribusi Status
@@ -460,15 +552,20 @@ export default function AnalyticsPage() {
                 </CardHeader>
                 <CardBody>
                   <StatusDonut data={statusDist} total={summary.total} />
+                  <div className="mt-3 flex items-center justify-center gap-1.5 text-[11px] font-semibold text-emerald-700 dark:text-emerald-300">
+                    <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500">
+                      <span className="absolute inset-0 rounded-full bg-emerald-500/60 animate-ping" />
+                    </span>
+                    Data real-time
+                  </div>
                 </CardBody>
               </Card>
 
               <Card className="animate-fade-up stagger-3 lift">
-                <div className="deco-blob -right-12 -top-12 h-40 w-40 bg-amber-200" />
                 <CardHeader>
                   <CardTitle>
                     <span className="inline-flex items-center gap-2">
-                      <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-amber-100 text-amber-700 ring-1 ring-amber-200">
+                      <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-amber-100 text-amber-700 ring-1 ring-amber-200 dark:bg-amber-500/15 dark:text-amber-300 dark:ring-amber-500/30">
                         <Trophy className="h-3.5 w-3.5" />
                       </span>
                       Top User
@@ -477,88 +574,64 @@ export default function AnalyticsPage() {
                 </CardHeader>
                 <CardBody>
                   {topUsers.length === 0 ? (
-                    <p className="text-sm text-slate-500">Tidak ada data.</p>
+                    <p className="text-sm text-ink-muted">Tidak ada data.</p>
                   ) : (
-                    <ul className="space-y-2">
-                      {topUsers.map((u, i) => (
-                        <li
-                          key={u.user}
-                          className="flex items-center justify-between gap-2 rounded-lg bg-slate-50/70 px-3 py-2 ring-1 ring-slate-200/70"
+                    <>
+                      <ul className="space-y-2.5">
+                        {topUsers.slice(0, 3).map((u, i) => (
+                          <TopUserRow
+                            key={u.user}
+                            rank={i + 1}
+                            user={u.user}
+                            count={u.count}
+                            valid={u.valid}
+                          />
+                        ))}
+                      </ul>
+                      <div className="mt-3 border-t border-hairline pt-2">
+                        <Link
+                          href="/scan-events"
+                          className="inline-flex items-center gap-1.5 text-[12px] font-semibold text-indigo-700 hover:text-indigo-900 dark:text-indigo-300 dark:hover:text-indigo-200"
                         >
-                          <div className="flex items-center gap-2 truncate">
-                            <span className="flex h-6 w-6 items-center justify-center rounded-full bg-amber-100 text-[11px] font-bold text-amber-700">
-                              {i + 1}
-                            </span>
-                            <span className="truncate text-sm font-semibold text-slate-700">
-                              {u.user}
-                            </span>
-                          </div>
-                          <div className="flex items-center gap-2 text-xs">
-                            <span className="font-semibold text-slate-700">
-                              {u.count}
-                            </span>
-                            <span className="rounded-full bg-emerald-50 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700 ring-1 ring-emerald-200">
-                              {u.valid} valid
-                            </span>
-                          </div>
-                        </li>
-                      ))}
-                    </ul>
+                          Lihat semua pengguna
+                          <ArrowRight className="h-3.5 w-3.5" />
+                        </Link>
+                      </div>
+                    </>
                   )}
                 </CardBody>
               </Card>
             </div>
 
             <Card className="animate-fade-up stagger-4 lift">
-              <div className="deco-blob -right-12 -top-12 h-40 w-40 bg-blue-200" />
               <CardHeader>
-                <CardTitle>
-                  <span className="inline-flex items-center gap-2">
-                    <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-blue-100 text-blue-700 ring-1 ring-blue-200">
-                      <Plane className="h-3.5 w-3.5" />
+                <div className="flex items-center justify-between gap-3">
+                  <CardTitle>
+                    <span className="inline-flex items-center gap-2">
+                      <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-blue-100 text-blue-700 ring-1 ring-blue-200 dark:bg-blue-500/15 dark:text-blue-300 dark:ring-blue-500/30">
+                        <Plane className="h-3.5 w-3.5" />
+                      </span>
+                      Top Flight
                     </span>
-                    Top Flight
-                  </span>
-                </CardTitle>
+                  </CardTitle>
+                  <Link
+                    href="/flights"
+                    className="inline-flex items-center gap-1.5 text-[12px] font-semibold text-indigo-700 hover:text-indigo-900 dark:text-indigo-300 dark:hover:text-indigo-200"
+                  >
+                    Lihat semua flight
+                    <ArrowRight className="h-3.5 w-3.5" />
+                  </Link>
+                </div>
               </CardHeader>
               <CardBody>
                 {topFlights.length === 0 ? (
-                  <p className="text-sm text-slate-500">Tidak ada data.</p>
+                  <p className="text-sm text-ink-muted">Tidak ada data.</p>
                 ) : (
-                  <ul className="grid gap-2 sm:grid-cols-2">
-                    {topFlights.map((f, i) => (
-                      <li
-                        key={f.key}
-                        className="flex items-center justify-between gap-2 rounded-lg bg-slate-50/70 px-3 py-2 ring-1 ring-slate-200/70"
-                      >
-                        <div className="flex items-center gap-2 truncate">
-                          <span className="flex h-6 w-6 items-center justify-center rounded-full bg-blue-100 text-[11px] font-bold text-blue-700">
-                            {i + 1}
-                          </span>
-                          {f.flight ? (
-                            <Link
-                              href={`/flights/${f.flight.id}`}
-                              className="truncate text-sm font-semibold text-slate-800 hover:text-blue-700"
-                            >
-                              {f.label}
-                            </Link>
-                          ) : (
-                            <span className="truncate text-sm font-semibold text-slate-700">
-                              {f.label}
-                            </span>
-                          )}
-                        </div>
-                        <div className="flex items-center gap-2 text-xs">
-                          <span className="font-semibold text-slate-700">
-                            {f.count}
-                          </span>
-                          <span className="rounded-full bg-emerald-50 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700 ring-1 ring-emerald-200">
-                            {f.valid} valid
-                          </span>
-                        </div>
-                      </li>
+                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                    {topFlights.slice(0, 4).map((f, i) => (
+                      <TopFlightCard key={f.key} rank={i + 1} f={f} />
                     ))}
-                  </ul>
+                  </div>
                 )}
               </CardBody>
             </Card>
@@ -569,91 +642,251 @@ export default function AnalyticsPage() {
   );
 }
 
-function HourlyBars({ data }: { data: number[] }) {
-  const max = Math.max(...data, 1);
+function HourlyCombo({
+  total,
+  valid,
+  peakTotalLabel,
+  peakValidLabel,
+}: {
+  total: number[];
+  valid: number[];
+  peakTotalLabel: string;
+  peakValidLabel: string;
+}) {
+  const max = Math.max(...total, ...valid, 1);
   const width = 720;
-  const height = 180;
-  const padTop = 12;
-  const padBottom = 26;
-  const padLeft = 28;
-  const padRight = 8;
+  const height = 220;
+  const padTop = 30;
+  const padBottom = 28;
+  const padLeft = 32;
+  const padRight = 16;
   const innerW = width - padLeft - padRight;
   const innerH = height - padTop - padBottom;
   const barW = innerW / 24;
+
+  const peakTotalIdx = total.reduce(
+    (best, v, i) => (v > total[best] ? i : best),
+    0,
+  );
+  const peakValidIdx = valid.reduce(
+    (best, v, i) => (v > valid[best] ? i : best),
+    0,
+  );
+
+  // path for the "Valid Scan" smooth line overlay
+  const points = valid.map((v, i) => {
+    const x = padLeft + i * barW + barW / 2;
+    const y = padTop + innerH - (v / max) * innerH;
+    return [x, y] as const;
+  });
+  const linePath = points
+    .map(([x, y], i) => (i === 0 ? `M ${x} ${y}` : `L ${x} ${y}`))
+    .join(" ");
+  // area under the line
+  const areaPath =
+    points.length > 0
+      ? `${linePath} L ${points[points.length - 1][0]} ${padTop + innerH} L ${points[0][0]} ${padTop + innerH} Z`
+      : "";
+
   return (
     <div className="overflow-x-auto">
+      {/* legend */}
+      <div className="mb-2 flex items-center gap-4 text-[11px] font-semibold text-ink-muted">
+        <span className="inline-flex items-center gap-1.5">
+          <span className="h-2.5 w-2.5 rounded-sm bg-gradient-to-b from-blue-400 to-blue-600" />
+          Total Scan
+        </span>
+        <span className="inline-flex items-center gap-1.5">
+          <span className="h-2 w-3 rounded-full bg-emerald-500" />
+          Valid Scan
+        </span>
+      </div>
+
       <svg
         viewBox={`0 0 ${width} ${height}`}
-        className="min-w-[480px] w-full"
+        className="min-w-[520px] w-full"
         role="img"
         aria-label="Distribusi scan per jam"
       >
-        {/* axis lines */}
+        <defs>
+          <linearGradient id="comboBarGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#60a5fa" />
+            <stop offset="100%" stopColor="#2563eb" />
+          </linearGradient>
+          <linearGradient id="comboAreaGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#10b981" stopOpacity="0.25" />
+            <stop offset="100%" stopColor="#10b981" stopOpacity="0" />
+          </linearGradient>
+        </defs>
+
+        {/* y-axis grid */}
         {[0, 0.25, 0.5, 0.75, 1].map((t) => {
           const y = padTop + innerH * (1 - t);
           return (
-            <g key={t}>
+            <g key={t} className="text-slate-300 dark:text-slate-600">
               <line
                 x1={padLeft}
                 x2={width - padRight}
                 y1={y}
                 y2={y}
-                stroke="#e2e8f0"
+                stroke="currentColor"
                 strokeDasharray="3 3"
               />
               <text
-                x={padLeft - 4}
+                x={padLeft - 6}
                 y={y + 3}
                 textAnchor="end"
                 fontSize="9"
-                fill="#94a3b8"
+                fill="currentColor"
+                className="text-slate-400 dark:text-slate-500"
               >
                 {Math.round(max * t)}
               </text>
             </g>
           );
         })}
-        {/* bars */}
-        {data.map((v, i) => {
+
+        {/* total bars */}
+        {total.map((v, i) => {
           const h = (v / max) * innerH;
-          const x = padLeft + i * barW + 2;
+          const x = padLeft + i * barW + 3;
           const y = padTop + innerH - h;
           return (
-            <g key={i}>
-              <rect
-                x={x}
-                y={y}
-                width={Math.max(barW - 4, 1)}
-                height={h}
-                rx={3}
-                fill="url(#barGrad)"
-              >
-                <title>
-                  {String(i).padStart(2, "0")}:00 — {v} scan
-                </title>
-              </rect>
-              {i % 3 === 0 && (
-                <text
-                  x={x + (barW - 4) / 2}
-                  y={height - 8}
-                  textAnchor="middle"
-                  fontSize="9"
-                  fill="#64748b"
-                >
-                  {String(i).padStart(2, "0")}
-                </text>
-              )}
-            </g>
+            <rect
+              key={i}
+              x={x}
+              y={y}
+              width={Math.max(barW - 6, 1)}
+              height={h}
+              rx={3}
+              fill="url(#comboBarGrad)"
+              opacity={i === peakTotalIdx ? 1 : 0.85}
+            >
+              <title>
+                {String(i).padStart(2, "0")}:00 — {v} scan
+              </title>
+            </rect>
           );
         })}
-        <defs>
-          <linearGradient id="barGrad" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#6366f1" />
-            <stop offset="100%" stopColor="#a5b4fc" />
-          </linearGradient>
-        </defs>
+
+        {/* area under valid */}
+        {areaPath && <path d={areaPath} fill="url(#comboAreaGrad)" />}
+
+        {/* valid line */}
+        <path
+          d={linePath}
+          fill="none"
+          stroke="#10b981"
+          strokeWidth="2.25"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+        {/* dots */}
+        {points.map(([x, y], i) => (
+          <circle
+            key={i}
+            cx={x}
+            cy={y}
+            r={valid[i] > 0 ? 2.5 : 0}
+            fill="#10b981"
+            stroke="#ffffff"
+            strokeWidth="1.2"
+          />
+        ))}
+
+        {/* x-axis ticks */}
+        {total.map((_, i) => {
+          if (i % 2 !== 0) return null;
+          const x = padLeft + i * barW + barW / 2;
+          return (
+            <text
+              key={i}
+              x={x}
+              y={height - 8}
+              textAnchor="middle"
+              fontSize="9"
+              fill="currentColor"
+              className="text-slate-400 dark:text-slate-500"
+            >
+              {String(i).padStart(2, "0")}
+            </text>
+          );
+        })}
+
+        {/* peak callouts */}
+        {total[peakTotalIdx] > 0 && (
+          <PeakCallout
+            x={padLeft + peakTotalIdx * barW + barW / 2}
+            y={padTop + innerH - (total[peakTotalIdx] / max) * innerH}
+            value={total[peakTotalIdx]}
+            label={peakTotalLabel}
+            color="#2563eb"
+          />
+        )}
+        {valid[peakValidIdx] > 0 && peakValidIdx !== peakTotalIdx && (
+          <PeakCallout
+            x={padLeft + peakValidIdx * barW + barW / 2}
+            y={padTop + innerH - (valid[peakValidIdx] / max) * innerH - 6}
+            value={valid[peakValidIdx]}
+            label={peakValidLabel}
+            color="#059669"
+            anchor="below"
+          />
+        )}
       </svg>
     </div>
+  );
+}
+
+function PeakCallout({
+  x,
+  y,
+  value,
+  label,
+  color,
+  anchor = "above",
+}: {
+  x: number;
+  y: number;
+  value: number;
+  label: string;
+  color: string;
+  anchor?: "above" | "below";
+}) {
+  const dy = anchor === "above" ? -18 : 22;
+  return (
+    <g>
+      <rect
+        x={x - 34}
+        y={y + dy - 12}
+        width={68}
+        height={26}
+        rx={6}
+        className="fill-white dark:fill-slate-800"
+        stroke={color}
+        strokeWidth="1.2"
+      />
+      <text
+        x={x}
+        y={y + dy - 1}
+        textAnchor="middle"
+        fontSize="10"
+        fontWeight="700"
+        fill={color}
+      >
+        {value}
+      </text>
+      <text
+        x={x}
+        y={y + dy + 9}
+        textAnchor="middle"
+        fontSize="8"
+        fill="currentColor"
+        className="text-slate-500 dark:text-slate-400"
+      >
+        {label}
+      </text>
+    </g>
   );
 }
 
@@ -683,12 +916,17 @@ function StatusDonut({
   });
 
   return (
-    <div className="flex flex-col items-center gap-4 sm:flex-row">
-      <svg viewBox={`0 0 ${size} ${size}`} className="h-44 w-44 shrink-0">
+    <div className="flex flex-col items-center gap-3 sm:flex-row sm:items-center sm:gap-4">
+      <svg viewBox={`0 0 ${size} ${size}`} className="h-40 w-40 shrink-0">
         {arcs.length === 1 ? (
           <>
             <circle cx={cx} cy={cy} r={r} fill={STATUS_COLORS[arcs[0].status]} />
-            <circle cx={cx} cy={cy} r={inner} fill="white" />
+            <circle
+              cx={cx}
+              cy={cy}
+              r={inner}
+              className="fill-white dark:fill-slate-900"
+            />
           </>
         ) : (
           arcs.map((a) => (
@@ -696,8 +934,8 @@ function StatusDonut({
               key={a.status}
               d={a.path}
               fill={STATUS_COLORS[a.status]}
-              stroke="white"
-              strokeWidth="1.5"
+              strokeWidth="2"
+              className="stroke-white dark:stroke-slate-900"
             >
               <title>
                 {STATUS_LABEL[a.status]}: {a.count} (
@@ -708,25 +946,27 @@ function StatusDonut({
         )}
         <text
           x={cx}
-          y={cy - 4}
+          y={cy - 2}
           textAnchor="middle"
-          fontSize="20"
-          fontWeight="700"
-          fill="#0f172a"
+          fontSize="28"
+          fontWeight="800"
+          fill="currentColor"
+          className="text-ink"
         >
           {total}
         </text>
         <text
           x={cx}
-          y={cy + 12}
+          y={cy + 16}
           textAnchor="middle"
-          fontSize="9"
-          fill="#64748b"
+          fontSize="10"
+          fill="currentColor"
+          className="text-ink-muted"
         >
-          total scan
+          Total Scan
         </text>
       </svg>
-      <ul className="w-full space-y-1">
+      <ul className="w-full space-y-1.5">
         {data.map((d) => {
           const pct = Math.round((d.count / total) * 100);
           return (
@@ -736,16 +976,18 @@ function StatusDonut({
             >
               <span className="flex items-center gap-2 truncate">
                 <span
-                  className="h-2.5 w-2.5 rounded-sm"
+                  className="h-2.5 w-2.5 shrink-0 rounded-full"
                   style={{ background: STATUS_COLORS[d.status] }}
                 />
-                <span className="truncate text-slate-700">
+                <span className="truncate text-ink">
                   {STATUS_LABEL[d.status]}
                 </span>
               </span>
-              <span className="font-semibold text-slate-700">
+              <span className="font-semibold tabular-nums text-ink">
                 {d.count}
-                <span className="ml-1 text-[10px] text-slate-400">({pct}%)</span>
+                <span className="ml-1 text-[10px] font-normal text-ink-subtle">
+                  ({pct}%)
+                </span>
               </span>
             </li>
           );
@@ -850,5 +1092,228 @@ function MobileHourly({ data }: { data: number[] }) {
         );
       })}
     </div>
+  );
+}
+
+function HeroDateSelect({
+  value,
+  onChange,
+  compact,
+}: {
+  value: RangePreset;
+  onChange: (v: RangePreset) => void;
+  compact?: boolean;
+}) {
+  const label =
+    value === "today"
+      ? `Hari ini (${todayDateString()})`
+      : value === "7d"
+        ? "7 hari terakhir"
+        : value === "30d"
+          ? "30 hari terakhir"
+          : "Semua waktu";
+  if (compact) {
+    return (
+      <div className="relative">
+        <CalendarDays className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-ink-muted" />
+        <select
+          value={value}
+          onChange={(e) => onChange(e.target.value as RangePreset)}
+          className="h-9 appearance-none rounded-xl bg-surface-2 pl-8 pr-8 text-[12.5px] font-semibold text-ink ring-1 ring-hairline focus:outline-none focus:ring-2 focus:ring-indigo-400"
+        >
+          <option value="today">Hari ini</option>
+          <option value="7d">7 hari</option>
+          <option value="30d">30 hari</option>
+          <option value="all">Semua</option>
+        </select>
+        <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-ink-muted" />
+      </div>
+    );
+  }
+  return (
+    <div className="relative">
+      {/* neon glow */}
+      <span
+        aria-hidden
+        className="pointer-events-none absolute -inset-[3px] rounded-2xl bg-[radial-gradient(60%_120%_at_50%_50%,rgba(56,189,248,0.65)_0%,rgba(56,189,248,0)_70%)] blur-md"
+      />
+      <span
+        aria-hidden
+        className="pointer-events-none absolute inset-0 rounded-2xl ring-2 ring-cyan-300/70 shadow-[0_0_18px_rgba(56,189,248,0.55)]"
+      />
+      <CalendarDays className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-cyan-100" />
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value as RangePreset)}
+        aria-label={label}
+        className="relative h-11 appearance-none rounded-2xl border-0 bg-slate-900/50 pl-10 pr-10 text-sm font-semibold text-white ring-1 ring-white/20 backdrop-blur focus:outline-none focus:ring-2 focus:ring-cyan-300"
+      >
+        <option value="today" className="text-slate-900">
+          Hari ini ({todayDateString()})
+        </option>
+        <option value="7d" className="text-slate-900">
+          7 hari terakhir
+        </option>
+        <option value="30d" className="text-slate-900">
+          30 hari terakhir
+        </option>
+        <option value="all" className="text-slate-900">
+          Semua waktu
+        </option>
+      </select>
+      <ChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-cyan-100" />
+    </div>
+  );
+}
+
+function formatDelta(deltaPct: number, prevLabel: string): string {
+  const sign = deltaPct > 0 ? "+" : deltaPct < 0 ? "−" : "—";
+  const abs = Math.abs(deltaPct);
+  return `${sign}${abs}% vs ${prevLabel}`;
+}
+
+function formatDeltaPp(deltaPp: number, prevLabel: string): string {
+  const sign = deltaPp > 0 ? "+" : deltaPp < 0 ? "−" : "—";
+  const abs = Math.abs(deltaPp);
+  return `${sign}${abs}pp vs ${prevLabel}`;
+}
+
+const TOP_USER_MEDAL: Record<number, string> = {
+  1: "bg-gradient-to-br from-amber-400 to-yellow-600 text-white",
+  2: "bg-gradient-to-br from-slate-300 to-slate-500 text-white",
+  3: "bg-gradient-to-br from-orange-300 to-amber-700 text-white",
+};
+
+function TopUserRow({
+  rank,
+  user,
+  count,
+  valid,
+}: {
+  rank: number;
+  user: string;
+  count: number;
+  valid: number;
+}) {
+  const pct = count > 0 ? Math.round((valid / count) * 100) : 0;
+  const medal = TOP_USER_MEDAL[rank] ?? "bg-slate-200 text-slate-700";
+  return (
+    <li className="flex items-center gap-2.5">
+      <span
+        className={cn(
+          "flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[11px] font-extrabold shadow-sm ring-1 ring-white/40",
+          medal,
+        )}
+      >
+        {rank <= 3 ? <Medal className="h-3.5 w-3.5" /> : rank}
+      </span>
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center justify-between gap-2">
+          <span className="truncate text-[12.5px] font-semibold text-ink">
+            {user}
+          </span>
+          <span className="shrink-0 text-[12px] font-bold tabular-nums text-ink">
+            {count}
+          </span>
+        </div>
+        <div className="mt-1 flex items-center gap-2">
+          <div className="relative h-1.5 flex-1 overflow-hidden rounded-full bg-hairline/60">
+            <div
+              className="h-full rounded-full bg-gradient-to-r from-emerald-400 to-emerald-600 transition-all"
+              style={{ width: `${pct}%` }}
+            />
+          </div>
+          <span className="shrink-0 rounded-full bg-emerald-50 px-1.5 py-[1px] text-[9.5px] font-bold text-emerald-700 ring-1 ring-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-300 dark:ring-emerald-500/30">
+            {valid} valid
+          </span>
+        </div>
+      </div>
+    </li>
+  );
+}
+
+function TopFlightCard({
+  rank,
+  f,
+}: {
+  rank: number;
+  f: {
+    key: string;
+    flight: Flight | null;
+    label: string;
+    count: number;
+    valid: number;
+  };
+}) {
+  const pct = f.count > 0 ? Math.round((f.valid / f.count) * 100) : 0;
+  const medal = TOP_USER_MEDAL[rank] ?? "bg-slate-200 text-slate-700";
+  const body = (
+    <div className="group relative h-full overflow-hidden rounded-2xl border border-hairline bg-gradient-to-br from-sky-50 via-white to-sky-50/30 px-3.5 py-3 shadow-card transition hover:-translate-y-0.5 hover:shadow-lift dark:from-slate-800/60 dark:via-slate-900/60 dark:to-slate-800/40">
+      {/* plane silhouette watermark */}
+      <svg
+        aria-hidden
+        viewBox="0 0 24 24"
+        className="pointer-events-none absolute -bottom-2 right-2 h-16 w-16 rotate-[18deg] fill-sky-200/60 transition-transform duration-500 group-hover:scale-110 dark:fill-sky-500/15"
+      >
+        <path d="M21 16v-2l-8-5V3.5a1.5 1.5 0 0 0-3 0V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5L21 16z" />
+      </svg>
+
+      <div className="relative flex items-start gap-2.5">
+        <span
+          className={cn(
+            "flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[11px] font-extrabold shadow-sm ring-1 ring-white/40",
+            medal,
+          )}
+        >
+          {rank}
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-[15px] font-extrabold tracking-tight text-ink">
+            {f.label}
+          </p>
+          {f.flight ? (
+            <p className="mt-0.5 truncate text-[10.5px] font-semibold uppercase tracking-wider text-ink-muted">
+              {f.flight.originAirport} → {f.flight.destinationAirport}
+              <span className="ml-1.5 font-bold text-ink/80">
+                {f.flight.departureTime}
+              </span>
+            </p>
+          ) : (
+            <p className="mt-0.5 text-[10.5px] font-semibold uppercase tracking-wider text-ink-subtle">
+              data flight tdk tersedia
+            </p>
+          )}
+        </div>
+        <div className="text-right">
+          <p className="text-[18px] font-extrabold tabular-nums leading-none text-ink">
+            {f.count}
+          </p>
+          <p className="mt-1 inline-block rounded-full bg-emerald-50 px-1.5 py-[1px] text-[9.5px] font-bold text-emerald-700 ring-1 ring-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-300 dark:ring-emerald-500/30">
+            {f.valid} valid
+          </p>
+        </div>
+      </div>
+
+      <div className="relative mt-3">
+        <div className="flex items-center justify-between text-[10px] font-semibold text-ink-muted">
+          <span>Success rate</span>
+          <span className="tabular-nums text-ink">{pct}%</span>
+        </div>
+        <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-hairline/60">
+          <div
+            className="h-full rounded-full bg-gradient-to-r from-blue-400 to-emerald-500 transition-all"
+            style={{ width: `${pct}%` }}
+          />
+        </div>
+      </div>
+    </div>
+  );
+
+  return f.flight ? (
+    <Link href={`/flights/${f.flight.id}`} className="block h-full">
+      {body}
+    </Link>
+  ) : (
+    <div className="h-full">{body}</div>
   );
 }

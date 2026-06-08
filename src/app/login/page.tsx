@@ -29,7 +29,19 @@ export default function LoginPage() {
   useEffect(() => {
     ensureSeed();
     const s = getSession();
-    if (s) router.replace("/dashboard");
+    if (s) {
+      router.replace("/dashboard");
+      return;
+    }
+    // Mobile: selalu tampilkan tata cara dulu, kecuali baru selesai onboarding
+    if (typeof window !== "undefined") {
+      const isMobile = window.matchMedia("(max-width: 1023px)").matches;
+      const params = new URLSearchParams(window.location.search);
+      const fromOnboarding = params.get("from") === "onboarding";
+      if (isMobile && !fromOnboarding) {
+        router.replace("/onboarding");
+      }
+    }
   }, [router]);
 
   const submit = (e: React.FormEvent) => {

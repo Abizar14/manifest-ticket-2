@@ -10,8 +10,18 @@ export default function Home() {
   useEffect(() => {
     ensureSeed();
     const session = getSession();
-    if (session) router.replace("/dashboard");
-    else router.replace("/login");
+    if (session) {
+      router.replace("/dashboard");
+      return;
+    }
+    if (typeof window !== "undefined") {
+      const isMobile = window.matchMedia("(max-width: 1023px)").matches;
+      if (isMobile) {
+        router.replace("/onboarding");
+        return;
+      }
+    }
+    router.replace("/login");
   }, [router]);
 
   return (

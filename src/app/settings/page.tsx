@@ -501,21 +501,21 @@ export default function SettingsPage() {
                     checked={settings.hapticOn}
                     onChange={(v) => update({ hapticOn: v })}
                   />
-                  <div className="flex items-center justify-between rounded-2xl bg-slate-50 px-4 py-3 ring-1 ring-slate-100">
+                  <div className="flex items-center justify-between rounded-2xl bg-slate-50 px-4 py-3 ring-1 ring-slate-100 dark:bg-white/5 dark:ring-hairline">
                     <div className="flex items-start gap-3">
-                      <div className="mt-0.5 flex h-8 w-8 items-center justify-center rounded-xl bg-white text-slate-600 ring-1 ring-slate-200">
+                      <div className="mt-0.5 flex h-8 w-8 items-center justify-center rounded-xl bg-white text-slate-600 ring-1 ring-slate-200 dark:bg-surface dark:text-ink-muted dark:ring-hairline">
                         <Languages className="h-4 w-4" />
                       </div>
                       <div>
-                        <p className="text-sm font-semibold text-slate-800">
+                        <p className="text-sm font-semibold text-slate-800 dark:text-ink">
                           {t("settings.pref.locale")}
                         </p>
-                        <p className="text-xs text-slate-500">
+                        <p className="text-xs text-slate-500 dark:text-ink-muted">
                           Bahasa untuk navigasi & label utama.
                         </p>
                       </div>
                     </div>
-                    <div className="inline-flex overflow-hidden rounded-xl ring-1 ring-slate-200">
+                    <div className="inline-flex overflow-hidden rounded-xl ring-1 ring-slate-200 dark:ring-hairline">
                       {(["id", "en"] as Locale[]).map((loc) => (
                         <button
                           key={loc}
@@ -524,8 +524,8 @@ export default function SettingsPage() {
                           className={cn(
                             "px-3 py-1.5 text-xs font-semibold transition",
                             settings.locale === loc
-                              ? "bg-blue-600 text-white"
-                              : "bg-white text-slate-600 hover:bg-blue-50",
+                              ? "bg-blue-600 text-white dark:bg-sky-600"
+                              : "bg-white text-slate-600 hover:bg-blue-50 dark:bg-surface dark:text-ink-muted dark:hover:bg-sky-500/10 dark:hover:text-sky-300",
                           )}
                         >
                           {loc.toUpperCase()}

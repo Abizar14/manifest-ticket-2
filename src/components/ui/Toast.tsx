@@ -191,14 +191,14 @@ function ToastViewport({
                     {t.title}
                   </p>
                 )}
-                <p className="text-sm font-medium text-slate-800">
+                <p className="text-sm font-medium text-slate-800 dark:text-ink">
                   {t.message}
                 </p>
               </div>
               <button
                 aria-label="Dismiss"
                 onClick={() => onDismiss(t.id)}
-                className="absolute right-2 top-2 rounded-md p-1 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
+                className="absolute right-2 top-2 rounded-md p-1 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 dark:text-ink-subtle dark:hover:bg-white/10 dark:hover:text-ink"
               >
                 <X className="h-3.5 w-3.5" />
               </button>

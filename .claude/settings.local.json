@@ -3,7 +3,10 @@
     "allow": [
       "Bash(npx tsc *)",
       "Bash(ipconfig)",
-      "Bash(netstat -ano)"
+      "Bash(netstat -ano)",
+      "Bash(npm run *)",
+      "Bash(taskkill //F //IM node.exe //T)",
+      "Bash(npx next *)"
     ]
   }
 }

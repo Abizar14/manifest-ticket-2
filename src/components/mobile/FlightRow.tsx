@@ -78,7 +78,7 @@ export function FlightRow({
             {flight.destinationAirport}
           </span>
           <span className="text-ink-subtle">·</span>
-          <span className="rounded-md bg-blue-50 px-1.5 py-px text-[11px] font-bold text-blue-700">
+          <span className="rounded-md bg-blue-50 px-1.5 py-px text-[11px] font-bold text-blue-700 dark:bg-sky-500/15 dark:text-sky-300">
             {flight.gateOrCheckpoint}
           </span>
         </div>

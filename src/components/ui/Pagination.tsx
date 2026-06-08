@@ -39,14 +39,14 @@ export function Pagination({
   return (
     <div
       className={cn(
-        "flex flex-col gap-3 border-t border-slate-100 pt-3 text-xs text-slate-600 sm:flex-row sm:items-center sm:justify-between",
+        "flex flex-col gap-3 border-t border-slate-100 pt-3 text-xs text-slate-600 sm:flex-row sm:items-center sm:justify-between dark:border-hairline-soft dark:text-ink-muted",
         className,
       )}
     >
       <span>
-        Menampilkan <strong className="text-slate-800">{from}</strong>–
-        <strong className="text-slate-800">{to}</strong> dari{" "}
-        <strong className="text-slate-800">{total}</strong> {label}
+        Menampilkan <strong className="text-slate-800 dark:text-ink">{from}</strong>–
+        <strong className="text-slate-800 dark:text-ink">{to}</strong> dari{" "}
+        <strong className="text-slate-800 dark:text-ink">{total}</strong> {label}
       </span>
       <nav
         className={cn(
@@ -73,7 +73,7 @@ export function Pagination({
           p === "…" ? (
             <span
               key={`gap-${i}`}
-              className="px-1.5 text-slate-400"
+              className="px-1.5 text-slate-400 dark:text-ink-subtle"
               aria-hidden
             >
               …
@@ -125,9 +125,10 @@ function PageBtn({
       className={cn(
         "inline-flex h-7 min-w-[28px] items-center justify-center rounded-md px-2 text-xs font-semibold transition",
         "ring-1 ring-slate-200 bg-white text-slate-700 hover:bg-blue-50 hover:text-blue-700 hover:ring-blue-200",
+        "dark:ring-hairline dark:bg-surface dark:text-ink-muted dark:hover:bg-sky-500/10 dark:hover:text-sky-300 dark:hover:ring-sky-500/40",
         active &&
-          "bg-blue-600 text-white ring-blue-600 hover:bg-blue-600 hover:text-white",
-        disabled && "opacity-40 cursor-not-allowed hover:bg-white hover:text-slate-700 hover:ring-slate-200",
+          "bg-blue-600 text-white ring-blue-600 hover:bg-blue-600 hover:text-white dark:bg-sky-600 dark:text-white dark:ring-sky-600 dark:hover:bg-sky-600 dark:hover:text-white",
+        disabled && "opacity-40 cursor-not-allowed hover:bg-white hover:text-slate-700 hover:ring-slate-200 dark:hover:bg-surface dark:hover:text-ink-muted dark:hover:ring-hairline",
         className,
       )}
       {...props}

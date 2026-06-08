@@ -387,13 +387,13 @@ export default function FlightsPage() {
                     >
                       <Link
                         href={`/flights/${f.id}`}
-                        className="block rounded-2xl bg-white p-3.5 shadow-card ring-1 ring-slate-200 transition active:scale-[0.99]"
+                        className="block rounded-2xl bg-white p-3.5 shadow-card ring-1 ring-slate-200 transition active:scale-[0.99] dark:bg-surface dark:ring-hairline"
                       >
                         <div className="flex items-start gap-3">
                           <AirlineLogo code={f.airlineCode} size="md" />
                           <div className="min-w-0 flex-1">
                             <div className="flex items-center justify-between gap-2">
-                              <p className="truncate text-sm font-bold text-slate-800">
+                              <p className="truncate text-sm font-bold text-slate-800 dark:text-ink">
                                 {f.flightNumber}
                               </p>
                               <EffectiveBadge
@@ -402,24 +402,24 @@ export default function FlightsPage() {
                                 settings={settings}
                               />
                             </div>
-                            <p className="mt-0.5 text-xs text-slate-500">
-                              <span className="font-medium text-slate-700">
+                            <p className="mt-0.5 text-xs text-slate-500 dark:text-ink-muted">
+                              <span className="font-medium text-slate-700 dark:text-ink/85">
                                 {f.originAirport}
                               </span>{" "}
                               →{" "}
-                              <span className="font-medium text-slate-700">
+                              <span className="font-medium text-slate-700 dark:text-ink/85">
                                 {f.destinationAirport}
                               </span>
                             </p>
-                            <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-slate-500">
-                              <span className="inline-flex items-center gap-1 rounded-full bg-slate-50 px-2 py-0.5 ring-1 ring-slate-200">
+                            <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-slate-500 dark:text-ink-muted">
+                              <span className="inline-flex items-center gap-1 rounded-full bg-slate-50 px-2 py-0.5 ring-1 ring-slate-200 dark:bg-white/5 dark:ring-hairline">
                                 <Calendar className="h-3 w-3" />
                                 {f.departureDate}
                               </span>
-                              <span className="inline-flex items-center gap-1 rounded-full bg-slate-50 px-2 py-0.5 font-mono font-semibold text-slate-700 ring-1 ring-slate-200">
+                              <span className="inline-flex items-center gap-1 rounded-full bg-slate-50 px-2 py-0.5 font-mono font-semibold text-slate-700 ring-1 ring-slate-200 dark:bg-white/5 dark:text-ink dark:ring-hairline">
                                 {f.departureTime}
                               </span>
-                              <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-0.5 font-semibold text-blue-700 ring-1 ring-blue-200">
+                              <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-0.5 font-semibold text-blue-700 ring-1 ring-blue-200 dark:bg-sky-500/15 dark:text-sky-300 dark:ring-sky-500/30">
                                 {f.gateOrCheckpoint}
                               </span>
                             </div>
