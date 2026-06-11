@@ -65,8 +65,11 @@ export function getEffectiveFlightStatus(
   now: Date,
   settings: Pick<
     AppSettings,
+    | "boardingOpenEnabled"
     | "boardingOpenMinutesBefore"
+    | "boardingActiveEnabled"
     | "boardingActiveMinutesBefore"
+    | "boardingCloseEnabled"
     | "boardingCloseMinutesAfter"
   >,
 ): EffectiveStatus {
@@ -129,6 +132,10 @@ export function getEffectiveFlightStatus(
     };
   }
 
+  const openEnabled = settings.boardingOpenEnabled !== false;
+  const activeEnabled = settings.boardingActiveEnabled !== false;
+  const closeEnabled = settings.boardingCloseEnabled !== false;
+
   const openBefore = Math.max(0, settings.boardingOpenMinutesBefore);
   const activeBefore = Math.max(
     0,
@@ -136,7 +143,18 @@ export function getEffectiveFlightStatus(
   );
   const closeAfter = Math.max(0, settings.boardingCloseMinutesAfter);
 
-  if (minutesFromDeparture < -openBefore) {
+  // Buka boarding off → flight tidak otomatis OPEN sebelum STD.
+  // Sebelum STD tetap dianggap DRAFT sampai supervisor menaikkan ke OPEN manual.
+  if (!openEnabled && minutesFromDeparture < 0) {
+    return {
+      status: "DRAFT",
+      reason: "BEFORE_OPEN",
+      minutesFromDeparture,
+      description: "Buka boarding otomatis dinonaktifkan — buka manual.",
+    };
+  }
+
+  if (openEnabled && minutesFromDeparture < -openBefore) {
     return {
       status: "DRAFT",
       reason: "BEFORE_OPEN",
@@ -144,6 +162,24 @@ export function getEffectiveFlightStatus(
       description: `Boarding buka pukul ${formatHHmm(
         stdTs - openBefore * 60000,
       )}.`,
+    };
+  }
+
+  // Final call off → tetap OPEN sampai close window tercapai (atau tak terbatas).
+  if (!activeEnabled) {
+    if (closeEnabled && minutesFromDeparture > closeAfter) {
+      return {
+        status: "CLOSED",
+        reason: "AFTER_CLOSE",
+        minutesFromDeparture,
+        description: `Gate sudah ditutup (${minutesFromDeparture} menit setelah STD).`,
+      };
+    }
+    return {
+      status: "OPEN",
+      reason: "IN_OPEN_WINDOW",
+      minutesFromDeparture,
+      description: "Boarding terbuka — final call otomatis dinonaktifkan.",
     };
   }
 
@@ -155,6 +191,16 @@ export function getEffectiveFlightStatus(
       description: `Boarding terbuka — final call pukul ${formatHHmm(
         stdTs - activeBefore * 60000,
       )}.`,
+    };
+  }
+
+  // Tutup boarding off → setelah STD tetap ACTIVE (final call) sampai supervisor close manual.
+  if (!closeEnabled) {
+    return {
+      status: "ACTIVE",
+      reason: "IN_ACTIVE_WINDOW",
+      minutesFromDeparture,
+      description: "Final call — tutup otomatis dinonaktifkan, tutup manual.",
     };
   }
 

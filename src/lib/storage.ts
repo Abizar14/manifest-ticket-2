@@ -2,6 +2,7 @@
 
 import { Flight, ScanEvent, SessionUser, User } from "./types";
 import { DUMMY_USERS, buildSeedFlights } from "./mockData";
+import { buildFlightsFromCustomSeed } from "./seedSnapshot";
 
 const KEYS = {
   users: "afvs.users",
@@ -41,7 +42,8 @@ export function ensureSeed() {
   if (seeded === "1") return;
 
   write<User[]>(KEYS.users, DUMMY_USERS);
-  write<Flight[]>(KEYS.flights, buildSeedFlights());
+  const customSeed = buildFlightsFromCustomSeed();
+  write<Flight[]>(KEYS.flights, customSeed ?? buildSeedFlights());
   write<ScanEvent[]>(KEYS.scanEvents, []);
   window.localStorage.setItem(KEYS.seeded, "1");
 }

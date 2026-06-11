@@ -18,6 +18,8 @@ export type FaceState =
   | "off_center"
   | "ok";
 
+export type FaceDetectionMode = "native" | "heuristic" | "none";
+
 export interface FaceCaptureHandle {
   /**
    * Snapshot frame video saat ini → JPEG Blob (target 320x240 default).
@@ -31,6 +33,7 @@ export interface FaceCaptureHandle {
   isReady: () => boolean;
   getFaceState: () => FaceState;
   isFaceDetectionSupported: () => boolean;
+  getDetectionMode: () => FaceDetectionMode;
 }
 
 interface Props {
@@ -84,6 +87,7 @@ export const FaceCaptureCamera = React.forwardRef<FaceCaptureHandle, Props>(
     const [pulse, setPulse] = React.useState(0);
     const faceStateRef = React.useRef<FaceState>("unknown");
     const faceDetectorSupportedRef = React.useRef<boolean>(false);
+    const detectionModeRef = React.useRef<FaceDetectionMode>("none");
 
     const onReadyRef = React.useRef(onReady);
     const onErrorRef = React.useRef(onError);
@@ -98,6 +102,7 @@ export const FaceCaptureCamera = React.forwardRef<FaceCaptureHandle, Props>(
         isReady: () => state === "ready",
         getFaceState: () => faceStateRef.current,
         isFaceDetectionSupported: () => faceDetectorSupportedRef.current,
+        getDetectionMode: () => detectionModeRef.current,
         captureFrame: async (opts) => {
           const v = videoRef.current;
           if (!v || v.readyState < 2) return null;
@@ -236,6 +241,7 @@ export const FaceCaptureCamera = React.forwardRef<FaceCaptureHandle, Props>(
       faceDetectorSupportedRef.current = true; // always true now (heuristic works everywhere)
 
       const nativeDetector = FD ? new FD({ fastMode: true, maxDetectedFaces: 3 }) : null;
+      detectionModeRef.current = nativeDetector ? "native" : "heuristic";
       const heuristicCanvas = document.createElement("canvas");
       heuristicCanvas.width = 160;
       heuristicCanvas.height = 120;

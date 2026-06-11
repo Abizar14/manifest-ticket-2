@@ -2,6 +2,7 @@
 
 export type Locale = "id" | "en";
 export type ThemeMode = "airport" | "dark";
+export type SikerenSyncMode = "auto" | "manual";
 
 export interface AppSettings {
   soundOn: boolean;
@@ -10,13 +11,21 @@ export interface AppSettings {
   theme: ThemeMode;
   flightListShowOnlyToday: boolean;
   autoClosePastDayFlights: boolean;
+  boardingOpenEnabled: boolean;
   boardingOpenMinutesBefore: number;
+  boardingActiveEnabled: boolean;
   boardingActiveMinutesBefore: number;
+  boardingCloseEnabled: boolean;
   boardingCloseMinutesAfter: number;
   faceCaptureEnabled: boolean;
   faceCameraDeviceId: string | null;
   kioskAutoEnter: boolean;
   requireFaceForScan: boolean;
+  sikerenEnabled: boolean;
+  sikerenEndpoint: string;
+  sikerenApiKey: string;
+  sikerenSyncMode: SikerenSyncMode;
+  sikerenStation: string;
 }
 
 const KEY = "afvs.settings";
@@ -28,13 +37,21 @@ const DEFAULTS: AppSettings = {
   theme: "airport",
   flightListShowOnlyToday: true,
   autoClosePastDayFlights: true,
+  boardingOpenEnabled: true,
   boardingOpenMinutesBefore: 60,
+  boardingActiveEnabled: true,
   boardingActiveMinutesBefore: 30,
+  boardingCloseEnabled: true,
   boardingCloseMinutesAfter: 10,
   faceCaptureEnabled: true,
   faceCameraDeviceId: null,
   kioskAutoEnter: false,
   requireFaceForScan: true,
+  sikerenEnabled: false,
+  sikerenEndpoint: "",
+  sikerenApiKey: "",
+  sikerenSyncMode: "auto",
+  sikerenStation: "",
 };
 
 function isBrowser() {

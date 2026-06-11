@@ -12,6 +12,7 @@ import {
   Pencil,
   Eye,
   X,
+  Save,
 } from "lucide-react";
 import { AppShell } from "@/components/layout/AppShell";
 import { CardBody } from "@/components/ui/Card";
@@ -34,6 +35,12 @@ import {
   cn,
 } from "@/lib/utils";
 import { canManageFlights } from "@/lib/auth";
+import {
+  saveCustomSeed,
+  hasCustomSeed,
+  clearCustomSeed,
+  readCustomSeed,
+} from "@/lib/seedSnapshot";
 import { getBoardingProgress } from "@/lib/boarding";
 import { getSettings, subscribeSettings } from "@/lib/settings";
 import { getEffectiveFlightStatus } from "@/lib/flightStatus";
@@ -82,6 +89,47 @@ export default function FlightsPage() {
   const confirm = useConfirm();
   const [session, setSessionState] = useState<SessionUser | null>(null);
   const canManage = canManageFlights(session?.role);
+  const [hasSnapshot, setHasSnapshot] = useState(false);
+
+  useEffect(() => {
+    setHasSnapshot(hasCustomSeed());
+  }, [flights]);
+
+  const onSaveAsDefault = async () => {
+    if (!flights.length) {
+      toast.error("Tidak ada flight untuk disimpan sebagai default.");
+      return;
+    }
+    const existing = readCustomSeed();
+    const res = await confirm({
+      title: "Jadikan jadwal saat ini sebagai default?",
+      description: existing
+        ? `Akan menimpa snapshot sebelumnya (${new Date(existing.createdAt).toLocaleDateString("id-ID")}, ${existing.flights.length} flight). Setiap reset selanjutnya akan memuat ${flights.length} flight ini (tanggal otomatis menyesuaikan hari saat reset).`
+        : `Snapshot ${flights.length} flight ini akan dipakai tiap kali data di-reset. Tanggal otomatis menyesuaikan hari saat reset.`,
+      confirmLabel: "Simpan sebagai default",
+      cancelLabel: "Batal",
+    });
+    if (!res.confirmed) return;
+    saveCustomSeed(flights);
+    setHasSnapshot(true);
+    toast.success(`${flights.length} flight disimpan sebagai default baru.`);
+  };
+
+  const onClearDefault = async () => {
+    const res = await confirm({
+      title: "Hapus default kustom?",
+      description:
+        "Reset selanjutnya akan kembali ke jadwal seed bawaan aplikasi.",
+      tone: "danger",
+      destructive: true,
+      confirmLabel: "Hapus default",
+      cancelLabel: "Batal",
+    });
+    if (!res.confirmed) return;
+    clearCustomSeed();
+    setHasSnapshot(false);
+    toast.success("Default kustom dihapus.");
+  };
 
   useEffect(() => {
     setSessionState(getSession());
@@ -180,13 +228,24 @@ export default function FlightsPage() {
           subtitle={`${filtered.length} dari ${flights.length} flight`}
           trailing={
             canManage && (
-              <Link
-                href="/flights/create"
-                className="flex h-9 w-9 items-center justify-center rounded-full bg-blue-600 text-white shadow-lift active:scale-95"
-                aria-label="Tambah Penerbangan"
-              >
-                <Plus className="h-4 w-4" />
-              </Link>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={onSaveAsDefault}
+                  className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-100 text-slate-700 ring-1 ring-slate-200 active:scale-95 dark:bg-surface-elev dark:text-ink dark:ring-hairline"
+                  aria-label={hasSnapshot ? "Perbarui default" : "Jadikan default"}
+                  title={hasSnapshot ? "Perbarui default" : "Jadikan default"}
+                >
+                  <Save className="h-4 w-4" />
+                </button>
+                <Link
+                  href="/flights/create"
+                  className="flex h-9 w-9 items-center justify-center rounded-full bg-blue-600 text-white shadow-lift active:scale-95"
+                  aria-label="Tambah Penerbangan"
+                >
+                  <Plus className="h-4 w-4" />
+                </Link>
+              </div>
             )
           }
         />
@@ -276,6 +335,9 @@ export default function FlightsPage() {
           totalCount={flights.length}
           shownCount={filtered.length}
           canManage={canManage}
+          hasSnapshot={hasSnapshot}
+          onSaveAsDefault={onSaveAsDefault}
+          onClearDefault={onClearDefault}
         />
 
         <section className="animate-fade-up stagger-1 relative overflow-hidden rounded-3xl border border-slate-200/70 bg-white/95 shadow-[0_18px_40px_-24px_rgba(15,42,98,0.35)] backdrop-blur-sm dark:border-hairline dark:bg-surface/95">
@@ -599,10 +661,16 @@ function FlightsHero({
   totalCount,
   shownCount,
   canManage,
+  hasSnapshot,
+  onSaveAsDefault,
+  onClearDefault,
 }: {
   readonly totalCount: number;
   readonly shownCount: number;
   readonly canManage: boolean;
+  readonly hasSnapshot: boolean;
+  readonly onSaveAsDefault: () => void;
+  readonly onClearDefault: () => void;
 }) {
   return (
     <section className="relative isolate overflow-hidden rounded-3xl border border-slate-200/70 p-6 shadow-[0_18px_40px_-22px_rgba(15,42,98,0.45)] dark:border-sky-500/20">
@@ -834,18 +902,42 @@ function FlightsHero({
         </div>
 
         {canManage && (
-          <Link
-            href="/flights/create"
-            className="group relative inline-flex items-center gap-2 overflow-hidden rounded-2xl bg-sky-400/15 px-5 py-3 text-[13.5px] font-bold text-sky-100 shadow-[0_0_32px_rgba(56,189,248,0.45)] ring-1 ring-sky-400/50 backdrop-blur-md transition-all hover:-translate-y-0.5 hover:bg-sky-400/25 hover:shadow-[0_0_40px_rgba(56,189,248,0.65)]"
-          >
-            <span
-              aria-hidden
-              className="absolute inset-0 -z-10 rounded-2xl bg-[radial-gradient(circle_at_50%_50%,rgba(56,189,248,0.25)_0%,transparent_70%)]"
-            />
-            <span className="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-cyan-200/30 to-transparent transition-transform duration-700 group-hover:translate-x-full" />
-            <Plus className="relative h-4 w-4" />
-            <span className="relative">Tambah Penerbangan</span>
-          </Link>
+          <div className="flex flex-col items-end gap-2">
+            <Link
+              href="/flights/create"
+              className="group relative inline-flex items-center gap-2 overflow-hidden rounded-2xl bg-sky-400/15 px-5 py-3 text-[13.5px] font-bold text-sky-100 shadow-[0_0_32px_rgba(56,189,248,0.45)] ring-1 ring-sky-400/50 backdrop-blur-md transition-all hover:-translate-y-0.5 hover:bg-sky-400/25 hover:shadow-[0_0_40px_rgba(56,189,248,0.65)]"
+            >
+              <span
+                aria-hidden
+                className="absolute inset-0 -z-10 rounded-2xl bg-[radial-gradient(circle_at_50%_50%,rgba(56,189,248,0.25)_0%,transparent_70%)]"
+              />
+              <span className="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-cyan-200/30 to-transparent transition-transform duration-700 group-hover:translate-x-full" />
+              <Plus className="relative h-4 w-4" />
+              <span className="relative">Tambah Penerbangan</span>
+            </Link>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={onSaveAsDefault}
+                title="Simpan jadwal saat ini sebagai default reset"
+                className="inline-flex items-center gap-1.5 rounded-xl bg-white/12 px-3 py-1.5 text-[11.5px] font-bold text-white ring-1 ring-white/25 backdrop-blur-md transition-all hover:bg-white/20 hover:-translate-y-0.5"
+              >
+                <Save className="h-3.5 w-3.5" />
+                {hasSnapshot ? "Perbarui default" : "Jadikan default"}
+              </button>
+              {hasSnapshot && (
+                <button
+                  type="button"
+                  onClick={onClearDefault}
+                  title="Hapus default kustom, kembali ke seed bawaan"
+                  className="inline-flex items-center justify-center rounded-xl bg-rose-500/20 p-1.5 text-rose-100 ring-1 ring-rose-400/40 backdrop-blur-md transition-all hover:bg-rose-500/30 hover:-translate-y-0.5"
+                  aria-label="Hapus default"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              )}
+            </div>
+          </div>
         )}
       </div>
     </section>

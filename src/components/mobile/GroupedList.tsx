@@ -195,6 +195,7 @@ export function ListStepper({
   step = 5,
   onChange,
   suffix,
+  disabled,
 }: {
   value: number;
   min: number;
@@ -202,17 +203,25 @@ export function ListStepper({
   step?: number;
   onChange: (v: number) => void;
   suffix?: string;
+  disabled?: boolean;
 }) {
   const clamp = (n: number) => Math.max(min, Math.min(max, n));
   return (
-    <div className="inline-flex items-center gap-2 rounded-xl bg-surface-2 px-1 py-0.5 ring-1 ring-hairline">
+    <div
+      className={cn(
+        "inline-flex items-center gap-2 rounded-xl bg-surface-2 px-1 py-0.5 ring-1 ring-hairline",
+        disabled && "opacity-50",
+      )}
+    >
       <button
         type="button"
+        disabled={disabled}
         onClick={(e) => {
           e.stopPropagation();
+          if (disabled) return;
           onChange(clamp(value - step));
         }}
-        className="flex h-7 w-7 items-center justify-center rounded-lg text-[18px] font-medium text-ink-muted transition active:bg-hairline/70"
+        className="flex h-7 w-7 items-center justify-center rounded-lg text-[18px] font-medium text-ink-muted transition active:bg-hairline/70 disabled:cursor-not-allowed"
         aria-label="kurang"
       >
         −
@@ -222,11 +231,13 @@ export function ListStepper({
       </span>
       <button
         type="button"
+        disabled={disabled}
         onClick={(e) => {
           e.stopPropagation();
+          if (disabled) return;
           onChange(clamp(value + step));
         }}
-        className="flex h-7 w-7 items-center justify-center rounded-lg text-[18px] font-medium text-ink-muted transition active:bg-hairline/70"
+        className="flex h-7 w-7 items-center justify-center rounded-lg text-[18px] font-medium text-ink-muted transition active:bg-hairline/70 disabled:cursor-not-allowed"
         aria-label="tambah"
       >
         +

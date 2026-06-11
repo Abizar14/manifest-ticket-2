@@ -16,6 +16,7 @@ import { todayDateString, uid } from "./utils";
 import { getSettings } from "./settings";
 import { getEffectiveFlightStatus } from "./flightStatus";
 import { facePhotoStore } from "./facePhotoStore";
+import { enqueueValidScan, flushOutbox } from "./sikerenOutbox";
 
 /**
  * Mendukung dua format barcode:
@@ -217,6 +218,25 @@ export function processScan(
     scannedAt: new Date().toISOString(),
   };
   addScanEvent(event);
+
+  // Sikeren integration: enqueue only on VALID outcome (billable scan).
+  if (
+    outcome.status === "VALID_FLIGHT" &&
+    outcome.flight &&
+    outcome.parsed
+  ) {
+    try {
+      enqueueValidScan(event, outcome.flight, outcome.parsed);
+      const s = getSettings();
+      if (s.sikerenEnabled && s.sikerenSyncMode === "auto") {
+        // fire-and-forget: jangan blok hasil scan
+        flushOutbox().catch(() => {});
+      }
+    } catch {
+      /* tidak boleh mengganggu hasil scan */
+    }
+  }
+
   return { outcome, event };
 }
 

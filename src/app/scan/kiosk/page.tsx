@@ -22,16 +22,26 @@ import {
   Lock,
   ArrowRight,
   Scan,
+  Volume2,
+  VolumeX,
+  RotateCcw,
+  Sparkles,
+  Cpu,
+  Cloud,
+  CloudOff,
+  Loader2,
 } from "lucide-react";
 import Image from "next/image";
 import { cn } from "@/lib/utils";
 import {
   FaceCaptureCamera,
   type FaceCaptureHandle,
+  type FaceDetectionMode,
   type FaceState,
 } from "@/components/scan/FaceCaptureCamera";
 import { Modal } from "@/components/ui/Modal";
 import { getAirlineMeta } from "@/lib/airlines";
+import { AirlineLogo } from "@/components/ui/AirlineLogo";
 import { SEED_BOARDING_PASSES } from "@/lib/seedBoardingPasses";
 import { useToast } from "@/components/ui/Toast";
 import {
@@ -46,6 +56,13 @@ import {
   processScanWithFace,
 } from "@/lib/scanService";
 import { facePhotoStore } from "@/lib/facePhotoStore";
+import { getEffectiveFlightStatus } from "@/lib/flightStatus";
+import {
+  flushOutbox,
+  getOutboxSummary,
+  subscribeOutbox,
+  type OutboxSummary,
+} from "@/lib/sikerenOutbox";
 import {
   getSettings,
   saveSettings,
@@ -278,6 +295,8 @@ export default function KioskPage() {
   const [value, setValue] = React.useState("");
   const [last, setLast] = React.useState<LastResult | null>(null);
   const [recent, setRecent] = React.useState<ScanEvent[]>([]);
+  const [todayScans, setTodayScans] = React.useState<ScanEvent[]>([]);
+  const [todayFlights, setTodayFlights] = React.useState<Flight[]>([]);
   const [flightsToday, setFlightsToday] = React.useState(0);
   const [inputMode, setInputMode] = React.useState<"idle" | "scanner" | "manual">(
     "idle",
@@ -286,6 +305,26 @@ export default function KioskPage() {
   const [modalOpen, setModalOpen] = React.useState(false);
   const [faceState, setFaceState] = React.useState<FaceState>("unknown");
   const [faceDetectorSupported, setFaceDetectorSupported] = React.useState(false);
+  const [detectionMode, setDetectionMode] = React.useState<FaceDetectionMode>("none");
+  const [sessionStats, setSessionStats] = React.useState<{
+    valid: number;
+    duplicate: number;
+    rejected: number;
+  }>({ valid: 0, duplicate: 0, rejected: 0 });
+  const [demoLoading, setDemoLoading] = React.useState(false);
+  const [outbox, setOutbox] = React.useState<OutboxSummary>(() =>
+    typeof window === "undefined"
+      ? {
+          pending: 0,
+          failed: 0,
+          total: 0,
+          lastSyncedAt: null,
+          lastError: null,
+          online: true,
+        }
+      : getOutboxSummary(),
+  );
+  const [syncing, setSyncing] = React.useState(false);
 
   const keyTimesRef = React.useRef<number[]>([]);
   const submittingRef = React.useRef(false);
@@ -299,11 +338,13 @@ export default function KioskPage() {
       router.replace("/login");
       return;
     }
-    setRecent(getScanEvents().slice(0, 6));
+    const all = getScanEvents();
+    setRecent(all.slice(0, 6));
     const today = new Date().toISOString().slice(0, 10);
-    setFlightsToday(
-      getFlights().filter((f) => f.departureDate === today).length,
-    );
+    setTodayScans(all.filter((e) => e.scannedAt.slice(0, 10) === today));
+    const todays = getFlights().filter((f) => f.departureDate === today);
+    setTodayFlights(todays);
+    setFlightsToday(todays.length);
     const unsub = subscribeSettings((next) => setSettings(next));
     setTimeout(() => inputRef.current?.focus(), 50);
     return unsub;
@@ -349,6 +390,11 @@ export default function KioskPage() {
     return () => clearTimeout(t);
   }, [modalOpen]);
 
+  React.useEffect(() => {
+    setOutbox(getOutboxSummary());
+    return subscribeOutbox(() => setOutbox(getOutboxSummary()));
+  }, []);
+
   // Poll face detection state from camera for HUD feedback
   React.useEffect(() => {
     const id = window.setInterval(() => {
@@ -356,6 +402,7 @@ export default function KioskPage() {
       if (!cam) return;
       setFaceState(cam.getFaceState());
       setFaceDetectorSupported(cam.isFaceDetectionSupported());
+      setDetectionMode(cam.getDetectionMode());
     }, 250);
     return () => window.clearInterval(id);
   }, []);
@@ -429,6 +476,12 @@ export default function KioskPage() {
       playFeedbackSound(outcome.status);
       playFeedbackHaptic(outcome.status);
 
+      setSessionStats((prev) => {
+        if (outcome.status === "VALID_FLIGHT") return { ...prev, valid: prev.valid + 1 };
+        if (outcome.status === "DUPLICATE_SCAN") return { ...prev, duplicate: prev.duplicate + 1 };
+        return { ...prev, rejected: prev.rejected + 1 };
+      });
+
       if (outcome.status === "VALID_FLIGHT") {
         toast.success(
           `${outcome.flight?.flightNumber ?? "Flight"} · seat ${outcome.parsed?.seatNumber ?? "—"}`,
@@ -463,7 +516,11 @@ export default function KioskPage() {
           : null,
         faceUrl,
       });
-      setRecent(getScanEvents().slice(0, 6));
+      const all = getScanEvents();
+      setRecent(all.slice(0, 6));
+      const today = new Date().toISOString().slice(0, 10);
+      setTodayScans(all.filter((e) => e.scannedAt.slice(0, 10) === today));
+      setTodayFlights(getFlights().filter((f) => f.departureDate === today));
       setModalOpen(true);
       setValue("");
       setTimeout(() => inputRef.current?.focus(), 0);
@@ -477,6 +534,55 @@ export default function KioskPage() {
     saveSettings({ faceCameraDeviceId: deviceId || null });
   };
   const toggleTheme = () => setTheme(isDark ? "airport" : "dark");
+  const toggleSound = () => saveSettings({ soundOn: !settings.soundOn });
+
+  const onForceSync = async () => {
+    if (syncing) return;
+    if (!settings.sikerenEnabled) {
+      toast.info("Integrasi Sikeren belum diaktifkan di Settings.", "Sikeren off");
+      return;
+    }
+    setSyncing(true);
+    try {
+      const res = await flushOutbox();
+      if (res.sent > 0) {
+        toast.success(`${res.sent} item terkirim ke Sikeren.`, "Sync OK");
+      } else if (res.failed > 0) {
+        toast.error(`${res.failed} item gagal.`, "Sync gagal");
+      } else {
+        toast.info("Tidak ada item untuk dikirim.", "Sikeren");
+      }
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  const handleReset = () => {
+    setModalOpen(false);
+    setLast(null);
+    setSessionStats({ valid: 0, duplicate: 0, rejected: 0 });
+    setRecent([]);
+    setValue("");
+    if (lastFaceUrlRef.current) {
+      URL.revokeObjectURL(lastFaceUrlRef.current);
+      lastFaceUrlRef.current = null;
+    }
+    toast.success("Stats & riwayat tampilan dikosongkan", "Reset");
+    setTimeout(() => inputRef.current?.focus(), 0);
+  };
+
+  const handleDemoScan = async () => {
+    if (demoLoading || submittingRef.current) return;
+    setDemoLoading(true);
+    try {
+      const pick =
+        SEED_BOARDING_PASSES[Math.floor(Math.random() * SEED_BOARDING_PASSES.length)];
+      const raw = `${pick.flightNumber}|${pick.pnr}|${pick.ticket}|${pick.seat}`;
+      await submit(raw);
+    } finally {
+      setDemoLoading(false);
+    }
+  };
 
   const lastMeta = last ? STATUS_META[last.event.resultStatus] : null;
   const captureEnabledUi = settings.faceCaptureEnabled;
@@ -529,8 +635,17 @@ export default function KioskPage() {
         </div>
 
         <div className="flex items-center gap-2">
+          {settings.sikerenEnabled && (
+            <SikerenSyncChip
+              summary={outbox}
+              syncing={syncing}
+              onClick={onForceSync}
+            />
+          )}
+          <SessionStatsChip stats={sessionStats} />
           <ScannerStatusBadge mode={inputMode} />
           <ClockChip now={now} />
+          <SoundToggleChip on={settings.soundOn} onToggle={toggleSound} />
           <ThemeToggleChip isDark={isDark} onToggle={toggleTheme} />
           <button
             type="button"
@@ -571,12 +686,27 @@ export default function KioskPage() {
           />
 
           <PrivacyBanner />
+          {captureEnabledUi && detectionMode === "heuristic" && (
+            <DetectionModeNotice />
+          )}
         </section>
 
         {/* Kanan: scan ready + recent */}
         <section className="flex flex-col gap-4">
           <ScanReadyCard />
-          <RecentList recent={recent} onMore={() => router.push("/scan-events")} />
+          <ActionRow
+            onReset={handleReset}
+            onDemo={handleDemoScan}
+            demoLoading={demoLoading}
+          />
+          <ActiveFlightCards
+            flights={todayFlights}
+            scans={todayScans}
+            now={now}
+            settings={settings}
+            highlightFlightId={last?.event.flightId ?? null}
+            onMore={() => router.push("/scan-events")}
+          />
         </section>
       </main>
 
@@ -854,48 +984,198 @@ function Waveform() {
   );
 }
 
-/* ─────────────── Recent list ─────────────── */
+/* ─────────────── Active flight cards ─────────────── */
 
-function RecentList({
-  recent,
+interface FlightCardData {
+  flight: Flight;
+  effectiveStatus: "OPEN" | "ACTIVE";
+  boarded: number;
+  lastScans: ScanEvent[];
+  lastScanAt: number;
+}
+
+function ActiveFlightCards({
+  flights,
+  scans,
+  now,
+  settings,
+  highlightFlightId,
   onMore,
 }: {
-  recent: ScanEvent[];
+  flights: Flight[];
+  scans: ScanEvent[];
+  now: Date;
+  settings: AppSettings;
+  highlightFlightId: string | null;
   onMore: () => void;
 }) {
+  const cards: FlightCardData[] = React.useMemo(() => {
+    const validScans = scans.filter(
+      (e) => e.resultStatus === "VALID_FLIGHT" && e.flightId,
+    );
+    return flights
+      .map((flight) => {
+        const eff = getEffectiveFlightStatus(flight, now, settings);
+        if (eff.status !== "OPEN" && eff.status !== "ACTIVE") return null;
+        const fScans = validScans
+          .filter((e) => e.flightId === flight.id)
+          .sort(
+            (a, b) =>
+              new Date(b.scannedAt).getTime() - new Date(a.scannedAt).getTime(),
+          );
+        const lastAt = fScans[0]
+          ? new Date(fScans[0].scannedAt).getTime()
+          : 0;
+        return {
+          flight,
+          effectiveStatus: eff.status as "OPEN" | "ACTIVE",
+          boarded: fScans.length,
+          lastScans: fScans.slice(0, 3),
+          lastScanAt: lastAt,
+        };
+      })
+      .filter((c): c is FlightCardData => c !== null)
+      .sort((a, b) => {
+        // ACTIVE first, then by most-recent scan, then by STD
+        if (a.effectiveStatus !== b.effectiveStatus) {
+          return a.effectiveStatus === "ACTIVE" ? -1 : 1;
+        }
+        if (a.lastScanAt !== b.lastScanAt) return b.lastScanAt - a.lastScanAt;
+        return a.flight.departureTime.localeCompare(b.flight.departureTime);
+      });
+  }, [flights, scans, now, settings]);
+
   return (
     <div className="rounded-3xl bg-white/80 ring-1 ring-slate-200 backdrop-blur-md dark:bg-[#0c1a36] dark:ring-cyan-400/15">
       <div className="flex items-center justify-between px-5 py-3">
         <h3 className="text-[10.5px] font-black uppercase tracking-[0.16em] text-slate-500 dark:text-white/70">
-          Scan Terakhir
+          Flight Aktif · Boarding
         </h3>
         <span className="rounded-full bg-slate-900/5 px-2 py-0.5 text-[10px] font-bold text-slate-600 dark:bg-white/10 dark:text-white/70">
-          {recent.length}
+          {cards.length}
         </span>
       </div>
-      <ul className="divide-y divide-slate-200/70 dark:divide-cyan-400/10">
-        {recent.length === 0 && (
-          <li className="px-5 py-6 text-center text-xs text-slate-400 dark:text-white/40">
-            Belum ada scan hari ini.
-          </li>
+      <div className="max-h-[420px] space-y-2 overflow-y-auto px-3 pb-3">
+        {cards.length === 0 && (
+          <div className="px-3 py-8 text-center text-xs text-slate-400 dark:text-white/40">
+            Belum ada flight yang sedang boarding.
+          </div>
         )}
-        {recent.map((e) => (
-          <RecentRow key={e.id} event={e} />
+        {cards.map((c) => (
+          <FlightBoardingCard
+            key={c.flight.id}
+            data={c}
+            highlight={highlightFlightId === c.flight.id}
+          />
         ))}
-      </ul>
+      </div>
       <button
         type="button"
         onClick={onMore}
         className="group flex w-full items-center justify-center gap-1.5 border-t border-slate-200/70 px-5 py-3 text-[11px] font-bold uppercase tracking-wider text-cyan-700 transition hover:bg-cyan-50/50 dark:border-cyan-400/10 dark:text-cyan-300 dark:hover:bg-cyan-500/5"
       >
-        Lihat lebih banyak
+        Lihat semua scan hari ini
         <ArrowRight className="h-3 w-3 transition group-hover:translate-x-0.5" />
       </button>
     </div>
   );
 }
 
-function RecentRow({ event }: { event: ScanEvent }) {
+function FlightBoardingCard({
+  data,
+  highlight,
+}: {
+  data: FlightCardData;
+  highlight: boolean;
+}) {
+  const { flight, effectiveStatus, boarded, lastScans } = data;
+  const expected = flight.expectedPax ?? null;
+  const percent =
+    expected && expected > 0
+      ? Math.min(100, Math.round((boarded / expected) * 100))
+      : null;
+
+  const statusPill =
+    effectiveStatus === "ACTIVE"
+      ? "bg-amber-500/15 text-amber-700 ring-amber-300 dark:text-amber-300 dark:ring-amber-500/40"
+      : "bg-emerald-500/15 text-emerald-700 ring-emerald-300 dark:text-emerald-300 dark:ring-emerald-500/40";
+
+  const barColor =
+    effectiveStatus === "ACTIVE"
+      ? "from-amber-400 to-orange-500"
+      : "from-emerald-400 to-teal-500";
+
+  return (
+    <div
+      className={cn(
+        "relative overflow-hidden rounded-2xl bg-white px-3.5 py-2.5 ring-1 ring-slate-200 transition dark:bg-[#0e1f44] dark:ring-cyan-400/15",
+        highlight &&
+          "ring-2 ring-cyan-400 shadow-[0_0_24px_-4px_rgba(34,211,238,0.45)] dark:ring-cyan-300",
+      )}
+    >
+      {/* Header row: airline + flight + status */}
+      <div className="flex items-center gap-2.5">
+        <AirlineLogo code={flight.airlineCode} size="sm" mode="rich" />
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-1.5">
+            <p className="text-[15px] font-black tracking-tight tabular-nums">
+              {flight.flightNumber}
+            </p>
+            <span
+              className={cn(
+                "shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wider ring-1",
+                statusPill,
+              )}
+            >
+              {effectiveStatus === "ACTIVE" ? "Final Call" : "Open"}
+            </span>
+          </div>
+          <p className="truncate text-[10.5px] text-slate-500 dark:text-white/55">
+            {flight.originAirport} → {flight.destinationAirport} · Gate{" "}
+            {flight.gateOrCheckpoint} · {flight.departureTime}
+          </p>
+        </div>
+        <div className="text-right">
+          <p className="text-[15px] font-black tabular-nums text-slate-800 dark:text-white">
+            {boarded}
+            {expected !== null && (
+              <span className="text-[11px] font-bold text-slate-400 dark:text-white/40">
+                /{expected}
+              </span>
+            )}
+          </p>
+          <p className="text-[9px] font-bold uppercase tracking-wider text-slate-400 dark:text-white/40">
+            pax
+          </p>
+        </div>
+      </div>
+
+      {/* Progress bar */}
+      {percent !== null && (
+        <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-100 dark:bg-white/5">
+          <div
+            className={cn(
+              "h-full rounded-full bg-gradient-to-r transition-all",
+              barColor,
+            )}
+            style={{ width: `${percent}%` }}
+          />
+        </div>
+      )}
+
+      {/* Mini scan list */}
+      {lastScans.length > 0 && (
+        <ul className="mt-2 flex flex-col gap-1">
+          {lastScans.map((e) => (
+            <MiniScanRow key={e.id} event={e} />
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+function MiniScanRow({ event }: { event: ScanEvent }) {
   const [faceUrl, setFaceUrl] = React.useState<string | null>(null);
   React.useEffect(() => {
     let url: string | null = null;
@@ -916,45 +1196,37 @@ function RecentRow({ event }: { event: ScanEvent }) {
     };
   }, [event.faceCaptureId]);
 
-  const meta = STATUS_META[event.resultStatus];
   const time = new Date(event.scannedAt).toLocaleTimeString("id-ID", {
     hour: "2-digit",
     minute: "2-digit",
     second: "2-digit",
   });
+
   return (
-    <li className="flex items-center gap-3 px-5 py-2.5">
+    <li className="flex items-center gap-2 rounded-lg bg-slate-50/70 px-2 py-1 dark:bg-white/[0.04]">
       <div className="shrink-0">
         {faceUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
             src={faceUrl}
             alt=""
-            className="h-9 w-9 rounded-lg object-cover ring-1 ring-slate-200 dark:ring-cyan-400/20"
+            className="h-6 w-6 rounded-md object-cover ring-1 ring-slate-200 dark:ring-cyan-400/20"
           />
         ) : (
-          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-slate-100 text-slate-400 ring-1 ring-slate-200 dark:bg-white/5 dark:text-white/30 dark:ring-cyan-400/10">
-            <User className="h-4 w-4" />
+          <div className="flex h-6 w-6 items-center justify-center rounded-md bg-slate-100 text-slate-400 ring-1 ring-slate-200 dark:bg-white/5 dark:text-white/30 dark:ring-cyan-400/10">
+            <User className="h-3 w-3" />
           </div>
         )}
       </div>
       <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-bold tabular-nums">
-          {event.parsedFlightNumber ?? "—"}
-        </p>
-        <p className="truncate text-[10.5px] text-slate-500 dark:text-white/55">
-          {event.parsedPassengerName ?? event.rawBarcode.slice(0, 28)}
+        <p className="truncate text-[11px] font-semibold text-slate-700 dark:text-white/85">
+          {event.parsedPassengerName ?? "—"}
         </p>
       </div>
-      <span
-        className={cn(
-          "shrink-0 rounded-full px-2 py-0.5 text-[9.5px] font-black uppercase tracking-wider ring-1",
-          meta.pill,
-        )}
-      >
-        {meta.label}
+      <span className="shrink-0 text-[10px] font-mono tabular-nums text-slate-400 dark:text-white/45">
+        seat {event.parsedSeatNumber ?? "—"}
       </span>
-      <span className="shrink-0 font-mono text-[10.5px] tabular-nums text-slate-400 dark:text-white/50">
+      <span className="shrink-0 font-mono text-[10px] tabular-nums text-slate-400 dark:text-white/45">
         {time}
       </span>
     </li>
@@ -1018,6 +1290,190 @@ function ThemeToggleChip({
     >
       {isDark ? <Sun className="h-3.5 w-3.5" /> : <Moon className="h-3.5 w-3.5" />}
     </button>
+  );
+}
+
+function SoundToggleChip({
+  on,
+  onToggle,
+}: {
+  on: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      title={on ? "Matikan suara feedback" : "Aktifkan suara feedback"}
+      aria-label={on ? "Sound on" : "Sound off"}
+      className={cn(
+        "inline-flex h-8 w-8 items-center justify-center rounded-full ring-1 transition",
+        on
+          ? "bg-emerald-100 text-emerald-700 ring-emerald-300 hover:bg-emerald-200 dark:bg-emerald-500/15 dark:text-emerald-300 dark:ring-emerald-500/30 dark:hover:bg-emerald-500/25"
+          : "bg-slate-900/5 text-slate-500 ring-slate-200 hover:bg-slate-900/10 dark:bg-white/10 dark:text-white/60 dark:ring-white/15 dark:hover:bg-white/15",
+      )}
+    >
+      {on ? <Volume2 className="h-3.5 w-3.5" /> : <VolumeX className="h-3.5 w-3.5" />}
+    </button>
+  );
+}
+
+function SikerenSyncChip({
+  summary,
+  syncing,
+  onClick,
+}: {
+  summary: OutboxSummary;
+  syncing: boolean;
+  onClick: () => void;
+}) {
+  const offline = !summary.online;
+  const hasFailed = summary.failed > 0;
+  const hasPending = summary.pending > 0;
+
+  let tone:
+    | "ok"
+    | "pending"
+    | "failed"
+    | "offline"
+    | "syncing" = "ok";
+  if (syncing) tone = "syncing";
+  else if (offline) tone = "offline";
+  else if (hasFailed) tone = "failed";
+  else if (hasPending) tone = "pending";
+
+  const toneClass: Record<typeof tone, string> = {
+    ok: "bg-emerald-100 text-emerald-700 ring-emerald-300 dark:bg-emerald-500/15 dark:text-emerald-300 dark:ring-emerald-500/30",
+    pending:
+      "bg-sky-100 text-sky-700 ring-sky-300 dark:bg-sky-500/15 dark:text-sky-300 dark:ring-sky-500/30",
+    failed:
+      "bg-rose-100 text-rose-700 ring-rose-300 dark:bg-rose-500/15 dark:text-rose-300 dark:ring-rose-500/30",
+    offline:
+      "bg-slate-200 text-slate-700 ring-slate-300 dark:bg-white/10 dark:text-white/70 dark:ring-white/15",
+    syncing:
+      "bg-cyan-100 text-cyan-700 ring-cyan-300 dark:bg-cyan-500/15 dark:text-cyan-300 dark:ring-cyan-500/30",
+  };
+
+  const icon =
+    tone === "syncing" ? (
+      <Loader2 className="h-3 w-3 animate-spin" />
+    ) : tone === "offline" ? (
+      <CloudOff className="h-3 w-3" />
+    ) : (
+      <Cloud className="h-3 w-3" />
+    );
+
+  const label =
+    tone === "syncing"
+      ? "Sync…"
+      : tone === "offline"
+        ? "Offline"
+        : tone === "failed"
+          ? `Gagal ${summary.failed}`
+          : tone === "pending"
+            ? `Pending ${summary.pending}`
+            : "Tersinkron";
+
+  const lastSync = summary.lastSyncedAt
+    ? new Date(summary.lastSyncedAt).toLocaleTimeString("id-ID")
+    : "belum pernah";
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={`Sikeren · ${label} · last sync: ${lastSync}${
+        summary.lastError ? ` · ${summary.lastError}` : ""
+      }`}
+      className={cn(
+        "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-bold ring-1 transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60",
+        toneClass[tone],
+      )}
+      disabled={syncing}
+    >
+      {icon}
+      <span className="tabular-nums">{label}</span>
+    </button>
+  );
+}
+
+function SessionStatsChip({
+  stats,
+}: {
+  stats: { valid: number; duplicate: number; rejected: number };
+}) {
+  const total = stats.valid + stats.duplicate + stats.rejected;
+  return (
+    <div
+      title={`Total: ${total} · Valid ${stats.valid} · Duplicate ${stats.duplicate} · Ditolak ${stats.rejected}`}
+      className="inline-flex items-center gap-1.5 rounded-full bg-slate-900/5 px-2.5 py-1 text-[11px] font-bold ring-1 ring-slate-200 dark:bg-white/10 dark:ring-white/15"
+    >
+      <span className="inline-flex items-center gap-1 text-emerald-600 dark:text-emerald-300">
+        <CheckCircle2 className="h-3 w-3" />
+        <span className="tabular-nums">{stats.valid}</span>
+      </span>
+      <span className="text-slate-300 dark:text-white/20">·</span>
+      <span className="inline-flex items-center gap-1 text-amber-600 dark:text-amber-300">
+        <AlertTriangle className="h-3 w-3" />
+        <span className="tabular-nums">{stats.duplicate}</span>
+      </span>
+      <span className="text-slate-300 dark:text-white/20">·</span>
+      <span className="inline-flex items-center gap-1 text-rose-600 dark:text-rose-300">
+        <XCircle className="h-3 w-3" />
+        <span className="tabular-nums">{stats.rejected}</span>
+      </span>
+    </div>
+  );
+}
+
+function ActionRow({
+  onReset,
+  onDemo,
+  demoLoading,
+}: {
+  onReset: () => void;
+  onDemo: () => void;
+  demoLoading: boolean;
+}) {
+  return (
+    <div className="flex items-center gap-2 rounded-2xl bg-white/70 px-3 py-2 ring-1 ring-slate-200 backdrop-blur dark:bg-[#0c1a36] dark:ring-cyan-400/15">
+      <button
+        type="button"
+        onClick={onDemo}
+        disabled={demoLoading}
+        className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-gradient-to-br from-cyan-500 to-blue-600 px-3 py-2 text-[11px] font-bold uppercase tracking-wider text-white shadow-md shadow-cyan-500/20 transition hover:shadow-cyan-500/40 disabled:cursor-not-allowed disabled:opacity-60"
+      >
+        <Sparkles className="h-3.5 w-3.5" />
+        {demoLoading ? "Memproses…" : "Demo Scan"}
+      </button>
+      <button
+        type="button"
+        onClick={onReset}
+        className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-slate-900/5 px-3 py-2 text-[11px] font-bold uppercase tracking-wider text-slate-700 ring-1 ring-slate-200 transition hover:bg-slate-900/10 dark:bg-white/10 dark:text-white dark:ring-white/15 dark:hover:bg-white/15"
+        title="Reset stats & tampilan"
+      >
+        <RotateCcw className="h-3.5 w-3.5" />
+        Reset
+      </button>
+    </div>
+  );
+}
+
+function DetectionModeNotice() {
+  return (
+    <div className="flex items-center gap-2.5 rounded-2xl bg-amber-50/80 px-4 py-2.5 ring-1 ring-amber-200 backdrop-blur dark:bg-amber-500/10 dark:ring-amber-500/30">
+      <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-amber-100 text-amber-700 ring-1 ring-amber-200 dark:bg-amber-500/20 dark:text-amber-300 dark:ring-amber-500/30">
+        <Cpu className="h-3.5 w-3.5" />
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="text-[10.5px] font-bold uppercase tracking-[0.16em] text-amber-700 dark:text-amber-300">
+          Validasi wajah: mode heuristik
+        </p>
+        <p className="mt-0.5 text-[10.5px] leading-snug text-amber-800/80 dark:text-amber-200/70">
+          Browser tidak menyediakan FaceDetector API. Deteksi memakai analisis warna kulit (kurang akurat di pencahayaan ekstrem).
+        </p>
+      </div>
+    </div>
   );
 }
 
