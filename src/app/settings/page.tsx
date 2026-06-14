@@ -34,6 +34,7 @@ import {
   Loader2,
   Wifi,
   WifiOff,
+  IdCard,
 } from "lucide-react";
 import { facePhotoStore } from "@/lib/facePhotoStore";
 import type { ThemeMode } from "@/lib/theme";
@@ -557,6 +558,82 @@ export default function SettingsPage() {
                 showChevron={faceUsage.count > 0}
               />
             </ListSection>
+
+            <ListSection
+              header="Verifikasi KTP"
+              caption="OCR berjalan offline di perangkat ini. Cocokan hanya untuk nama; NIK/alamat tidak diekstrak."
+            >
+              <ListRow
+                icon={<IdCard className="h-4 w-4" />}
+                iconBg="bg-amber-100 text-amber-700"
+                title="Verifikasi nama dengan KTP"
+                subtitle="Tampilkan prompt OCR KTP setiap scan VALID."
+                trailing={
+                  <ListSwitch
+                    checked={settings.ktpVerifyEnabled}
+                    onChange={(v) => update({ ktpVerifyEnabled: v })}
+                    ariaLabel="Verifikasi KTP"
+                  />
+                }
+              />
+              {settings.ktpVerifyEnabled && (
+                <>
+                  <ListRow
+                    icon={<CheckCircle2 className="h-4 w-4" />}
+                    iconBg="bg-emerald-100 text-emerald-700"
+                    title="Ambang auto-pass"
+                    subtitle={`Otomatis lolos kalau kemiripan ≥ ${(settings.ktpAutoPassThreshold * 100).toFixed(0)}%`}
+                    trailing={
+                      <input
+                        type="number"
+                        min={50}
+                        max={100}
+                        step={1}
+                        value={Math.round(settings.ktpAutoPassThreshold * 100)}
+                        onChange={(e) => {
+                          const n = Math.min(100, Math.max(50, Number(e.target.value) || 85));
+                          update({ ktpAutoPassThreshold: n / 100 });
+                        }}
+                        className="h-9 w-16 rounded-xl border border-slate-200 bg-white px-2 text-right text-[14px] font-bold tabular-nums dark:border-hairline dark:bg-surface dark:text-ink"
+                      />
+                    }
+                  />
+                  <ListRow
+                    icon={<AlertTriangle className="h-4 w-4" />}
+                    iconBg="bg-amber-100 text-amber-700"
+                    title="Ambang konfirmasi manual"
+                    subtitle={`Tampilkan prompt operator kalau kemiripan di antara ${(settings.ktpManualThreshold * 100).toFixed(0)}%–${(settings.ktpAutoPassThreshold * 100).toFixed(0)}%`}
+                    trailing={
+                      <input
+                        type="number"
+                        min={30}
+                        max={95}
+                        step={1}
+                        value={Math.round(settings.ktpManualThreshold * 100)}
+                        onChange={(e) => {
+                          const n = Math.min(95, Math.max(30, Number(e.target.value) || 60));
+                          update({ ktpManualThreshold: n / 100 });
+                        }}
+                        className="h-9 w-16 rounded-xl border border-slate-200 bg-white px-2 text-right text-[14px] font-bold tabular-nums dark:border-hairline dark:bg-surface dark:text-ink"
+                      />
+                    }
+                  />
+                  <ListRow
+                    icon={<ScanFace className="h-4 w-4" />}
+                    iconBg="bg-rose-100 text-rose-700"
+                    title="Wajibkan KTP cocok untuk status VALID"
+                    subtitle="Kalau aktif, scan tidak dihitung VALID kecuali operator konfirmasi KTP."
+                    trailing={
+                      <ListSwitch
+                        checked={settings.ktpRequireForValid}
+                        onChange={(v) => update({ ktpRequireForValid: v })}
+                        ariaLabel="Wajibkan KTP"
+                      />
+                    }
+                  />
+                </>
+              )}
+            </ListSection>
           </div>
         )}
 
@@ -885,6 +962,50 @@ export default function SettingsPage() {
                           Hapus semua
                         </Button>
                       }
+                    />
+                  </div>
+
+                  <SectionDivider
+                    icon={<IdCard className="h-3.5 w-3.5" />}
+                    label="Verifikasi KTP"
+                  />
+
+                  <div className="space-y-3">
+                    <ToggleRow
+                      icon={<IdCard className="h-4 w-4" />}
+                      title="Verifikasi nama dengan KTP"
+                      description="Setelah scan VALID, tampilkan prompt OCR untuk mencocokkan nama di KTP dengan nama di boarding pass. OCR berjalan offline."
+                      checked={settings.ktpVerifyEnabled}
+                      onChange={(v) => update({ ktpVerifyEnabled: v })}
+                    />
+                    <NumberRow
+                      icon={<CheckCircle2 className="h-4 w-4" />}
+                      title="Ambang auto-pass (%)"
+                      description="Otomatis lolos kalau kemiripan nama ≥ ambang ini."
+                      value={Math.round(settings.ktpAutoPassThreshold * 100)}
+                      min={50}
+                      max={100}
+                      suffix="%"
+                      disabled={!settings.ktpVerifyEnabled}
+                      onChange={(v) => update({ ktpAutoPassThreshold: v / 100 })}
+                    />
+                    <NumberRow
+                      icon={<AlertTriangle className="h-4 w-4" />}
+                      title="Ambang konfirmasi manual (%)"
+                      description="Di bawah ambang ini, operator diminta konfirmasi manual. Lebih kecil dari ini langsung dianggap tidak cocok."
+                      value={Math.round(settings.ktpManualThreshold * 100)}
+                      min={30}
+                      max={95}
+                      suffix="%"
+                      disabled={!settings.ktpVerifyEnabled}
+                      onChange={(v) => update({ ktpManualThreshold: v / 100 })}
+                    />
+                    <ToggleRow
+                      icon={<ScanFace className="h-4 w-4" />}
+                      title="Wajibkan KTP cocok untuk status VALID"
+                      description="Kalau aktif, scan tidak dihitung VALID kecuali operator konfirmasi KTP cocok."
+                      checked={settings.ktpRequireForValid}
+                      onChange={(v) => update({ ktpRequireForValid: v })}
                     />
                   </div>
                 </div>

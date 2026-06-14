@@ -111,6 +111,34 @@ export interface ValidationOutcome {
   parsed: ParsedBarcode | null;
 }
 
+const PREVIOUS_SCAN_STATUS_LABEL: Record<ScanResultStatus, string> = {
+  VALID_FLIGHT: "valid",
+  DUPLICATE_SCAN: "duplicate",
+  FLIGHT_NOT_TODAY: "ditolak karena bukan hari ini",
+  FLIGHT_NOT_ACTIVE: "ditolak karena flight tidak aktif",
+  UNKNOWN_FLIGHT: "ditolak karena flight tidak dikenal",
+  INVALID_BARCODE: "ditolak karena barcode invalid",
+};
+
+function previousScanNote(rawBarcode: string, events: ScanEvent[]): string {
+  const previous = events.find((e) => e.rawBarcode === rawBarcode);
+  if (!previous) return "";
+
+  const scannedAt = new Date(previous.scannedAt);
+  const date = scannedAt.toLocaleDateString("id-ID", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
+  const time = scannedAt.toLocaleTimeString("id-ID", {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+
+  return ` Barcode ini juga pernah di-scan (${PREVIOUS_SCAN_STATUS_LABEL[previous.resultStatus]}) pada ${date} pukul ${time}.`;
+}
+
 export function validateBarcode(raw: string): ValidationOutcome {
   const cleaned = (raw ?? "").trim();
   if (!cleaned) {
@@ -124,10 +152,11 @@ export function validateBarcode(raw: string): ValidationOutcome {
 
   const parsed = parseBarcode(cleaned);
   if (!parsed) {
+    const previousNote = previousScanNote(cleaned, getScanEvents());
     return {
       status: "INVALID_BARCODE",
       message:
-        "Format barcode tidak valid. Format harus: FLIGHT|PNR|TICKET|SEAT.",
+        `Ditolak: format barcode tidak valid. Format harus: FLIGHT|PNR|TICKET|SEAT.${previousNote}`,
       flight: null,
       parsed: null,
     };
@@ -135,6 +164,8 @@ export function validateBarcode(raw: string): ValidationOutcome {
 
   const today = todayDateString();
   const flights = getFlights();
+  const events = getScanEvents();
+  const previousNote = previousScanNote(cleaned, events);
 
   const flight = flights.find(
     (f) => f.flightNumber.toUpperCase() === parsed.flightNumber.toUpperCase(),
@@ -143,7 +174,7 @@ export function validateBarcode(raw: string): ValidationOutcome {
   if (!flight) {
     return {
       status: "UNKNOWN_FLIGHT",
-      message: `Flight ${parsed.flightNumber} tidak terdaftar.`,
+      message: `Ditolak: flight ${parsed.flightNumber} tidak terdaftar.${previousNote}`,
       flight: null,
       parsed,
     };
@@ -152,7 +183,7 @@ export function validateBarcode(raw: string): ValidationOutcome {
   if (flight.departureDate !== today) {
     return {
       status: "FLIGHT_NOT_TODAY",
-      message: `Flight ${flight.flightNumber} bukan untuk hari ini (jadwal: ${flight.departureDate}).`,
+      message: `Ditolak: flight ${flight.flightNumber} bukan penerbangan hari ini (jadwal: ${flight.departureDate}).${previousNote}`,
       flight,
       parsed,
     };
@@ -162,7 +193,7 @@ export function validateBarcode(raw: string): ValidationOutcome {
   if (effective.status !== "OPEN" && effective.status !== "ACTIVE") {
     return {
       status: "FLIGHT_NOT_ACTIVE",
-      message: `Flight ${flight.flightNumber}: ${effective.description}`,
+      message: `Ditolak: flight ${flight.flightNumber} belum bisa divalidasi. ${effective.description}.${previousNote}`,
       flight,
       parsed,
     };
@@ -171,7 +202,6 @@ export function validateBarcode(raw: string): ValidationOutcome {
   // Duplicate check: same raw barcode scanned today AGAINST THE CURRENT flight.
   // Match on flight.id supaya flight yang dihapus lalu dibuat ulang
   // (id berbeda) tidak ikut menghitung scan lama sebagai duplicate.
-  const events = getScanEvents();
   const dup = events.find(
     (e) =>
       e.rawBarcode === cleaned &&
@@ -180,11 +210,14 @@ export function validateBarcode(raw: string): ValidationOutcome {
       e.scannedAt.slice(0, 10) === today,
   );
   if (dup) {
+    const scannedAt = new Date(dup.scannedAt).toLocaleTimeString("id-ID", {
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+    });
     return {
       status: "DUPLICATE_SCAN",
-      message: `Barcode sudah pernah di-scan pada ${new Date(
-        dup.scannedAt,
-      ).toLocaleTimeString("id-ID")}.`,
+      message: `Duplicate scan: boarding pass ini valid untuk flight ${flight.flightNumber} hari ini (${flight.originAirport} -> ${flight.destinationAirport}, ${flight.gateOrCheckpoint}, seat ${parsed.seatNumber}), tetapi sudah pernah di-scan pukul ${scannedAt}.`,
       flight,
       parsed,
     };

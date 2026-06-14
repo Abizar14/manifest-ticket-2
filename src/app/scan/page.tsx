@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   ScanLine,
@@ -64,6 +64,25 @@ interface LastResult {
 }
 
 export default function ScanPage() {
+  return (
+    <Suspense
+      fallback={
+        <AppShell>
+          <div className="flex h-[60vh] items-center justify-center">
+            <div className="flex items-center gap-3 rounded-2xl bg-white/90 px-5 py-3 text-sm text-slate-600 shadow-card ring-1 ring-slate-200 backdrop-blur">
+              <span className="h-2 w-2 animate-pulse rounded-full bg-blue-500" />
+              Memuat pos validasi...
+            </div>
+          </div>
+        </AppShell>
+      }
+    >
+      <ScanPageContent />
+    </Suspense>
+  );
+}
+
+function ScanPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const source = searchParams?.get("source");
@@ -155,7 +174,7 @@ export default function ScanPage() {
         "Valid",
       );
     } else if (outcome.status === "DUPLICATE_SCAN") {
-      toast.warning(outcome.message, "Duplicate");
+      toast.warning(outcome.message, "Duplicate - valid hari ini");
     } else {
       toast.error(outcome.message, "Rejected");
     }
@@ -818,8 +837,9 @@ function getResultTheme(status: ScanResultStatus): ResultTheme {
     case "DUPLICATE_SCAN":
       return {
         icon: CopyCheck,
-        title: "Duplicate Scan",
-        tagline: "Boarding pass ini sudah pernah discan sebelumnya.",
+        title: "Duplicate - Valid Hari Ini",
+        tagline:
+          "Boarding pass cocok untuk flight hari ini, tetapi sudah pernah discan.",
         bgWash: "bg-gradient-to-br from-amber-50 via-white to-orange-50",
         ringStroke: "text-amber-400",
         ripple: "ring-amber-300/60",
@@ -1006,7 +1026,7 @@ function getResultConfig(status: ScanResultStatus) {
       };
     case "DUPLICATE_SCAN":
       return {
-        title: "Duplicate Scan",
+        title: "Duplicate - Valid Hari Ini",
         icon: CopyCheck,
         container:
           "bg-gradient-to-br from-amber-50 via-white to-yellow-100 border-amber-200",

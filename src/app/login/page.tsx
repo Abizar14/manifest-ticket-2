@@ -12,16 +12,20 @@ import {
   Zap,
   Eye,
   EyeOff,
+  KeyRound,
+  UserRoundCheck,
 } from "lucide-react";
 import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { ensureSeed, getSession } from "@/lib/storage";
-import { login } from "@/lib/auth";
+import { login, loginWithPin } from "@/lib/auth";
 
 export default function LoginPage() {
   const router = useRouter();
   const [email, setEmail] = useState("admin@airport.test");
   const [password, setPassword] = useState("password");
+  const [pin, setPin] = useState("");
+  const [authMode, setAuthMode] = useState<"pin" | "password">("pin");
   const [showPw, setShowPw] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -30,7 +34,7 @@ export default function LoginPage() {
     ensureSeed();
     const s = getSession();
     if (s) {
-      router.replace("/dashboard");
+      router.replace(s.role === "security" ? "/scan/kiosk" : "/dashboard");
       return;
     }
     // Mobile: selalu tampilkan tata cara dulu, kecuali baru selesai onboarding
@@ -50,19 +54,26 @@ export default function LoginPage() {
     setLoading(true);
     // small artificial delay so the loading state is visible
     setTimeout(() => {
-      const res = login(email, password);
+      const res =
+        authMode === "pin" ? loginWithPin(pin) : login(email, password);
       setLoading(false);
       if (!res.ok) {
         setError(res.error);
         return;
       }
-      router.replace("/dashboard");
+      router.replace(res.user.role === "security" ? "/scan/kiosk" : "/dashboard");
     }, 350);
   };
 
   const quick = (e: string) => {
     setEmail(e);
     setPassword("password");
+    setAuthMode("password");
+  };
+
+  const quickPin = (p: string) => {
+    setPin(p);
+    setAuthMode("pin");
   };
 
   return (
@@ -188,6 +199,96 @@ export default function LoginPage() {
                 Gunakan akun petugas Anda untuk melanjutkan.
               </p>
 
+              <div className="mt-5 grid grid-cols-2 gap-2 rounded-2xl border border-white/15 bg-white/[0.05] p-1.5 backdrop-blur">
+                {[
+                  { mode: "pin" as const, label: "PIN Petugas", icon: KeyRound },
+                  {
+                    mode: "password" as const,
+                    label: "Admin/Supervisor",
+                    icon: ShieldCheck,
+                  },
+                ].map((item) => {
+                  const Icon = item.icon;
+                  const active = authMode === item.mode;
+                  return (
+                    <button
+                      key={item.mode}
+                      type="button"
+                      onClick={() => {
+                        setAuthMode(item.mode);
+                        setError(null);
+                      }}
+                      className={`inline-flex items-center justify-center gap-2 rounded-xl px-3 py-2 text-xs font-bold transition ${
+                        active
+                          ? "bg-cyan-300 text-slate-950 shadow-sm"
+                          : "text-white/70 hover:bg-white/10 hover:text-white"
+                      }`}
+                    >
+                      <Icon className="h-3.5 w-3.5" />
+                      {item.label}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {authMode === "pin" ? (
+                <form onSubmit={submit} className="mt-5 space-y-4">
+                  <div>
+                    <label className="text-[11px] font-semibold uppercase tracking-wider text-white/70">
+                      PIN Petugas
+                    </label>
+                    <div className="relative mt-1.5">
+                      <KeyRound className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-cyan-200/80" />
+                      <Input
+                        type="password"
+                        inputMode="numeric"
+                        pattern="[0-9]*"
+                        maxLength={6}
+                        value={pin}
+                        onChange={(e) =>
+                          setPin(e.target.value.replace(/\D/g, "").slice(0, 6))
+                        }
+                        placeholder="1234"
+                        required
+                        autoFocus
+                        className="h-16 border-white/20 bg-white/10 pl-12 text-center font-mono text-3xl font-black tracking-[0.35em] text-white placeholder:text-white/25 focus:border-cyan-300 focus:ring-cyan-300/30"
+                      />
+                    </div>
+                    <p className="mt-2 text-xs text-white/55">
+                      Masuk cepat untuk petugas security saat rolling. Tidak
+                      ada batas waktu otomatis.
+                    </p>
+                  </div>
+
+                  {error && (
+                    <div className="flex animate-fade-up items-start gap-2 rounded-xl border border-rose-300/40 bg-rose-500/15 px-3 py-2 text-sm text-rose-100 backdrop-blur">
+                      <AlertCircle className="mt-0.5 h-4 w-4" />
+                      <span>{error}</span>
+                    </div>
+                  )}
+
+                  <Button
+                    type="submit"
+                    size="lg"
+                    className="group relative w-full overflow-hidden bg-gradient-to-r from-blue-500 via-cyan-400 to-blue-500 bg-[length:200%_100%] shadow-lift transition-all hover:bg-[position:100%_0]"
+                    disabled={loading}
+                  >
+                    <span className="relative z-[1] flex items-center justify-center gap-2">
+                      {loading ? (
+                        <>
+                          <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" />
+                          Memproses...
+                        </>
+                      ) : (
+                        <>
+                          <UserRoundCheck className="h-4 w-4" />
+                          Masuk Petugas
+                        </>
+                      )}
+                    </span>
+                  </Button>
+                </form>
+              ) : (
               <form onSubmit={submit} className="mt-5 space-y-4">
                 <div>
                   <label className="text-[11px] font-semibold uppercase tracking-wider text-white/70">
@@ -258,7 +359,38 @@ export default function LoginPage() {
                   </span>
                 </Button>
               </form>
+              )}
 
+              {authMode === "pin" ? (
+                <div className="mt-5 rounded-2xl border border-white/15 bg-white/[0.05] p-3 backdrop-blur">
+                  <p className="inline-flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-cyan-200">
+                    <Sparkles className="h-3 w-3" />
+                    Demo rolling petugas
+                  </p>
+                  <div className="mt-2 grid grid-cols-3 gap-1.5">
+                    {[
+                      { p: "1234", n: "Security" },
+                      { p: "2345", n: "Petugas A" },
+                      { p: "3456", n: "Petugas B" },
+                    ].map((u) => (
+                      <button
+                        key={u.p}
+                        type="button"
+                        onClick={() => quickPin(u.p)}
+                        className="rounded-xl border border-white/10 bg-white/[0.04] px-2 py-2 text-center text-white/85 transition hover:-translate-y-0.5 hover:border-cyan-300/40 hover:bg-white/10"
+                      >
+                        <span className="block font-mono text-sm font-black tracking-widest">
+                          {u.p}
+                        </span>
+                        <span className="block truncate text-[10px] text-white/55">
+                          {u.n}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <>
               {/* Demo accounts */}
               <div className="mt-5 rounded-2xl border border-white/15 bg-white/[0.05] p-3 backdrop-blur">
                 <p className="inline-flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-cyan-200">
@@ -272,7 +404,6 @@ export default function LoginPage() {
                   {[
                     { e: "admin@airport.test", r: "Admin" },
                     { e: "supervisor@airport.test", r: "Supervisor" },
-                    { e: "security@airport.test", r: "Security" },
                   ].map((u) => (
                     <button
                       key={u.e}
@@ -288,6 +419,8 @@ export default function LoginPage() {
                   ))}
                 </div>
               </div>
+                </>
+              )}
             </div>
           </div>
 

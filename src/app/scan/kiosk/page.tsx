@@ -48,6 +48,7 @@ import {
   getSession,
   getScanEvents,
   getFlights,
+  updateScanEvent,
 } from "@/lib/storage";
 import {
   playFeedbackHaptic,
@@ -56,6 +57,7 @@ import {
   processScanWithFace,
 } from "@/lib/scanService";
 import { facePhotoStore } from "@/lib/facePhotoStore";
+import { KtpVerifyModal } from "@/components/scan/KtpVerifyModal";
 import { getEffectiveFlightStatus } from "@/lib/flightStatus";
 import {
   flushOutbox,
@@ -109,7 +111,7 @@ const STATUS_META: Record<
     glow: "shadow-[0_0_60px_-12px_rgba(16,185,129,0.55)]",
   },
   DUPLICATE_SCAN: {
-    label: "DUPLICATE",
+    label: "DUPLICATE - VALID",
     icon: <AlertTriangle className="h-12 w-12" />,
     modalTone: "warning",
     bar: "from-amber-500 via-amber-400 to-yellow-400",
@@ -303,6 +305,10 @@ export default function KioskPage() {
   );
   const [now, setNow] = React.useState(new Date());
   const [modalOpen, setModalOpen] = React.useState(false);
+  const [ktpFlow, setKtpFlow] = React.useState<{
+    eventId: string;
+    expectedName: string | null;
+  } | null>(null);
   const [faceState, setFaceState] = React.useState<FaceState>("unknown");
   const [faceDetectorSupported, setFaceDetectorSupported] = React.useState(false);
   const [detectionMode, setDetectionMode] = React.useState<FaceDetectionMode>("none");
@@ -355,25 +361,69 @@ export default function KioskPage() {
     return () => clearInterval(t);
   }, []);
 
+  // Refresh todayFlights & todayScans secara berkala + saat storage berubah
+  // (mis. user buat flight baru di tab lain) supaya list "FLIGHT AKTIF" selalu
+  // up-to-date tanpa harus reload halaman.
+  React.useEffect(() => {
+    const refresh = () => {
+      const today = new Date().toISOString().slice(0, 10);
+      setTodayFlights(getFlights().filter((f) => f.departureDate === today));
+      const all = getScanEvents();
+      setTodayScans(all.filter((e) => e.scannedAt.slice(0, 10) === today));
+      setFlightsToday(getFlights().filter((f) => f.departureDate === today).length);
+    };
+    const id = window.setInterval(refresh, 3000);
+    const onStorage = (e: StorageEvent) => {
+      if (!e.key || e.key.startsWith("afvs.")) refresh();
+    };
+    const onFocus = () => refresh();
+    window.addEventListener("storage", onStorage);
+    window.addEventListener("focus", onFocus);
+    return () => {
+      window.clearInterval(id);
+      window.removeEventListener("storage", onStorage);
+      window.removeEventListener("focus", onFocus);
+    };
+  }, []);
+
   React.useEffect(() => {
     const t = window.setInterval(() => {
       const el = inputRef.current;
       if (!el) return;
-      if (document.activeElement !== el) el.focus();
+      const active = document.activeElement as HTMLElement | null;
+      if (active === el) return;
+      // jangan rebut focus saat user sedang berinteraksi dengan kontrol form
+      // (mis. dropdown webcam, tombol modal, atau input lain)
+      if (active) {
+        const tag = active.tagName;
+        if (
+          tag === "SELECT" ||
+          tag === "OPTION" ||
+          tag === "BUTTON" ||
+          tag === "TEXTAREA" ||
+          (tag === "INPUT" && active !== el)
+        ) {
+          return;
+        }
+        if (active.isContentEditable) return;
+      }
+      el.focus();
     }, 500);
     return () => window.clearInterval(t);
   }, []);
 
+  const ktpFlowOpen = ktpFlow !== null;
   React.useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
+        if (ktpFlowOpen) return;
         if (modalOpen) setModalOpen(false);
         else router.push("/scan");
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [router, modalOpen]);
+  }, [router, modalOpen, ktpFlowOpen]);
 
   React.useEffect(() => {
     return () => {
@@ -488,7 +538,7 @@ export default function KioskPage() {
           "Valid",
         );
       } else if (outcome.status === "DUPLICATE_SCAN") {
-        toast.warning(outcome.message, "Duplicate");
+        toast.warning(outcome.message, "Duplicate - valid hari ini");
       } else {
         toast.error(outcome.message, "Rejected");
       }
@@ -521,7 +571,16 @@ export default function KioskPage() {
       const today = new Date().toISOString().slice(0, 10);
       setTodayScans(all.filter((e) => e.scannedAt.slice(0, 10) === today));
       setTodayFlights(getFlights().filter((f) => f.departureDate === today));
-      setModalOpen(true);
+      const willOpenKtp =
+        outcome.status === "VALID_FLIGHT" && settings.ktpVerifyEnabled;
+      if (willOpenKtp) {
+        setKtpFlow({
+          eventId: event.id,
+          expectedName: outcome.parsed?.passengerName ?? null,
+        });
+      } else {
+        setModalOpen(true);
+      }
       setValue("");
       setTimeout(() => inputRef.current?.focus(), 0);
     } finally {
@@ -705,7 +764,9 @@ export default function KioskPage() {
             now={now}
             settings={settings}
             highlightFlightId={last?.event.flightId ?? null}
-            onMore={() => router.push("/scan-events")}
+            onMore={() =>
+              router.push(session?.role === "security" ? "/scan" : "/scan-events")
+            }
           />
         </section>
       </main>
@@ -753,6 +814,29 @@ export default function KioskPage() {
           </Modal>
         );
       })()}
+
+      <KtpVerifyModal
+        open={ktpFlow !== null}
+        expectedName={ktpFlow?.expectedName ?? null}
+        cameraRef={cameraRef}
+        autoPassThreshold={settings.ktpAutoPassThreshold}
+        manualThreshold={settings.ktpManualThreshold}
+        onClose={(result) => {
+          if (ktpFlow && result) {
+            updateScanEvent(ktpFlow.eventId, { ktpVerification: result });
+            if (result.status === "manual_reject") {
+              toast.error("Nama KTP tidak cocok dengan boarding pass.", "KTP Reject");
+            } else if (result.status === "matched") {
+              toast.success("Nama KTP cocok.", "KTP OK");
+            } else if (result.status === "manual_pass") {
+              toast.info("KTP diverifikasi manual oleh operator.", "KTP Manual");
+            }
+          }
+          setKtpFlow(null);
+          setModalOpen(true);
+          setTimeout(() => inputRef.current?.focus(), 0);
+        }}
+      />
     </div>
   );
 }
@@ -1015,8 +1099,16 @@ function ActiveFlightCards({
     );
     return flights
       .map((flight) => {
+        // Pakai stored status sebagai dasar tampilan (kalau supervisor mark
+        // OPEN/ACTIVE manual, harus tetap muncul di kiosk walaupun window
+        // auto-close lewat). Effective hanya jadi badge tambahan.
         const eff = getEffectiveFlightStatus(flight, now, settings);
-        if (eff.status !== "OPEN" && eff.status !== "ACTIVE") return null;
+        const isBoardable =
+          flight.status === "OPEN" ||
+          flight.status === "ACTIVE" ||
+          eff.status === "OPEN" ||
+          eff.status === "ACTIVE";
+        if (!isBoardable) return null;
         const fScans = validScans
           .filter((e) => e.flightId === flight.id)
           .sort(
@@ -1026,9 +1118,16 @@ function ActiveFlightCards({
         const lastAt = fScans[0]
           ? new Date(fScans[0].scannedAt).getTime()
           : 0;
+        // Tampilkan badge "OPEN" untuk semua yang lolos filter — kalau
+        // stored OPEN/ACTIVE tapi effective lain (CLOSED), tetap OPEN biar
+        // konsisten dengan list /flights.
+        const displayStatus: "OPEN" | "ACTIVE" =
+          flight.status === "ACTIVE" || eff.status === "ACTIVE"
+            ? "ACTIVE"
+            : "OPEN";
         return {
           flight,
-          effectiveStatus: eff.status as "OPEN" | "ACTIVE",
+          effectiveStatus: displayStatus,
           boarded: fScans.length,
           lastScans: fScans.slice(0, 3),
           lastScanAt: lastAt,

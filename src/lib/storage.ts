@@ -56,7 +56,26 @@ export function resetAll() {
 
 /* Users */
 export function getUsers(): User[] {
-  return read<User[]>(KEYS.users, DUMMY_USERS);
+  const stored = read<User[]>(KEYS.users, DUMMY_USERS);
+  const byId = new Map(stored.map((u) => [u.id, u]));
+  let changed = false;
+
+  for (const demo of DUMMY_USERS) {
+    const existing = byId.get(demo.id);
+    if (!existing) {
+      byId.set(demo.id, demo);
+      changed = true;
+      continue;
+    }
+    if (demo.pin && !existing.pin) {
+      byId.set(demo.id, { ...existing, pin: demo.pin });
+      changed = true;
+    }
+  }
+
+  const users = Array.from(byId.values());
+  if (changed) write<User[]>(KEYS.users, users);
+  return users;
 }
 
 /* Session */

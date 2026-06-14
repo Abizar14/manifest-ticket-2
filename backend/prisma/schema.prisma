@@ -1,0 +1,94 @@
+// AFVS — Prisma schema
+// Provider default Postgres; ganti ke sqlite kalau single-gate.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  operator
+  supervisor
+  admin
+}
+
+enum FlightStatus {
+  SCHEDULED
+  OPEN
+  ACTIVE
+  CLOSED
+  CANCELLED
+}
+
+model Operator {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  name         String
+  role         Role     @default(operator)
+  station      String?
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  scanEvents   ScanEvent[]
+
+  @@index([station])
+}
+
+model Flight {
+  id             String       @id @default(cuid())
+  flightNumber   String
+  airlineCode    String
+  origin         String
+  destination    String
+  std            DateTime
+  status         FlightStatus @default(SCHEDULED)
+  station        String
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  scanEvents     ScanEvent[]
+
+  @@unique([station, flightNumber, std])
+  @@index([station, std])
+  @@index([status])
+}
+
+model ScanEvent {
+  id               String   @id @default(cuid())
+  // Idempotency key dari client (= ScanEvent.id lokal di kiosk)
+  eventId          String   @unique
+  rawBarcode       String
+  flightNumber     String?
+  pnr              String?
+  ticketNumber     String?
+  seat             String?
+  passengerName    String?
+  resultStatus     String
+  message          String?
+  scannedAt        DateTime
+  station          String
+
+  facePhotoPath    String?  // path relatif di UPLOAD_DIR
+  ktpStatus        String?
+  ktpName          String?
+  ktpSimilarity    Float?
+  ktpCapturedAt    DateTime?
+
+  flightId         String?
+  flight           Flight?  @relation(fields: [flightId], references: [id])
+
+  operatorId       String
+  operator         Operator @relation(fields: [operatorId], references: [id])
+
+  createdAt        DateTime @default(now())
+
+  @@index([station, scannedAt])
+  @@index([flightId])
+  @@index([resultStatus])
+}

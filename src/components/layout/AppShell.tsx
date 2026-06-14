@@ -15,6 +15,7 @@ import {
   CalendarDays,
   Users,
   BarChart3,
+  BrainCircuit,
   Settings as SettingsIcon,
   ChevronRight,
   ChevronLeft,
@@ -34,6 +35,7 @@ import { useT, useLocale } from "@/lib/useT";
 import { BottomNav } from "./BottomNav";
 import { ThemeSwitch } from "@/components/ui/ThemeSwitch";
 import { InstallPrompt } from "@/components/InstallPrompt";
+import { InsightBubble } from "@/components/insights/InsightBubble";
 
 interface NavItem {
   href: string;
@@ -55,7 +57,7 @@ const NAV_SECTIONS: NavSection[] = [
         href: "/dashboard",
         labelKey: "nav.dashboard",
         icon: LayoutDashboard,
-        roles: ["admin", "supervisor", "security"],
+        roles: ["admin", "supervisor"],
       },
       {
         href: "/scan",
@@ -67,7 +69,7 @@ const NAV_SECTIONS: NavSection[] = [
         href: "/passengers",
         labelKey: "nav.passengers",
         icon: Users,
-        roles: ["admin", "supervisor", "security"],
+        roles: ["admin", "supervisor"],
       },
     ],
   },
@@ -78,18 +80,24 @@ const NAV_SECTIONS: NavSection[] = [
         href: "/flights",
         labelKey: "nav.flights",
         icon: Plane,
-        roles: ["admin", "supervisor", "security"],
+        roles: ["admin", "supervisor"],
       },
       {
         href: "/scan-events",
         labelKey: "nav.scanEvents",
         icon: History,
-        roles: ["admin", "supervisor", "security"],
+        roles: ["admin", "supervisor"],
       },
       {
         href: "/analytics",
         labelKey: "nav.analytics",
         icon: BarChart3,
+        roles: ["admin", "supervisor"],
+      },
+      {
+        href: "/insights",
+        labelKey: "nav.insights",
+        icon: BrainCircuit,
         roles: ["admin", "supervisor"],
       },
     ],
@@ -101,13 +109,13 @@ const NAV_SECTIONS: NavSection[] = [
         href: "/seeders/boarding-pass",
         labelKey: "nav.boardingPassSeeder",
         icon: Ticket,
-        roles: ["admin", "supervisor", "security"],
+        roles: ["admin", "supervisor"],
       },
       {
         href: "/settings",
         labelKey: "nav.settings",
         icon: SettingsIcon,
-        roles: ["admin", "supervisor", "security"],
+        roles: ["admin", "supervisor"],
       },
     ],
   },
@@ -157,9 +165,13 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
       router.replace("/login");
       return;
     }
+    if (s.role === "security" && !pathname.startsWith("/scan")) {
+      router.replace("/scan/kiosk");
+      return;
+    }
     setSession(s);
     setReady(true);
-  }, [router]);
+  }, [pathname, router]);
 
   useEffect(() => {
     setOpen(false);
@@ -539,6 +551,16 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
                   </p>
                 </div>
               </div>
+
+              <button
+                type="button"
+                onClick={handleLogout}
+                title="Ganti petugas"
+                className="inline-flex h-9 items-center justify-center gap-1.5 rounded-xl bg-rose-50 px-2.5 text-xs font-bold text-rose-700 ring-1 ring-rose-200 transition hover:bg-rose-100 hover:ring-rose-300 sm:px-3"
+              >
+                <LogOut className="h-3.5 w-3.5" />
+                <span className="hidden sm:inline">Ganti Petugas</span>
+              </button>
             </div>
           </div>
         </header>
@@ -555,7 +577,10 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
       </div>
 
       <InstallPrompt />
-      <BottomNav onMoreClick={() => setOpen(true)} />
+      <InsightBubble />
+      {session.role !== "security" && (
+        <BottomNav onMoreClick={() => setOpen(true)} />
+      )}
     </div>
   );
 }
@@ -571,6 +596,7 @@ function breadcrumbTail(pathname: string, t: (k: string) => string) {
   if (pathname.startsWith("/scan")) return t("nav.scan");
   if (pathname.startsWith("/passengers")) return t("nav.passengers");
   if (pathname.startsWith("/analytics")) return t("nav.analytics");
+  if (pathname.startsWith("/insights")) return t("nav.insights");
   if (pathname.startsWith("/settings")) return t("nav.settings");
   return "Home";
 }
@@ -584,6 +610,7 @@ function currentTitle(pathname: string, t: (k: string) => string) {
   if (pathname.startsWith("/scan")) return t("nav.scan");
   if (pathname.startsWith("/passengers")) return t("nav.passengers");
   if (pathname.startsWith("/analytics")) return t("nav.analytics");
+  if (pathname.startsWith("/insights")) return t("nav.insights");
   if (pathname.startsWith("/settings")) return t("nav.settings");
   return "AFVS";
 }

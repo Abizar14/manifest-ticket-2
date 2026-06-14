@@ -11,7 +11,7 @@ export default function Home() {
     ensureSeed();
     const session = getSession();
     if (session) {
-      router.replace("/dashboard");
+      router.replace(session.role === "security" ? "/scan/kiosk" : "/dashboard");
       return;
     }
     if (typeof window !== "undefined") {

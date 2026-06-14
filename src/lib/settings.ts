@@ -26,6 +26,11 @@ export interface AppSettings {
   sikerenApiKey: string;
   sikerenSyncMode: SikerenSyncMode;
   sikerenStation: string;
+  ktpVerifyEnabled: boolean;
+  ktpAutoPassThreshold: number;
+  ktpManualThreshold: number;
+  ktpSavePhoto: boolean;
+  ktpRequireForValid: boolean;
 }
 
 const KEY = "afvs.settings";
@@ -52,6 +57,11 @@ const DEFAULTS: AppSettings = {
   sikerenApiKey: "",
   sikerenSyncMode: "auto",
   sikerenStation: "",
+  ktpVerifyEnabled: false,
+  ktpAutoPassThreshold: 0.85,
+  ktpManualThreshold: 0.6,
+  ktpSavePhoto: false,
+  ktpRequireForValid: false,
 };
 
 function isBrowser() {

@@ -4,6 +4,7 @@ export interface User {
   id: string;
   email: string;
   password: string;
+  pin?: string;
   name: string;
   role: UserRole;
 }
@@ -87,6 +88,24 @@ export interface ScanEvent {
   scannedBy: string; // userId or email
   scannedAt: string; // ISO
   faceCaptureId?: string | null; // key di facePhotoStore (IndexedDB)
+  ktpVerification?: KtpVerification | null;
+}
+
+export type KtpVerificationStatus =
+  | "matched"
+  | "mismatch"
+  | "manual_pass"
+  | "manual_reject"
+  | "skipped"
+  | "ocr_failed";
+
+export interface KtpVerification {
+  status: KtpVerificationStatus;
+  ocrName: string | null;
+  rawText?: string;
+  similarity?: number;
+  capturedAt: string;
+  photoId?: string | null;
 }
 
 export interface ParsedBarcode {

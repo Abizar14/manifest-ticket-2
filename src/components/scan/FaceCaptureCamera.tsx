@@ -24,12 +24,26 @@ export interface FaceCaptureHandle {
   /**
    * Snapshot frame video saat ini → JPEG Blob (target 320x240 default).
    * Return null jika stream belum ready atau gagal encode.
+   *
+   * Pakai `burst` > 1 untuk ambil N frame berurutan dan pilih yang paling
+   * tajam (Laplacian variance) — berguna untuk OCR KTP supaya hasil tidak
+   * blur. Default burst = 1.
    */
   captureFrame: (opts?: {
     width?: number;
     height?: number;
     quality?: number;
+    burst?: number;
   }) => Promise<Blob | null>;
+  /** Akses langsung ke video element (untuk live preview di komponen lain). */
+  getVideoElement: () => HTMLVideoElement | null;
+  /** Stream MediaStream (untuk preview di video element lain). */
+  getStream: () => MediaStream | null;
+  /**
+   * Ukur ketajaman frame saat ini (Laplacian variance pada grayscale).
+   * Nilai lebih besar = lebih tajam. Threshold praktis: > 80 = tajam, < 30 = blur.
+   */
+  measureSharpness: () => number;
   isReady: () => boolean;
   getFaceState: () => FaceState;
   isFaceDetectionSupported: () => boolean;
@@ -103,12 +117,64 @@ export const FaceCaptureCamera = React.forwardRef<FaceCaptureHandle, Props>(
         getFaceState: () => faceStateRef.current,
         isFaceDetectionSupported: () => faceDetectorSupportedRef.current,
         getDetectionMode: () => detectionModeRef.current,
+        getVideoElement: () => videoRef.current,
+        getStream: () => streamRef.current,
+        measureSharpness: () => {
+          const v = videoRef.current;
+          if (!v || v.readyState < 2) return 0;
+          const W = 240;
+          const H = 160;
+          let canvas = canvasRef.current;
+          if (!canvas) {
+            canvas = document.createElement("canvas");
+            canvasRef.current = canvas;
+          }
+          canvas.width = W;
+          canvas.height = H;
+          const ctx = canvas.getContext("2d", { willReadFrequently: true });
+          if (!ctx) return 0;
+          const vw = v.videoWidth || W;
+          const vh = v.videoHeight || H;
+          const scale = Math.max(W / vw, H / vh);
+          const sw = W / scale;
+          const sh = H / scale;
+          const sx = (vw - sw) / 2;
+          const sy = (vh - sh) / 2;
+          ctx.drawImage(v, sx, sy, sw, sh, 0, 0, W, H);
+          const data = ctx.getImageData(0, 0, W, H).data;
+          const gray = new Float32Array(W * H);
+          for (let i = 0, j = 0; i < data.length; i += 4, j++) {
+            gray[j] = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+          }
+          // Laplacian 3x3 variance
+          let sum = 0;
+          let sumSq = 0;
+          let n = 0;
+          for (let y = 1; y < H - 1; y++) {
+            for (let x = 1; x < W - 1; x++) {
+              const i = y * W + x;
+              const lap =
+                4 * gray[i] -
+                gray[i - 1] -
+                gray[i + 1] -
+                gray[i - W] -
+                gray[i + W];
+              sum += lap;
+              sumSq += lap * lap;
+              n++;
+            }
+          }
+          if (n === 0) return 0;
+          const mean = sum / n;
+          return sumSq / n - mean * mean;
+        },
         captureFrame: async (opts) => {
           const v = videoRef.current;
           if (!v || v.readyState < 2) return null;
           const w = opts?.width ?? 320;
           const h = opts?.height ?? 240;
           const q = opts?.quality ?? 0.82;
+          const burst = Math.max(1, Math.min(opts?.burst ?? 1, 6));
           let canvas = canvasRef.current;
           if (!canvas) {
             canvas = document.createElement("canvas");
@@ -118,7 +184,6 @@ export const FaceCaptureCamera = React.forwardRef<FaceCaptureHandle, Props>(
           canvas.height = h;
           const ctx = canvas.getContext("2d");
           if (!ctx) return null;
-          // cover-fit: scale supaya video tetap proporsional, crop tengah
           const vw = v.videoWidth || w;
           const vh = v.videoHeight || h;
           const scale = Math.max(w / vw, h / vh);
@@ -126,12 +191,61 @@ export const FaceCaptureCamera = React.forwardRef<FaceCaptureHandle, Props>(
           const sh = h / scale;
           const sx = (vw - sw) / 2;
           const sy = (vh - sh) / 2;
-          ctx.drawImage(v, sx, sy, sw, sh, 0, 0, w, h);
+
           // visual feedback pulse
           setPulse((p) => p + 1);
-          return new Promise<Blob | null>((resolve) => {
-            canvas!.toBlob((b) => resolve(b ?? null), "image/jpeg", q);
-          });
+
+          const blobFromCanvas = () =>
+            new Promise<Blob | null>((resolve) => {
+              canvas!.toBlob((b) => resolve(b ?? null), "image/jpeg", q);
+            });
+
+          if (burst === 1) {
+            ctx.drawImage(v, sx, sy, sw, sh, 0, 0, w, h);
+            return blobFromCanvas();
+          }
+
+          // Multi-shot: ambil N frame berjarak ~80ms, pilih paling tajam.
+          // Sharpness = Laplacian variance pada grayscale (sampling ringan).
+          const sampleSharpness = (): number => {
+            const data = ctx.getImageData(0, 0, w, h).data;
+            // downsample stride supaya cepat
+            const stride = 4 * 3; // tiap 3 px
+            const gray = new Float32Array(Math.ceil((w * h) / 3));
+            let gi = 0;
+            for (let i = 0; i < data.length; i += stride) {
+              gray[gi++] = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+            }
+            // variance dari diff antar tetangga (proxy Laplacian)
+            let sum = 0;
+            let sumSq = 0;
+            let n = 0;
+            for (let i = 1; i < gi - 1; i++) {
+              const d = gray[i + 1] - 2 * gray[i] + gray[i - 1];
+              sum += d;
+              sumSq += d * d;
+              n++;
+            }
+            if (n === 0) return 0;
+            const mean = sum / n;
+            return sumSq / n - mean * mean;
+          };
+
+          let bestBlob: Blob | null = null;
+          let bestScore = -1;
+          for (let i = 0; i < burst; i++) {
+            ctx.drawImage(v, sx, sy, sw, sh, 0, 0, w, h);
+            const score = sampleSharpness();
+            if (score > bestScore) {
+              const b = await blobFromCanvas();
+              if (b) {
+                bestBlob = b;
+                bestScore = score;
+              }
+            }
+            if (i < burst - 1) await new Promise((r) => setTimeout(r, 80));
+          }
+          return bestBlob;
         },
       }),
       [state],
@@ -155,30 +269,122 @@ export const FaceCaptureCamera = React.forwardRef<FaceCaptureHandle, Props>(
         }
 
         try {
+          // pakai exact supaya kalau device tidak valid kita dapat error jelas,
+          // bukan silent fallback ke kamera lain (membingungkan user).
           const constraints: MediaStreamConstraints = {
             video: deviceId
               ? {
                   deviceId: { exact: deviceId },
-                  width: { ideal: 640 },
-                  height: { ideal: 480 },
+                  width: { ideal: 1280 },
+                  height: { ideal: 720 },
                 }
               : {
                   facingMode: { ideal: facingMode },
-                  width: { ideal: 640 },
-                  height: { ideal: 480 },
+                  width: { ideal: 1280 },
+                  height: { ideal: 720 },
                 },
             audio: false,
           };
-          const stream = await navigator.mediaDevices.getUserMedia(constraints);
+          // stop stream lama dulu supaya device tidak bentrok saat switch
+          if (streamRef.current) {
+            streamRef.current.getTracks().forEach((t) => t.stop());
+            streamRef.current = null;
+          }
+          // beri jeda 1 tick supaya OS sempat release device
+          await new Promise((r) => setTimeout(r, 50));
+          let stream: MediaStream;
+          try {
+            stream = await navigator.mediaDevices.getUserMedia(constraints);
+          } catch (err) {
+            // kalau exact deviceId gagal (device tidak valid / busy), coba fallback
+            // tanpa deviceId supaya kamera default tetap jalan.
+            const e = err as DOMException;
+            if (
+              deviceId &&
+              (e?.name === "OverconstrainedError" ||
+                e?.name === "NotFoundError" ||
+                e?.name === "NotReadableError")
+            ) {
+              const msg = `Webcam terpilih tidak bisa diakses (${e.name}). Memakai kamera default.`;
+              setErrorMsg(msg);
+              onErrorRef.current?.(msg);
+              stream = await navigator.mediaDevices.getUserMedia({
+                video: { width: { ideal: 1280 }, height: { ideal: 720 } },
+                audio: false,
+              });
+            } else {
+              throw err;
+            }
+          }
           if (cancelled) {
             stream.getTracks().forEach((t) => t.stop());
             return;
           }
           streamRef.current = stream;
+          // coba aktifkan continuous autofocus + exposure kalau hardware mendukung.
+          // Banyak webcam laptop tidak punya AF, tapi USB webcam kelas atas
+          // (Logitech BRIO, dll) bisa fokus lebih tajam dengan ini.
+          try {
+            const track = stream.getVideoTracks()[0];
+            const caps = (track.getCapabilities?.() ?? {}) as MediaTrackCapabilities & {
+              focusMode?: string[];
+              exposureMode?: string[];
+              whiteBalanceMode?: string[];
+            };
+            const advanced: MediaTrackConstraintSet[] = [];
+            if (caps.focusMode?.includes("continuous")) {
+              advanced.push({ focusMode: "continuous" } as MediaTrackConstraintSet);
+            }
+            if (caps.exposureMode?.includes("continuous")) {
+              advanced.push({ exposureMode: "continuous" } as MediaTrackConstraintSet);
+            }
+            if (caps.whiteBalanceMode?.includes("continuous")) {
+              advanced.push({ whiteBalanceMode: "continuous" } as MediaTrackConstraintSet);
+            }
+            if (advanced.length > 0) {
+              await track.applyConstraints({ advanced });
+            }
+          } catch {
+            /* hardware tidak mendukung — biarkan default */
+          }
           const v = videoRef.current;
           if (v) {
+            try {
+              v.pause();
+            } catch {
+              /* ignore */
+            }
             v.srcObject = stream;
-            await v.play().catch(() => {});
+            v.muted = true;
+            v.playsInline = true;
+            // tunggu metadata baru play, supaya video tidak stuck frame hitam
+            await new Promise<void>((resolve) => {
+              let settled = false;
+              const finish = () => {
+                if (settled) return;
+                settled = true;
+                v.removeEventListener("loadedmetadata", finish);
+                v.removeEventListener("loadeddata", finish);
+                resolve();
+              };
+              if (v.readyState >= 2) {
+                finish();
+                return;
+              }
+              v.addEventListener("loadedmetadata", finish);
+              v.addEventListener("loadeddata", finish);
+              setTimeout(finish, 2500);
+            });
+            if (cancelled) return;
+            // retry play sampai 3x supaya autoplay race teratasi
+            for (let i = 0; i < 3; i++) {
+              try {
+                await v.play();
+                break;
+              } catch {
+                await new Promise((r) => setTimeout(r, 120));
+              }
+            }
           }
           setState("ready");
           onReadyRef.current?.();
@@ -408,21 +614,37 @@ export const FaceCaptureCamera = React.forwardRef<FaceCaptureHandle, Props>(
         </div>
         )}
 
-        {/* Device picker top-right */}
-        {showDevicePicker && devices.length > 1 && state === "ready" && (
-          <div className="absolute right-3 top-3">
-            <select
-              value={deviceId ?? ""}
-              onChange={(e) => onDeviceChange?.(e.target.value)}
-              className="max-w-[180px] truncate rounded-full bg-slate-950/70 px-2.5 py-1 text-[10.5px] font-semibold text-white shadow-sm ring-1 ring-white/10 backdrop-blur focus:outline-none focus:ring-2 focus:ring-cyan-400/60"
-            >
-              <option value="">Webcam default</option>
-              {devices.map((d) => (
-                <option key={d.deviceId} value={d.deviceId}>
-                  {d.label}
+        {/* Device picker top-right — selalu tampil supaya user bisa ganti / fallback walau error */}
+        {showDevicePicker && state !== "denied" && (
+          <div className="absolute right-3 top-3 z-30">
+            <label className="flex items-center gap-1.5 rounded-2xl bg-slate-950/90 px-2.5 py-1.5 shadow-lift ring-1 ring-cyan-400/30 backdrop-blur">
+              {state === "starting" ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin text-cyan-300" />
+              ) : (
+                <Camera className="h-3.5 w-3.5 text-cyan-300" />
+              )}
+              <select
+                value={deviceId ?? ""}
+                onChange={(e) => onDeviceChange?.(e.target.value)}
+                className="max-w-[200px] cursor-pointer truncate bg-transparent pr-1 text-[11.5px] font-semibold text-white focus:outline-none"
+                style={{ colorScheme: "dark" }}
+                aria-label="Pilih webcam"
+              >
+                <option value="" className="bg-slate-900 text-white">
+                  Webcam default
                 </option>
-              ))}
-            </select>
+                {devices.map((d) => (
+                  <option key={d.deviceId} value={d.deviceId} className="bg-slate-900 text-white">
+                    {d.label}
+                  </option>
+                ))}
+                {devices.length === 0 && (
+                  <option value="" disabled className="bg-slate-900 text-white">
+                    Memuat daftar webcam…
+                  </option>
+                )}
+              </select>
+            </label>
           </div>
         )}
 
