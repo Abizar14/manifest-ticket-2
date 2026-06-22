@@ -6,7 +6,9 @@ import Link from "next/link";
 import {
   LayoutDashboard,
   Plane,
+  Radar,
   ScanLine,
+  Server,
   History,
   LogOut,
   Menu,
@@ -14,6 +16,7 @@ import {
   ShieldCheck,
   CalendarDays,
   Users,
+  Database,
   BarChart3,
   BrainCircuit,
   Settings as SettingsIcon,
@@ -25,6 +28,7 @@ import {
   PanelLeftClose,
   PanelLeft,
   Ticket,
+  UserCog,
 } from "lucide-react";
 import { SessionUser, UserRole } from "@/lib/types";
 import { archiveOldScanEvents, ensureSeed, getSession } from "@/lib/storage";
@@ -71,6 +75,12 @@ const NAV_SECTIONS: NavSection[] = [
         icon: Users,
         roles: ["admin", "supervisor"],
       },
+      {
+        href: "/radar",
+        labelKey: "nav.radar",
+        icon: Radar,
+        roles: ["admin", "supervisor"],
+      },
     ],
   },
   {
@@ -100,6 +110,18 @@ const NAV_SECTIONS: NavSection[] = [
         icon: BrainCircuit,
         roles: ["admin", "supervisor"],
       },
+      {
+        href: "/admin/scans",
+        labelKey: "nav.adminScans",
+        icon: Database,
+        roles: ["admin", "supervisor"],
+      },
+      {
+        href: "/admin/officers",
+        labelKey: "nav.adminOfficers",
+        icon: UserCog,
+        roles: ["admin"],
+      },
     ],
   },
   {
@@ -109,6 +131,12 @@ const NAV_SECTIONS: NavSection[] = [
         href: "/seeders/boarding-pass",
         labelKey: "nav.boardingPassSeeder",
         icon: Ticket,
+        roles: ["admin", "supervisor"],
+      },
+      {
+        href: "/connect",
+        labelKey: "nav.connect",
+        icon: Server,
         roles: ["admin", "supervisor"],
       },
       {
@@ -595,6 +623,10 @@ function breadcrumbTail(pathname: string, t: (k: string) => string) {
   if (pathname.startsWith("/scan-events")) return t("nav.scanEvents");
   if (pathname.startsWith("/scan")) return t("nav.scan");
   if (pathname.startsWith("/passengers")) return t("nav.passengers");
+  if (pathname.startsWith("/radar")) return t("nav.radar");
+  if (pathname.startsWith("/connect")) return t("nav.connect");
+  if (pathname.startsWith("/admin/officers")) return t("nav.adminOfficers");
+  if (pathname.startsWith("/admin/scans")) return t("nav.adminScans");
   if (pathname.startsWith("/analytics")) return t("nav.analytics");
   if (pathname.startsWith("/insights")) return t("nav.insights");
   if (pathname.startsWith("/settings")) return t("nav.settings");
@@ -609,6 +641,10 @@ function currentTitle(pathname: string, t: (k: string) => string) {
   if (pathname.startsWith("/scan-events")) return t("nav.scanEvents");
   if (pathname.startsWith("/scan")) return t("nav.scan");
   if (pathname.startsWith("/passengers")) return t("nav.passengers");
+  if (pathname.startsWith("/radar")) return t("nav.radar");
+  if (pathname.startsWith("/connect")) return t("nav.connect");
+  if (pathname.startsWith("/admin/officers")) return t("nav.adminOfficers");
+  if (pathname.startsWith("/admin/scans")) return t("nav.adminScans");
   if (pathname.startsWith("/analytics")) return t("nav.analytics");
   if (pathname.startsWith("/insights")) return t("nav.insights");
   if (pathname.startsWith("/settings")) return t("nav.settings");

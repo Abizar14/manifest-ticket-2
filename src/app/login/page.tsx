@@ -17,8 +17,11 @@ import {
 } from "lucide-react";
 import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
-import { ensureSeed, getSession } from "@/lib/storage";
+import { ensureSeed, getSession, setSession } from "@/lib/storage";
 import { login, loginWithPin } from "@/lib/auth";
+import { apiLogin, apiLoginPin } from "@/lib/api/client";
+import { saveSettings } from "@/lib/settings";
+import type { UserRole } from "@/lib/types";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -48,26 +51,90 @@ export default function LoginPage() {
     }
   }, [router]);
 
-  const submit = (e: React.FormEvent) => {
+  const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
     setLoading(true);
-    // small artificial delay so the loading state is visible
-    setTimeout(() => {
-      const res =
-        authMode === "pin" ? loginWithPin(pin) : login(email, password);
+
+    // Admin/Supervisor: coba backend dulu (biar dapat token server + role
+    // backend untuk menu admin seperti Kelola Petugas), fallback ke akun lokal
+    // kalau backend mati/akun cuma ada lokal (mis. akun demo).
+    if (authMode === "password") {
+      try {
+        const api = await apiLogin(email.trim(), password);
+        if (api.ok && api.data) {
+          const u = api.data.user;
+          const role: UserRole =
+            u.role === "admin"
+              ? "admin"
+              : u.role === "supervisor"
+                ? "supervisor"
+                : "security";
+          setSession({ id: u.id, email: u.email, name: u.name, role });
+          saveSettings({ apiSyncEnabled: true });
+          setLoading(false);
+          router.replace(role === "security" ? "/scan/kiosk" : "/dashboard");
+          return;
+        }
+      } catch {
+        /* backend offline → fallback lokal di bawah */
+      }
+
+      const res = login(email, password);
       setLoading(false);
       if (!res.ok) {
         setError(res.error);
         return;
       }
       router.replace(res.user.role === "security" ? "/scan/kiosk" : "/dashboard");
-    }, 350);
+      return;
+    }
+
+    // PIN petugas: coba backend dulu (auto-connect + aktifkan sync), lalu
+    // fallback ke PIN lokal kalau backend mati/offline.
+    try {
+      const api = await apiLoginPin(pin);
+      if (api.ok && api.data) {
+        const u = api.data.user;
+        const role: UserRole =
+          u.role === "admin"
+            ? "admin"
+            : u.role === "supervisor"
+              ? "supervisor"
+              : "security";
+        setSession({ id: u.id, email: u.email, name: u.name, role });
+        saveSettings({ apiSyncEnabled: true }); // scan langsung ter-push ke station petugas
+        setLoading(false);
+        router.replace(role === "security" ? "/scan/kiosk" : "/dashboard");
+        return;
+      }
+
+      // Fallback offline / PIN hanya ada lokal.
+      const local = loginWithPin(pin);
+      setLoading(false);
+      if (!local.ok) {
+        setError(local.error);
+        return;
+      }
+      router.replace(
+        local.user.role === "security" ? "/scan/kiosk" : "/dashboard",
+      );
+    } catch {
+      const local = loginWithPin(pin);
+      setLoading(false);
+      if (!local.ok) {
+        setError(local.error);
+        return;
+      }
+      router.replace(
+        local.user.role === "security" ? "/scan/kiosk" : "/dashboard",
+      );
+    }
   };
 
-  const quick = (e: string) => {
+  const quick = (e: string, pw = "password") => {
     setEmail(e);
-    setPassword("password");
+    setPassword(pw);
     setAuthMode("password");
   };
 
@@ -395,29 +462,52 @@ export default function LoginPage() {
               <div className="mt-5 rounded-2xl border border-white/15 bg-white/[0.05] p-3 backdrop-blur">
                 <p className="inline-flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-cyan-200">
                   <Sparkles className="h-3 w-3" />
-                  Akun Demo · password:{" "}
-                  <code className="rounded bg-white/10 px-1.5 py-0.5 font-mono text-cyan-100 ring-1 ring-white/15">
-                    password
-                  </code>
+                  Akun Demo
                 </p>
                 <div className="mt-2 grid gap-1.5">
                   {[
-                    { e: "admin@airport.test", r: "Admin" },
-                    { e: "supervisor@airport.test", r: "Supervisor" },
+                    {
+                      e: "admin@afvs.local",
+                      pw: "ChangeMe!2026",
+                      r: "Admin (server)",
+                      note: "akses penuh + Kelola Petugas",
+                    },
+                    {
+                      e: "admin@airport.test",
+                      pw: "password",
+                      r: "Admin (lokal)",
+                      note: "offline saja",
+                    },
+                    {
+                      e: "supervisor@airport.test",
+                      pw: "password",
+                      r: "Supervisor",
+                      note: "offline saja",
+                    },
                   ].map((u) => (
                     <button
                       key={u.e}
                       type="button"
-                      onClick={() => quick(u.e)}
-                      className="flex items-center justify-between rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-sm text-white/85 transition hover:-translate-y-0.5 hover:border-cyan-300/40 hover:bg-white/10"
+                      onClick={() => quick(u.e, u.pw)}
+                      className="flex items-center justify-between gap-2 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-sm text-white/85 transition hover:-translate-y-0.5 hover:border-cyan-300/40 hover:bg-white/10"
                     >
-                      <span className="truncate font-medium">{u.e}</span>
-                      <span className="ml-2 shrink-0 rounded-full bg-cyan-400/20 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-cyan-100 ring-1 ring-cyan-300/30">
+                      <span className="min-w-0">
+                        <span className="block truncate font-medium">{u.e}</span>
+                        <span className="block truncate text-[10px] text-white/45">
+                          {u.note}
+                        </span>
+                      </span>
+                      <span className="ml-1 shrink-0 rounded-full bg-cyan-400/20 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-cyan-100 ring-1 ring-cyan-300/30">
                         {u.r}
                       </span>
                     </button>
                   ))}
                 </div>
+                <p className="mt-2 text-[10px] leading-relaxed text-white/45">
+                  Untuk menu <b className="text-white/70">Kelola Petugas</b>, login
+                  dengan akun <b className="text-white/70">server</b>
+                  {" "}(butuh backend NestJS + Laragon nyala).
+                </p>
               </div>
                 </>
               )}

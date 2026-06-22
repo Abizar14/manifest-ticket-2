@@ -1,5 +1,5 @@
 // AFVS — Prisma schema
-// Provider default Postgres; ganti ke sqlite kalau single-gate.
+// Provider default SQLite untuk dev cepat. Ganti ke "postgresql" untuk prod.
 
 generator client {
   provider = "prisma-client-js"
@@ -10,26 +10,17 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-enum Role {
-  operator
-  supervisor
-  admin
-}
-
-enum FlightStatus {
-  SCHEDULED
-  OPEN
-  ACTIVE
-  CLOSED
-  CANCELLED
-}
+// NOTE: SQLite tidak support native enum — pakai string + check di app layer.
+// Role: "operator" | "supervisor" | "admin"
+// FlightStatus: "SCHEDULED" | "OPEN" | "ACTIVE" | "CLOSED" | "CANCELLED"
 
 model Operator {
   id           String   @id @default(cuid())
   email        String   @unique
   passwordHash String
+  pinHash      String?  // PIN cepat untuk petugas AVSEC (login-pin)
   name         String
-  role         Role     @default(operator)
+  role         String   @default("operator")
   station      String?
   active       Boolean  @default(true)
   createdAt    DateTime @default(now())
@@ -47,7 +38,7 @@ model Flight {
   origin         String
   destination    String
   std            DateTime
-  status         FlightStatus @default(SCHEDULED)
+  status         String       @default("SCHEDULED")
   station        String
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
@@ -61,7 +52,6 @@ model Flight {
 
 model ScanEvent {
   id               String   @id @default(cuid())
-  // Idempotency key dari client (= ScanEvent.id lokal di kiosk)
   eventId          String   @unique
   rawBarcode       String
   flightNumber     String?
@@ -74,7 +64,7 @@ model ScanEvent {
   scannedAt        DateTime
   station          String
 
-  facePhotoPath    String?  // path relatif di UPLOAD_DIR
+  facePhotoPath    String?
   ktpStatus        String?
   ktpName          String?
   ktpSimilarity    Float?

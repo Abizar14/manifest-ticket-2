@@ -26,6 +26,8 @@ export interface AppSettings {
   sikerenApiKey: string;
   sikerenSyncMode: SikerenSyncMode;
   sikerenStation: string;
+  /** Sinkronisasi scan & flight ke backend AFVS (NestJS). */
+  apiSyncEnabled: boolean;
   ktpVerifyEnabled: boolean;
   ktpAutoPassThreshold: number;
   ktpManualThreshold: number;
@@ -57,6 +59,7 @@ const DEFAULTS: AppSettings = {
   sikerenApiKey: "",
   sikerenSyncMode: "auto",
   sikerenStation: "",
+  apiSyncEnabled: false,
   ktpVerifyEnabled: false,
   ktpAutoPassThreshold: 0.85,
   ktpManualThreshold: 0.6,

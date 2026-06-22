@@ -108,9 +108,22 @@ export function InsightBubble() {
   const [version, setVersion] = useState(0);
   const [dismissed, setDismissed] = useState<string[]>([]);
   const [lastToastId, setLastToastId] = useState<string | null>(null);
+  const [allowAutoToast, setAllowAutoToast] = useState(false);
 
   useEffect(() => {
     setDismissed(readDismissed());
+    // Auto-popup toast hanya boleh sekali, tepat setelah login (penanda diset
+    // di setSession). Refresh / pindah menu tidak menampilkannya lagi.
+    if (typeof window !== "undefined") {
+      try {
+        if (window.sessionStorage.getItem("afvs.insightBubble.freshLogin")) {
+          setAllowAutoToast(true);
+          window.sessionStorage.removeItem("afvs.insightBubble.freshLogin");
+        }
+      } catch {
+        /* sessionStorage tidak tersedia → tidak ada auto-popup */
+      }
+    }
   }, []);
 
   useEffect(() => {
@@ -138,6 +151,7 @@ export function InsightBubble() {
   const unreadCount = unreadPriority.length;
 
   useEffect(() => {
+    if (!allowAutoToast) return;
     if (!topInsight) return;
     if (open) return;
     if (topInsight.severity !== "warning" && topInsight.severity !== "danger") return;
@@ -150,7 +164,9 @@ export function InsightBubble() {
       duration: topInsight.severity === "danger" ? 6500 : 4800,
     });
     setLastToastId(topInsight.id);
-  }, [dismissedSet, lastToastId, open, toast, topInsight]);
+    // Konsumsi izin: hanya satu auto-popup per sesi login.
+    setAllowAutoToast(false);
+  }, [allowAutoToast, dismissedSet, lastToastId, open, toast, topInsight]);
 
   const markRead = (id: string) => {
     setDismissed((prev) => {

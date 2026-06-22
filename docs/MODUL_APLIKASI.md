@@ -1,7 +1,7 @@
 # Modul Aplikasi — Airport Flight Validation System (AFVS)
 
 > Sistem validasi boarding pass berbasis web untuk operator gate bandara.
-> Versi: 0.1.0 · Repository: `airport-flight-validation`
+> Versi: 0.2.0 · Repository: `airport-flight-validation`
 
 ---
 
@@ -43,7 +43,24 @@
 └─────────────────────────────────────────────────────────────┘
 ```
 
-**Tanpa backend.** Semua logic + data di sisi klien. Cocok untuk single-gate atau prototyping. Migrasi ke backend bisa dilakukan dengan mengganti implementasi `lib/storage.ts` dan `lib/facePhotoStore.ts` tanpa mengubah komponen.
+**Offline-first dengan backend opsional.** Logic + data inti tetap di sisi klien (localStorage + IndexedDB) sehingga gate tetap operasional walau koneksi putus. Sejak v0.2 tersedia **integrasi backend NestJS + PostgreSQL** (opsional, lewat halaman `/connect`): scan event otomatis di-push ke server via outbox idempotent (offline-safe) dan jadwal penerbangan bisa di-tarik dari server. Backend bisa dimatikan tanpa mengganggu operasi lokal. Detail teknis di [BACKEND_SETUP.md](BACKEND_SETUP.md).
+
+**Topologi pemeriksaan (deployment nyata).** Bukan banyak gate, melainkan **2 titik pemeriksaan tetap** yang datanya digabung di backend:
+
+| # | Titik pemeriksaan | Lokasi | `station` |
+|---|-------------------|--------|-----------|
+| 1 | **SCP 2** | Pos Security Check Point 2, **sebelum X-ray** | `SCP2` |
+| 2 | **Lounge Bluesky** | Pintu masuk lounge Bluesky | `BLUESKY` |
+
+Tiap titik scan boarding pass independen (tetap jalan walau backend mati), lalu hasilnya disinkronkan ke server. Identitas titik dibedakan lewat field `station` pada tiap scan event.
+
+```
+   Frontend (browser)                      Backend (opsional)
+   ┌─────────────────────┐   HTTPS/JSON    ┌──────────────────────┐
+   │ lib/api/ (client,   │ ──────────────▶ │ NestJS + Prisma      │
+   │ outbox, flightSync) │   Bearer JWT    │ PostgreSQL (Laragon) │
+   └─────────────────────┘ ◀────────────── └──────────────────────┘
+```
 
 ---
 
@@ -56,10 +73,14 @@
 | `/dashboard` | Dashboard ringkasan flight + stats | Supervisor, Admin |
 | `/flights` | List flight (CRUD, status, audit) | Admin |
 | `/passengers` | List penumpang (dari scan history) | Supervisor |
+| `/radar` | Monitoring pesawat live (peta) sekitar Samarinda | Supervisor, Admin |
 | `/scan` | Halaman scan utama (camera/USB/manual) | Security |
 | `/scan/kiosk` | Mode kiosk fullscreen (monitor gate) | Security |
 | `/scan-events` | Riwayat scan event + foto wajah | Supervisor, Security |
+| `/admin/scans` | Monitor scan gabungan 2 pos (dari server) | Supervisor, Admin |
+| `/admin/officers` | Kelola petugas AVSEC (tambah/edit/hapus + set/reset PIN) | Admin |
 | `/analytics` | Grafik & analitik scan | Supervisor, Admin |
+| `/connect` | Koneksi & sinkronisasi backend (login, push scan, tarik jadwal) | Supervisor, Admin |
 | `/settings` | Konfigurasi user & aplikasi | Semua user (sebagian admin only) |
 | `/seeders` | Generator data demo | Admin (dev only) |
 
@@ -68,8 +89,10 @@
 ## 4. Fitur Utama
 
 ### 4.1 Autentikasi & Session
-- Login berbasis email + password (data user disimpan di `localStorage`).
+- **Admin/Supervisor**: login email + password (lokal `localStorage`).
+- **Petugas AVSEC (Security)**: login cepat via **PIN 4-6 digit**. PIN dicoba ke **backend dulu** (`POST /auth/login-pin`) → otomatis tersambung sebagai station petugas (`SCP2`/`BLUESKY`) & mengaktifkan sync; kalau backend offline, **fallback ke PIN lokal**.
 - Role-based access: Admin, Supervisor, Security.
+- **5 petugas seed** (PIN): `1234` Andi · `2345` Budi · `3456` Citra → **SCP 2**; `4567` Dewi · `5678` Eko → **Lounge Bluesky**.
 - Session persisten sampai logout manual.
 
 ### 4.2 Manajemen Flight
@@ -100,7 +123,7 @@ Tiga mode input yang bisa di-switch di header `/scan`:
 - `UNKNOWN_FLIGHT` — flight number tidak ada di database.
 - `INVALID_BARCODE` — format barcode tidak dikenali.
 
-Setiap outcome memberi feedback **audio (beep berbeda)** + **haptic (getar mobile)** + **toast**.
+Setiap outcome memberi feedback **audio (beep berbeda)** + **suara manusia/TTS** + **haptic (getar mobile)** + **toast**. Suara TTS (Web Speech API, Bahasa Indonesia bila tersedia): VALID → ucapan **"Berhasil"** (didahului ding), DUPLICATE → "Tiket sudah dipakai", lainnya → "Gagal". Berlaku di semua mode scan (kiosk & standar), di-gate oleh setting `soundOn`.
 
 ### 4.5 Mode Kiosk (`/scan/kiosk`)
 Halaman fullscreen khusus monitor gate, tanpa navbar.
@@ -146,6 +169,7 @@ Disimpan di `localStorage` key `afvs.settings`:
 | `faceCameraDeviceId` | null | Pilih webcam (jika >1) |
 | `kioskAutoEnter` | false | Auto-submit di kiosk tanpa Enter |
 | `requireFaceForScan` | true | Scan ditolak kalau wajah tidak siap |
+| `apiSyncEnabled` | false | Aktifkan push scan & sync ke backend AFVS |
 
 ### 4.9 Theming & Aksesibilitas
 - **Dua tema**: `airport` (light, cool blue/cyan) & `dark` (midnight aviation).
@@ -155,8 +179,9 @@ Disimpan di `localStorage` key `afvs.settings`:
 - Icons: **lucide-react** (consistent line icons).
 
 ### 4.10 Offline Capability
-- ✅ Semua data lokal (localStorage + IndexedDB).
-- ✅ Tidak ada API call ke backend.
+- ✅ Semua data inti lokal (localStorage + IndexedDB) — gate tetap jalan tanpa internet.
+- ✅ Sync backend bersifat opsional & offline-safe: kalau offline, scan masuk outbox lokal dan otomatis ter-push saat online lagi (lihat 4.13).
+- ⚠️ Fitur yang butuh internet: Radar (tile peta + OpenSky) dan sinkronisasi backend.
 - ⚠️ Barcode image di modal boarding pass masih fetch ke `barcodeapi.org` (bisa di-replace `bwip-js` lokal).
 - ⚠️ Asset Next.js perlu di-load minimal sekali; full offline butuh setup PWA + service worker.
 
@@ -164,6 +189,32 @@ Disimpan di `localStorage` key `afvs.settings`:
 - Layout responsif: desktop grid 3-kolom, mobile single-column dengan bottom navigation.
 - Touch-friendly: button minimal 44×44px (Apple HIG).
 - Komponen mobile khusus: `BottomNav`, `SegmentedControl`, `StickyActionBar`, `GroupedList`.
+
+### 4.12 Radar Monitoring Pesawat (`/radar`)
+Monitoring lalu lintas udara real-time di sekitar **Bandara APT Pranoto, Samarinda (AAP/WALS)**.
+- **Peta interaktif Leaflet** (tile CartoDB; toggle terang/gelap), pan & zoom seperti FlightRadar24.
+- **Ikon pesawat** berputar sesuai heading, warna per kategori; gerak halus via dead-reckoning + trail untuk yang dipilih.
+- **Kategori heuristik**: Menuju Samarinda / Dari Samarinda / Melintas (estimasi dari posisi, arah, ketinggian).
+- **Sumber data**: OpenSky Network (live, anonim, tanpa API key) dengan fallback **mode Demo** (simulator client-side).
+- **Panel telemetri**: callsign, maskapai, altitude, ground speed, heading, vertical rate, jarak, bearing, squawk.
+- Catatan: data live bisa terlambat ±30–60 dtk & tergantung jangkauan ADS-B; bukan data resmi ATC.
+
+### 4.13 Sinkronisasi Backend (`/connect`)
+Integrasi **opsional** ke backend NestJS + PostgreSQL (lihat [BACKEND_SETUP.md](BACKEND_SETUP.md)).
+- **Login JWT** ke server; token disimpan di `localStorage` (`afvs.api.token`).
+- **Push scan otomatis** — setiap scan masuk outbox lokal lalu di-flush ke `POST /scan-events` (idempotent by `eventId`, offline-safe, foto wajah ikut terkirim). Auto-flush tiap 20 dtk + saat online.
+- **Tarik jadwal** — `GET /flights` per station/tanggal, di-merge ke data lokal.
+- **Monitor antrian** — status pending/gagal + tombol flush/retry.
+- **Dashboard server** (`/admin/scans`, admin/supervisor) — lihat scan **gabungan 2 pos** (SCP 2 + Lounge Bluesky) langsung dari server, lengkap foto wajah & statistik per pos.
+- Di-gate oleh setting `apiSyncEnabled`; base URL dari env `NEXT_PUBLIC_AFVS_API_BASE`.
+
+### 4.14 Kelola Petugas AVSEC (`/admin/officers`)
+Manajemen petugas lewat UI (admin only) — menggantikan kebutuhan edit `seed.ts`/Prisma Studio manual untuk operasional sehari-hari.
+- **CRUD petugas** — tambah, edit (nama/email/peran/pos), nonaktifkan/aktifkan, atau hapus. Email auto-generate dari nama bila dikosongkan; password login auto-acak (login utama AVSEC tetap via PIN).
+- **Set/Reset PIN** — PIN bisa diisi manual (4-6 digit) atau di-generate **acak** oleh server. PIN ditampilkan **sekali** setelah dibuat/di-reset (tombol salin) lalu disimpan ter-hash (bcrypt) — tidak bisa dilihat lagi.
+- **Anti-bentrok PIN** — server menolak PIN yang sudah dipakai petugas aktif lain (karena login-PIN mencocokkan PIN→petugas).
+- **Audit-safe** — petugas yang sudah punya riwayat scan tidak bisa di-hard-delete (diarahkan untuk dinonaktifkan saja); admin juga tidak bisa menghapus akunnya sendiri.
+- Endpoint: `GET/POST/PATCH/DELETE /operators` + `POST /operators/:id/pin` (semua role `admin`).
 
 ---
 
@@ -204,6 +255,11 @@ src/
 │   ├── login/
 │   ├── onboarding/
 │   ├── passengers/
+│   ├── radar/                # Monitoring pesawat live (Leaflet + OpenSky)
+│   ├── connect/             # Koneksi & sinkronisasi backend
+│   ├── admin/
+│   │   ├── scans/           # Dashboard scan server (gabungan 2 pos)
+│   │   └── officers/        # Kelola petugas AVSEC (CRUD + set/reset PIN)
 │   ├── scan/
 │   │   ├── kiosk/page.tsx    # Mode kiosk fullscreen
 │   │   └── page.tsx          # Scan standard
@@ -220,6 +276,8 @@ src/
 │   ├── scan/                 # CameraScanner, FaceCaptureCamera, FaceThumb
 │   └── ui/                   # Base components (Button, Modal, Toast, etc.)
 └── lib/
+    ├── api/                  # Client backend: client.ts, outbox.ts, flightSync.ts
+    ├── radarService.ts       # Fetch OpenSky + simulator demo + geo helpers
     ├── airlines.ts           # Registry maskapai + warna brand
     ├── audit.ts              # Audit log helpers
     ├── auth.ts               # Login & session
@@ -254,8 +312,11 @@ src/
 | Icons | lucide-react |
 | Font | Poppins (Google Fonts) |
 | State | React hooks (no Redux/Zustand) |
-| Persistence | localStorage + IndexedDB |
+| Persistence (klien) | localStorage + IndexedDB |
+| Peta / Radar | Leaflet + tile CartoDB + OpenSky Network API |
 | Scanner Lib | Native `BarcodeDetector` + Web FaceDetector API |
+| Audio/Voice | Web Audio API + Web Speech API (TTS) |
+| Backend (opsional) | NestJS 10 + Prisma + **PostgreSQL** · JWT auth |
 | Build | npm / Next.js compiler |
 | Dev Server | `npm run dev:https` (HTTPS untuk getUserMedia di non-localhost) |
 
@@ -263,7 +324,11 @@ src/
 
 ## 8. Roadmap (Future Enhancements)
 
-- [ ] Backend sync (REST API + Postgres) untuk multi-gate
+- [x] Backend sync (REST API NestJS + PostgreSQL) untuk **2 titik pemeriksaan** (SCP 2 sebelum X-ray & Lounge Bluesky) — ✅ v0.2 (`/connect`)
+- [x] Radar monitoring pesawat (Leaflet + OpenSky) — ✅ v0.2 (`/radar`)
+- [x] Voice feedback "Berhasil" (TTS) di semua mode scan — ✅ v0.2
+- [x] Dashboard admin gabungan **2 titik pemeriksaan** (SCP 2 & Lounge Bluesky) (`/admin/scans`) baca dari backend — ✅ v0.2
+- [x] Kelola petugas AVSEC via UI (CRUD + set/reset PIN acak) (`/admin/officers`) — ✅ v0.3
 - [ ] Service worker → full offline PWA
 - [ ] Replace barcode CDN dengan `bwip-js` lokal
 - [ ] Active flight panel di kiosk header

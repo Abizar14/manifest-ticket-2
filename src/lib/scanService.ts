@@ -17,6 +17,11 @@ import { getSettings } from "./settings";
 import { getEffectiveFlightStatus } from "./flightStatus";
 import { facePhotoStore } from "./facePhotoStore";
 import { enqueueValidScan, flushOutbox } from "./sikerenOutbox";
+import {
+  attachFaceToQueued,
+  enqueueScanPush,
+  flushApiOutbox,
+} from "./api/outbox";
 
 /**
  * Mendukung dua format barcode:
@@ -234,6 +239,7 @@ export function validateBarcode(raw: string): ValidationOutcome {
 export function processScan(
   raw: string,
   scannedBy: string,
+  opts?: { enqueueApiPush?: boolean },
 ): { outcome: ValidationOutcome; event: ScanEvent } {
   const outcome = validateBarcode(raw);
   const event: ScanEvent = {
@@ -270,6 +276,17 @@ export function processScan(
     }
   }
 
+  // Backend AFVS: enqueue semua scan tercatat (audit log) ke outbox.
+  // Saat dipanggil dari processScanWithFace, enqueue ditunda sampai foto siap.
+  if (opts?.enqueueApiPush !== false) {
+    try {
+      enqueueScanPush(event);
+      flushApiOutbox().catch(() => {});
+    } catch {
+      /* sync backend tidak boleh mengganggu hasil scan */
+    }
+  }
+
   return { outcome, event };
 }
 
@@ -285,7 +302,10 @@ export async function processScanWithFace(
   options?: { timeoutMs?: number },
 ): Promise<{ outcome: ValidationOutcome; event: ScanEvent }> {
   const timeoutMs = options?.timeoutMs ?? 300;
-  const { outcome, event } = processScan(raw, scannedBy);
+  // Tunda enqueue backend sampai foto wajah tersimpan (agar foto ikut ter-push).
+  const { outcome, event } = processScan(raw, scannedBy, {
+    enqueueApiPush: false,
+  });
   try {
     const blob = await Promise.race([
       getFaceBlob(),
@@ -299,7 +319,38 @@ export async function processScanWithFace(
   } catch {
     /* capture gagal — scan tetap valid */
   }
+  // Sekarang foto (kalau ada) sudah siap → enqueue ke backend & flush.
+  try {
+    enqueueScanPush(event);
+    if (event.faceCaptureId) attachFaceToQueued(event.id, event.faceCaptureId);
+    flushApiOutbox().catch(() => {});
+  } catch {
+    /* sync backend tidak boleh mengganggu hasil scan */
+  }
   return { outcome, event };
+}
+
+/* Text-to-speech — suara manusia mengucapkan hasil scan (Bahasa Indonesia). */
+export function speakFeedback(text: string) {
+  if (typeof window === "undefined") return;
+  const synth = window.speechSynthesis;
+  if (!synth) return;
+  try {
+    synth.cancel(); // hentikan ucapan sebelumnya agar tidak menumpuk
+    const utter = new SpeechSynthesisUtterance(text);
+    utter.lang = "id-ID";
+    utter.rate = 1.05;
+    utter.pitch = 1.05;
+    utter.volume = 1;
+    // Pilih voice Bahasa Indonesia bila tersedia di perangkat.
+    const voices = synth.getVoices();
+    const idVoice =
+      voices.find((v) => v.lang?.toLowerCase().startsWith("id")) ?? null;
+    if (idVoice) utter.voice = idVoice;
+    synth.speak(utter);
+  } catch {
+    /* ignore */
+  }
 }
 
 /* Web Audio feedback */
@@ -312,6 +363,12 @@ export function playFeedbackSound(status: ScanResultStatus) {
   } catch {
     /* fallback: allow sound if settings unavailable */
   }
+
+  // Suara manusia untuk hasil scan (di atas nada/beep).
+  if (status === "VALID_FLIGHT") speakFeedback("Berhasil");
+  else if (status === "DUPLICATE_SCAN") speakFeedback("Tiket sudah dipakai");
+  else speakFeedback("Gagal");
+
   try {
     const AudioCtx =
       (window as unknown as { AudioContext?: typeof AudioContext })
@@ -320,34 +377,47 @@ export function playFeedbackSound(status: ScanResultStatus) {
         .webkitAudioContext;
     if (!AudioCtx) return;
     const ctx = new AudioCtx();
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.connect(gain);
-    gain.connect(ctx.destination);
 
-    let freq = 880;
-    let duration = 0.18;
+    /** Mainkan satu nada pada offset waktu tertentu. */
+    const note = (
+      freq: number,
+      start: number,
+      dur: number,
+      type: OscillatorType = "sine",
+      peak = 0.25,
+    ) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.type = type;
+      osc.frequency.value = freq;
+      const t0 = ctx.currentTime + start;
+      gain.gain.setValueAtTime(0.0001, t0);
+      gain.gain.exponentialRampToValueAtTime(peak, t0 + 0.012);
+      gain.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+      osc.start(t0);
+      osc.stop(t0 + dur + 0.02);
+    };
+
+    let total = 0.4;
     if (status === "VALID_FLIGHT") {
-      freq = 1100;
-      duration = 0.18;
+      // "Ding" pendek sebagai pembuka sebelum suara "Berhasil".
+      note(880, 0.0, 0.1, "sine", 0.18);
+      note(1318.5, 0.08, 0.14, "sine", 0.18);
+      total = 0.25;
     } else if (status === "DUPLICATE_SCAN") {
-      freq = 660;
-      duration = 0.25;
+      // Dua nada datar — peringatan duplikat.
+      note(660, 0.0, 0.16, "square", 0.2);
+      note(660, 0.2, 0.2, "square", 0.2);
+      total = 0.45;
     } else {
-      freq = 220;
-      duration = 0.35;
+      // Buzz turun — gagal / ditolak.
+      note(320, 0.0, 0.18, "square", 0.22);
+      note(180, 0.16, 0.34, "square", 0.22);
+      total = 0.55;
     }
-    osc.frequency.value = freq;
-    osc.type = status === "VALID_FLIGHT" ? "sine" : "square";
-    gain.gain.setValueAtTime(0.0001, ctx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.25, ctx.currentTime + 0.01);
-    gain.gain.exponentialRampToValueAtTime(
-      0.0001,
-      ctx.currentTime + duration,
-    );
-    osc.start();
-    osc.stop(ctx.currentTime + duration);
-    setTimeout(() => ctx.close().catch(() => {}), duration * 1000 + 100);
+    setTimeout(() => ctx.close().catch(() => {}), total * 1000 + 150);
   } catch {
     /* ignore */
   }

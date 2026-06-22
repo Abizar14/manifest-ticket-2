@@ -4,6 +4,7 @@ import { ThrottlerModule } from "@nestjs/throttler";
 import { AuthModule } from "./auth/auth.module";
 import { FacePhotosModule } from "./face-photos/face-photos.module";
 import { FlightsModule } from "./flights/flights.module";
+import { OperatorsModule } from "./operators/operators.module";
 import { PrismaModule } from "./prisma/prisma.module";
 import { ScanEventsModule } from "./scan-events/scan-events.module";
 
@@ -14,6 +15,7 @@ import { ScanEventsModule } from "./scan-events/scan-events.module";
     PrismaModule,
     AuthModule,
     FlightsModule,
+    OperatorsModule,
     ScanEventsModule,
     FacePhotosModule,
   ],

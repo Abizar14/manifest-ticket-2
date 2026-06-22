@@ -10,7 +10,6 @@ import {
   UseGuards,
 } from "@nestjs/common";
 import { ApiBearerAuth, ApiTags } from "@nestjs/swagger";
-import { Role } from "@prisma/client";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
 import { RolesGuard } from "../auth/roles.guard";
 import { Roles } from "../common/roles.decorator";
@@ -30,19 +29,19 @@ export class FlightsController {
   }
 
   @Post()
-  @Roles(Role.admin, Role.supervisor)
+  @Roles("admin", "supervisor")
   create(@Body() dto: CreateFlightDto) {
     return this.svc.create(dto);
   }
 
   @Patch(":id")
-  @Roles(Role.admin, Role.supervisor)
+  @Roles("admin", "supervisor")
   update(@Param("id") id: string, @Body() dto: UpdateFlightDto) {
     return this.svc.update(id, dto);
   }
 
   @Delete(":id")
-  @Roles(Role.admin)
+  @Roles("admin")
   remove(@Param("id") id: string) {
     return this.svc.remove(id);
   }

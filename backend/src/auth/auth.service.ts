@@ -1,7 +1,7 @@
 import { Injectable, UnauthorizedException } from "@nestjs/common";
 import { JwtService } from "@nestjs/jwt";
-import { Role } from "@prisma/client";
 import * as bcrypt from "bcryptjs";
+import { Role } from "../common/roles";
 import { PrismaService } from "../prisma/prisma.service";
 
 export interface JwtPayload {
@@ -27,7 +27,7 @@ export class AuthService {
     const payload: JwtPayload = {
       sub: user.id,
       email: user.email,
-      role: user.role,
+      role: user.role as Role,
       station: user.station,
     };
     const token = await this.jwt.signAsync(payload);
@@ -41,6 +41,39 @@ export class AuthService {
         station: user.station,
       },
     };
+  }
+
+  /**
+   * Login cepat via PIN untuk petugas AVSEC. PIN disimpan ter-hash, jadi
+   * dibandingkan ke semua operator aktif yang punya pinHash (jumlah operator
+   * kecil, aman). Mengembalikan token + user yang sama dengan login biasa.
+   */
+  async loginPin(pin: string) {
+    const candidates = await this.prisma.operator.findMany({
+      where: { active: true, pinHash: { not: null } },
+    });
+    for (const user of candidates) {
+      if (user.pinHash && (await bcrypt.compare(pin, user.pinHash))) {
+        const payload: JwtPayload = {
+          sub: user.id,
+          email: user.email,
+          role: user.role as Role,
+          station: user.station,
+        };
+        const token = await this.jwt.signAsync(payload);
+        return {
+          token,
+          user: {
+            id: user.id,
+            email: user.email,
+            name: user.name,
+            role: user.role,
+            station: user.station,
+          },
+        };
+      }
+    }
+    throw new UnauthorizedException("PIN tidak valid");
   }
 
   async me(userId: string) {

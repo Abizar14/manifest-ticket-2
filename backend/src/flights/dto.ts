@@ -1,13 +1,13 @@
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
-import { FlightStatus } from "@prisma/client";
 import { Type } from "class-transformer";
 import {
   IsDateString,
-  IsEnum,
+  IsIn,
   IsOptional,
   IsString,
   MaxLength,
 } from "class-validator";
+import { FLIGHT_STATUSES, FlightStatus } from "../common/roles";
 
 export class CreateFlightDto {
   @ApiProperty({ example: "QG432" })
@@ -34,8 +34,8 @@ export class CreateFlightDto {
   @IsDateString()
   std!: string;
 
-  @ApiProperty({ enum: FlightStatus, example: FlightStatus.SCHEDULED })
-  @IsEnum(FlightStatus)
+  @ApiProperty({ enum: FLIGHT_STATUSES, example: "SCHEDULED" })
+  @IsIn(FLIGHT_STATUSES)
   status!: FlightStatus;
 
   @ApiProperty({ example: "CGK-T3" })
@@ -45,9 +45,9 @@ export class CreateFlightDto {
 }
 
 export class UpdateFlightDto {
-  @ApiPropertyOptional({ enum: FlightStatus })
+  @ApiPropertyOptional({ enum: FLIGHT_STATUSES })
   @IsOptional()
-  @IsEnum(FlightStatus)
+  @IsIn(FLIGHT_STATUSES)
   status?: FlightStatus;
 
   @ApiPropertyOptional()
@@ -65,11 +65,11 @@ export class ListFlightsQuery {
   @ApiPropertyOptional({ example: "2026-06-12" })
   @IsOptional()
   @IsString()
-  date?: string; // YYYY-MM-DD
+  date?: string;
 
-  @ApiPropertyOptional({ enum: FlightStatus })
+  @ApiPropertyOptional({ enum: FLIGHT_STATUSES })
   @IsOptional()
-  @IsEnum(FlightStatus)
+  @IsIn(FLIGHT_STATUSES)
   status?: FlightStatus;
 
   @ApiPropertyOptional({ example: 1 })

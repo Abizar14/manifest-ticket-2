@@ -89,6 +89,13 @@ export function setSession(user: SessionUser | null) {
     window.localStorage.removeItem(KEYS.session);
   } else {
     write(KEYS.session, user);
+    // Tandai sesi login baru agar AI Insight hanya auto-popup sekali tepat
+    // setelah login — bukan tiap refresh / pindah menu.
+    try {
+      window.sessionStorage.setItem("afvs.insightBubble.freshLogin", "1");
+    } catch {
+      /* sessionStorage tidak tersedia → toast cukup di-skip */
+    }
   }
 }
 
