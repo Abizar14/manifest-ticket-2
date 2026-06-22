@@ -26,17 +26,16 @@ import {
   VolumeX,
   RotateCcw,
   Sparkles,
-  Cpu,
   Cloud,
   CloudOff,
   Loader2,
+  Settings,
 } from "lucide-react";
 import Image from "next/image";
 import { cn } from "@/lib/utils";
 import {
   FaceCaptureCamera,
   type FaceCaptureHandle,
-  type FaceDetectionMode,
   type FaceState,
 } from "@/components/scan/FaceCaptureCamera";
 import { Modal } from "@/components/ui/Modal";
@@ -311,7 +310,6 @@ export default function KioskPage() {
   } | null>(null);
   const [faceState, setFaceState] = React.useState<FaceState>("unknown");
   const [faceDetectorSupported, setFaceDetectorSupported] = React.useState(false);
-  const [detectionMode, setDetectionMode] = React.useState<FaceDetectionMode>("none");
   const [sessionStats, setSessionStats] = React.useState<{
     valid: number;
     duplicate: number;
@@ -452,7 +450,6 @@ export default function KioskPage() {
       if (!cam) return;
       setFaceState(cam.getFaceState());
       setFaceDetectorSupported(cam.isFaceDetectionSupported());
-      setDetectionMode(cam.getDetectionMode());
     }, 250);
     return () => window.clearInterval(id);
   }, []);
@@ -649,7 +646,7 @@ export default function KioskPage() {
   return (
     <div
       className={cn(
-        "relative min-h-screen overflow-hidden transition-colors",
+        "relative flex h-screen flex-col overflow-hidden transition-colors",
         "bg-[#eef3fb] text-slate-800",
         "dark:bg-[#0a1226] dark:text-white",
       )}
@@ -704,17 +701,13 @@ export default function KioskPage() {
           <SessionStatsChip stats={sessionStats} />
           <ScannerStatusBadge mode={inputMode} />
           <ClockChip now={now} />
-          <SoundToggleChip on={settings.soundOn} onToggle={toggleSound} />
-          <ThemeToggleChip isDark={isDark} onToggle={toggleTheme} />
-          <button
-            type="button"
-            onClick={exitKiosk}
-            className="inline-flex items-center gap-1.5 rounded-full bg-gradient-to-br from-rose-500 to-pink-600 px-3.5 py-1.5 text-[11px] font-bold uppercase tracking-wider text-white shadow-md shadow-rose-500/30 transition hover:shadow-rose-500/50"
-            title="Keluar Kiosk (Esc)"
-          >
-            <X className="h-3.5 w-3.5" />
-            Keluar
-          </button>
+          <KioskMenu
+            isDark={isDark}
+            soundOn={settings.soundOn}
+            onToggleSound={toggleSound}
+            onToggleTheme={toggleTheme}
+            onExit={exitKiosk}
+          />
         </div>
       </header>
 
@@ -731,9 +724,9 @@ export default function KioskPage() {
       />
 
       {/* Main grid */}
-      <main className="relative z-10 grid gap-4 px-6 pb-6 pt-2 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
+      <main className="relative z-10 grid min-h-0 flex-1 gap-4 px-6 pb-6 pt-2 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)] lg:[grid-template-rows:minmax(0,1fr)]">
         {/* Kiri: webcam with HUD */}
-        <section className="flex flex-col gap-3">
+        <section className="flex min-h-0 flex-col gap-3">
           <BiometricCamera
             captureEnabled={captureEnabledUi}
             cameraRef={cameraRef}
@@ -745,13 +738,10 @@ export default function KioskPage() {
           />
 
           <PrivacyBanner />
-          {captureEnabledUi && detectionMode === "heuristic" && (
-            <DetectionModeNotice />
-          )}
         </section>
 
         {/* Kanan: scan ready + recent */}
-        <section className="flex flex-col gap-4">
+        <section className="flex min-h-0 flex-col gap-4">
           <ScanReadyCard />
           <ActionRow
             onReset={handleReset}
@@ -898,13 +888,10 @@ function BiometricCamera({
         <span className="pointer-events-none absolute bottom-4 left-4 h-10 w-10 rounded-bl-xl border-b-2 border-l-2 border-cyan-400/80" />
         <span className="pointer-events-none absolute bottom-4 right-4 h-10 w-10 rounded-br-xl border-b-2 border-r-2 border-cyan-400/80" />
 
-        {/* Concentric rings + reticle behind face */}
+        {/* Face status ring — mengikuti state deteksi wajah */}
         {captureEnabled && (
           <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-            <span className="absolute h-[78%] w-[78%] rounded-full border border-cyan-400/15" />
-            <span className="absolute h-[62%] w-[62%] rounded-full border border-cyan-400/25" />
-            <span className="absolute h-[48%] w-[48%] rounded-full border border-cyan-400/40 animate-spin-slow" />
-            <span className={cn("absolute h-[40%] w-[40%] rounded-[42%] border-2 transition-colors", ringColor)} />
+            <span className={cn("absolute h-[44%] w-[44%] rounded-[42%] border-2 transition-colors", ringColor)} />
           </div>
         )}
 
@@ -974,19 +961,6 @@ function BiometricCamera({
           </div>
         )}
 
-        {/* LIVE bottom-left */}
-        <div className="absolute bottom-4 left-4 ml-12 inline-flex items-center gap-1.5 rounded-full bg-slate-900/70 px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-white ring-1 ring-white/10 backdrop-blur">
-          <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.9)]" />
-          Live
-        </div>
-
-        {/* Animated scan line */}
-        {captureEnabled && (
-          <span
-            aria-hidden
-            className="pointer-events-none absolute inset-x-8 top-8 h-px rounded-full bg-gradient-to-r from-transparent via-cyan-300 to-transparent opacity-80 animate-scan-line"
-          />
-        )}
       </div>
     </div>
   );
@@ -1020,9 +994,9 @@ function ScanReadyCard() {
         aria-hidden
         className="absolute inset-0 bg-gradient-to-br from-cyan-50/40 via-transparent to-blue-50/40 dark:from-cyan-500/5 dark:to-blue-500/5"
       />
-      <div className="relative flex flex-col items-center gap-4">
+      <div className="relative flex flex-col items-center gap-5">
         <Waveform />
-        <span className="relative flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-cyan-400 to-blue-600 text-white shadow-xl shadow-cyan-500/40">
+        <span className="relative flex h-20 w-20 items-center justify-center rounded-2xl bg-gradient-to-br from-cyan-400 to-blue-600 text-white shadow-xl shadow-cyan-500/40">
           <Scan className="h-7 w-7" />
           <span
             aria-hidden
@@ -1041,10 +1015,10 @@ function ScanReadyCard() {
 }
 
 function Waveform() {
-  // 28 vertical bars with deterministic heights — animated via CSS delays
+  // 32 batang vertikal, tinggi deterministik, animasi via delay CSS
   const bars = React.useMemo(
     () =>
-      Array.from({ length: 28 }, (_, i) => {
+      Array.from({ length: 32 }, (_, i) => {
         const seed = Math.sin(i * 1.7) * 0.5 + 0.5;
         const h = 30 + Math.round(seed * 70);
         const delay = (i % 10) * 80;
@@ -1053,7 +1027,7 @@ function Waveform() {
     [],
   );
   return (
-    <div className="flex h-12 items-center gap-1">
+    <div className="flex h-16 items-center gap-1.5">
       {bars.map((b, i) => (
         <span
           key={i}
@@ -1074,7 +1048,6 @@ interface FlightCardData {
   flight: Flight;
   effectiveStatus: "OPEN" | "ACTIVE";
   boarded: number;
-  lastScans: ScanEvent[];
   lastScanAt: number;
 }
 
@@ -1129,7 +1102,6 @@ function ActiveFlightCards({
           flight,
           effectiveStatus: displayStatus,
           boarded: fScans.length,
-          lastScans: fScans.slice(0, 3),
           lastScanAt: lastAt,
         };
       })
@@ -1145,7 +1117,7 @@ function ActiveFlightCards({
   }, [flights, scans, now, settings]);
 
   return (
-    <div className="rounded-3xl bg-white/80 ring-1 ring-slate-200 backdrop-blur-md dark:bg-[#0c1a36] dark:ring-cyan-400/15">
+    <div className="flex min-h-0 flex-1 flex-col rounded-3xl bg-white/80 ring-1 ring-slate-200 backdrop-blur-md dark:bg-[#0c1a36] dark:ring-cyan-400/15">
       <div className="flex items-center justify-between px-5 py-3">
         <h3 className="text-[10.5px] font-black uppercase tracking-[0.16em] text-slate-500 dark:text-white/70">
           Flight Aktif · Boarding
@@ -1154,7 +1126,7 @@ function ActiveFlightCards({
           {cards.length}
         </span>
       </div>
-      <div className="max-h-[420px] space-y-2 overflow-y-auto px-3 pb-3">
+      <div className="min-h-0 flex-1 space-y-2 overflow-y-auto px-3 pb-3">
         {cards.length === 0 && (
           <div className="px-3 py-8 text-center text-xs text-slate-400 dark:text-white/40">
             Belum ada flight yang sedang boarding.
@@ -1187,7 +1159,7 @@ function FlightBoardingCard({
   data: FlightCardData;
   highlight: boolean;
 }) {
-  const { flight, effectiveStatus, boarded, lastScans } = data;
+  const { flight, effectiveStatus, boarded } = data;
   const expected = flight.expectedPax ?? null;
   const percent =
     expected && expected > 0
@@ -1262,73 +1234,7 @@ function FlightBoardingCard({
         </div>
       )}
 
-      {/* Mini scan list */}
-      {lastScans.length > 0 && (
-        <ul className="mt-2 flex flex-col gap-1">
-          {lastScans.map((e) => (
-            <MiniScanRow key={e.id} event={e} />
-          ))}
-        </ul>
-      )}
     </div>
-  );
-}
-
-function MiniScanRow({ event }: { event: ScanEvent }) {
-  const [faceUrl, setFaceUrl] = React.useState<string | null>(null);
-  React.useEffect(() => {
-    let url: string | null = null;
-    let cancelled = false;
-    if (event.faceCaptureId) {
-      facePhotoStore.getObjectUrl(event.faceCaptureId).then((u) => {
-        if (cancelled && u) {
-          URL.revokeObjectURL(u);
-          return;
-        }
-        url = u;
-        setFaceUrl(u);
-      });
-    }
-    return () => {
-      cancelled = true;
-      if (url) URL.revokeObjectURL(url);
-    };
-  }, [event.faceCaptureId]);
-
-  const time = new Date(event.scannedAt).toLocaleTimeString("id-ID", {
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-  });
-
-  return (
-    <li className="flex items-center gap-2 rounded-lg bg-slate-50/70 px-2 py-1 dark:bg-white/[0.04]">
-      <div className="shrink-0">
-        {faceUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={faceUrl}
-            alt=""
-            className="h-6 w-6 rounded-md object-cover ring-1 ring-slate-200 dark:ring-cyan-400/20"
-          />
-        ) : (
-          <div className="flex h-6 w-6 items-center justify-center rounded-md bg-slate-100 text-slate-400 ring-1 ring-slate-200 dark:bg-white/5 dark:text-white/30 dark:ring-cyan-400/10">
-            <User className="h-3 w-3" />
-          </div>
-        )}
-      </div>
-      <div className="min-w-0 flex-1">
-        <p className="truncate text-[11px] font-semibold text-slate-700 dark:text-white/85">
-          {event.parsedPassengerName ?? "—"}
-        </p>
-      </div>
-      <span className="shrink-0 text-[10px] font-mono tabular-nums text-slate-400 dark:text-white/45">
-        seat {event.parsedSeatNumber ?? "—"}
-      </span>
-      <span className="shrink-0 font-mono text-[10px] tabular-nums text-slate-400 dark:text-white/45">
-        {time}
-      </span>
-    </li>
   );
 }
 
@@ -1373,46 +1279,105 @@ function ClockChip({ now }: { now: Date }) {
   );
 }
 
-function ThemeToggleChip({
+function KioskMenu({
   isDark,
-  onToggle,
+  soundOn,
+  onToggleSound,
+  onToggleTheme,
+  onExit,
 }: {
   isDark: boolean;
-  onToggle: () => void;
+  soundOn: boolean;
+  onToggleSound: () => void;
+  onToggleTheme: () => void;
+  onExit: () => void;
 }) {
+  const [open, setOpen] = React.useState(false);
+  const ref = React.useRef<HTMLDivElement>(null);
+
+  React.useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    window.addEventListener("mousedown", onDown);
+    return () => window.removeEventListener("mousedown", onDown);
+  }, [open]);
+
   return (
-    <button
-      type="button"
-      onClick={onToggle}
-      title={isDark ? "Mode terang" : "Mode gelap"}
-      className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-slate-900/5 text-slate-700 ring-1 ring-slate-200 transition hover:bg-slate-900/10 dark:bg-white/10 dark:text-white dark:ring-white/15 dark:hover:bg-white/15"
-    >
-      {isDark ? <Sun className="h-3.5 w-3.5" /> : <Moon className="h-3.5 w-3.5" />}
-    </button>
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        title="Pengaturan kiosk"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        className={cn(
+          "inline-flex h-8 w-8 items-center justify-center rounded-full ring-1 transition",
+          open
+            ? "bg-slate-900/10 text-slate-800 ring-slate-300 dark:bg-white/15 dark:text-white dark:ring-white/20"
+            : "bg-slate-900/5 text-slate-600 ring-slate-200 hover:bg-slate-900/10 dark:bg-white/10 dark:text-white/70 dark:ring-white/15 dark:hover:bg-white/15",
+        )}
+      >
+        <Settings className={cn("h-3.5 w-3.5 transition-transform", open && "rotate-45")} />
+      </button>
+
+      {open && (
+        <div
+          role="menu"
+          className="absolute right-0 top-full z-30 mt-2 w-52 overflow-hidden rounded-2xl bg-white p-1.5 shadow-xl ring-1 ring-slate-200 dark:bg-[#0c1a36] dark:ring-cyan-400/20"
+        >
+          <MenuItem
+            icon={soundOn ? <Volume2 className="h-4 w-4" /> : <VolumeX className="h-4 w-4" />}
+            label={soundOn ? "Suara feedback: Aktif" : "Suara feedback: Mati"}
+            onClick={onToggleSound}
+          />
+          <MenuItem
+            icon={isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+            label={isDark ? "Mode terang" : "Mode gelap"}
+            onClick={onToggleTheme}
+          />
+          <div className="my-1 h-px bg-slate-200/70 dark:bg-white/10" />
+          <MenuItem
+            icon={<X className="h-4 w-4" />}
+            label="Keluar Kiosk"
+            danger
+            onClick={() => {
+              setOpen(false);
+              onExit();
+            }}
+          />
+        </div>
+      )}
+    </div>
   );
 }
 
-function SoundToggleChip({
-  on,
-  onToggle,
+function MenuItem({
+  icon,
+  label,
+  onClick,
+  danger,
 }: {
-  on: boolean;
-  onToggle: () => void;
+  icon: React.ReactNode;
+  label: string;
+  onClick: () => void;
+  danger?: boolean;
 }) {
   return (
     <button
       type="button"
-      onClick={onToggle}
-      title={on ? "Matikan suara feedback" : "Aktifkan suara feedback"}
-      aria-label={on ? "Sound on" : "Sound off"}
+      role="menuitem"
+      onClick={onClick}
       className={cn(
-        "inline-flex h-8 w-8 items-center justify-center rounded-full ring-1 transition",
-        on
-          ? "bg-emerald-100 text-emerald-700 ring-emerald-300 hover:bg-emerald-200 dark:bg-emerald-500/15 dark:text-emerald-300 dark:ring-emerald-500/30 dark:hover:bg-emerald-500/25"
-          : "bg-slate-900/5 text-slate-500 ring-slate-200 hover:bg-slate-900/10 dark:bg-white/10 dark:text-white/60 dark:ring-white/15 dark:hover:bg-white/15",
+        "flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-left text-[12px] font-bold transition",
+        danger
+          ? "text-rose-600 hover:bg-rose-50 dark:text-rose-300 dark:hover:bg-rose-500/10"
+          : "text-slate-700 hover:bg-slate-100 dark:text-white/80 dark:hover:bg-white/10",
       )}
     >
-      {on ? <Volume2 className="h-3.5 w-3.5" /> : <VolumeX className="h-3.5 w-3.5" />}
+      <span className="shrink-0">{icon}</span>
+      {label}
     </button>
   );
 }
@@ -1554,24 +1519,6 @@ function ActionRow({
         <RotateCcw className="h-3.5 w-3.5" />
         Reset
       </button>
-    </div>
-  );
-}
-
-function DetectionModeNotice() {
-  return (
-    <div className="flex items-center gap-2.5 rounded-2xl bg-amber-50/80 px-4 py-2.5 ring-1 ring-amber-200 backdrop-blur dark:bg-amber-500/10 dark:ring-amber-500/30">
-      <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-amber-100 text-amber-700 ring-1 ring-amber-200 dark:bg-amber-500/20 dark:text-amber-300 dark:ring-amber-500/30">
-        <Cpu className="h-3.5 w-3.5" />
-      </span>
-      <div className="min-w-0 flex-1">
-        <p className="text-[10.5px] font-bold uppercase tracking-[0.16em] text-amber-700 dark:text-amber-300">
-          Validasi wajah: mode heuristik
-        </p>
-        <p className="mt-0.5 text-[10.5px] leading-snug text-amber-800/80 dark:text-amber-200/70">
-          Browser tidak menyediakan FaceDetector API. Deteksi memakai analisis warna kulit (kurang akurat di pencahayaan ekstrem).
-        </p>
-      </div>
     </div>
   );
 }
