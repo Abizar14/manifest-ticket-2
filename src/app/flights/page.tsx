@@ -13,6 +13,8 @@ import {
   Eye,
   X,
   Save,
+  DownloadCloud,
+  Loader2,
 } from "lucide-react";
 import { AppShell } from "@/components/layout/AppShell";
 import { CardBody } from "@/components/ui/Card";
@@ -42,6 +44,7 @@ import {
   readCustomSeed,
 } from "@/lib/seedSnapshot";
 import { getBoardingProgress } from "@/lib/boarding";
+import { pullFidsKeberangkatan } from "@/lib/jadwal/flightSync";
 import { getSettings, subscribeSettings } from "@/lib/settings";
 import { getEffectiveFlightStatus } from "@/lib/flightStatus";
 import { useToast } from "@/components/ui/Toast";
@@ -90,6 +93,33 @@ export default function FlightsPage() {
   const [session, setSessionState] = useState<SessionUser | null>(null);
   const canManage = canManageFlights(session?.role);
   const [hasSnapshot, setHasSnapshot] = useState(false);
+  const [pullingFids, setPullingFids] = useState(false);
+
+  /** Tarik keberangkatan dari FIDS bandara → merge ke daftar flight. */
+  const onPullFids = async () => {
+    setPullingFids(true);
+    // Ikuti filter tanggal aktif bila berupa satu hari konkret; selain itu
+    // tarik semua yang tersedia di FIDS.
+    const dateArg =
+      dateFilter === "today"
+        ? todayDateString()
+        : dateFilter === "tomorrow"
+          ? tomorrowDateString()
+          : dateFilter === "yesterday"
+            ? yesterdayDateString()
+            : undefined;
+    const res = await pullFidsKeberangkatan(dateArg);
+    setPullingFids(false);
+    if (res.ok) {
+      setFlights(getFlights());
+      toast.success(
+        `${res.total} jadwal (+${res.added} baru, ${res.updated} update)`,
+        "Ditarik dari FIDS",
+      );
+    } else {
+      toast.error(res.error ?? "Gagal tarik jadwal FIDS", "Gagal");
+    }
+  };
 
   useEffect(() => {
     setHasSnapshot(hasCustomSeed());
@@ -142,9 +172,13 @@ export default function FlightsPage() {
       setSettings(next);
     });
     const tick = setInterval(() => setNow(new Date()), 30_000);
+    // Refresh daftar saat ada update FIDS (auto-sync / tarik dari halaman lain).
+    const onFlightsUpdated = () => setFlights(getFlights());
+    window.addEventListener("afvs:flights-updated", onFlightsUpdated);
     return () => {
       unsub();
       clearInterval(tick);
+      window.removeEventListener("afvs:flights-updated", onFlightsUpdated);
     };
   }, []);
 
@@ -229,6 +263,20 @@ export default function FlightsPage() {
           trailing={
             canManage && (
               <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={onPullFids}
+                  disabled={pullingFids}
+                  className="flex h-9 w-9 items-center justify-center rounded-full bg-emerald-100 text-emerald-700 ring-1 ring-emerald-200 active:scale-95 disabled:opacity-60 dark:bg-emerald-500/15 dark:text-emerald-300 dark:ring-emerald-500/30"
+                  aria-label="Tarik dari FIDS"
+                  title="Tarik jadwal dari FIDS bandara"
+                >
+                  {pullingFids ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <DownloadCloud className="h-4 w-4" />
+                  )}
+                </button>
                 <button
                   type="button"
                   onClick={onSaveAsDefault}
@@ -338,6 +386,8 @@ export default function FlightsPage() {
           hasSnapshot={hasSnapshot}
           onSaveAsDefault={onSaveAsDefault}
           onClearDefault={onClearDefault}
+          onPullFids={onPullFids}
+          pullingFids={pullingFids}
         />
 
         <section className="animate-fade-up stagger-1 relative overflow-hidden rounded-3xl border border-slate-200/70 bg-white/95 shadow-[0_18px_40px_-24px_rgba(15,42,98,0.35)] backdrop-blur-sm dark:border-hairline dark:bg-surface/95">
@@ -664,6 +714,8 @@ function FlightsHero({
   hasSnapshot,
   onSaveAsDefault,
   onClearDefault,
+  onPullFids,
+  pullingFids,
 }: {
   readonly totalCount: number;
   readonly shownCount: number;
@@ -671,6 +723,8 @@ function FlightsHero({
   readonly hasSnapshot: boolean;
   readonly onSaveAsDefault: () => void;
   readonly onClearDefault: () => void;
+  readonly onPullFids: () => void;
+  readonly pullingFids: boolean;
 }) {
   return (
     <section className="relative isolate overflow-hidden rounded-3xl border border-slate-200/70 p-6 shadow-[0_18px_40px_-22px_rgba(15,42,98,0.45)] dark:border-sky-500/20">
@@ -903,6 +957,20 @@ function FlightsHero({
 
         {canManage && (
           <div className="flex flex-col items-end gap-2">
+            <button
+              type="button"
+              onClick={onPullFids}
+              disabled={pullingFids}
+              title="Tarik jadwal keberangkatan dari FIDS bandara (mengikuti filter tanggal)"
+              className="group relative inline-flex items-center gap-2 overflow-hidden rounded-2xl bg-emerald-400/15 px-5 py-3 text-[13.5px] font-bold text-emerald-100 shadow-[0_0_32px_rgba(16,185,129,0.4)] ring-1 ring-emerald-400/50 backdrop-blur-md transition-all hover:-translate-y-0.5 hover:bg-emerald-400/25 hover:shadow-[0_0_40px_rgba(16,185,129,0.6)] disabled:opacity-60"
+            >
+              {pullingFids ? (
+                <Loader2 className="relative h-4 w-4 animate-spin" />
+              ) : (
+                <DownloadCloud className="relative h-4 w-4" />
+              )}
+              <span className="relative">Tarik FIDS</span>
+            </button>
             <Link
               href="/flights/create"
               className="group relative inline-flex items-center gap-2 overflow-hidden rounded-2xl bg-sky-400/15 px-5 py-3 text-[13.5px] font-bold text-sky-100 shadow-[0_0_32px_rgba(56,189,248,0.45)] ring-1 ring-sky-400/50 backdrop-blur-md transition-all hover:-translate-y-0.5 hover:bg-sky-400/25 hover:shadow-[0_0_40px_rgba(56,189,248,0.65)]"

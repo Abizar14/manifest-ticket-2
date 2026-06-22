@@ -292,30 +292,73 @@ export const FaceCaptureCamera = React.forwardRef<FaceCaptureHandle, Props>(
           }
           // beri jeda 1 tick supaya OS sempat release device
           await new Promise((r) => setTimeout(r, 50));
-          let stream: MediaStream;
-          try {
-            stream = await navigator.mediaDevices.getUserMedia(constraints);
-          } catch (err) {
-            // kalau exact deviceId gagal (device tidak valid / busy), coba fallback
-            // tanpa deviceId supaya kamera default tetap jalan.
-            const e = err as DOMException;
-            if (
-              deviceId &&
-              (e?.name === "OverconstrainedError" ||
-                e?.name === "NotFoundError" ||
-                e?.name === "NotReadableError")
-            ) {
-              const msg = `Webcam terpilih tidak bisa diakses (${e.name}). Memakai kamera default.`;
-              setErrorMsg(msg);
-              onErrorRef.current?.(msg);
-              stream = await navigator.mediaDevices.getUserMedia({
-                video: { width: { ideal: 1280 }, height: { ideal: 720 } },
-                audio: false,
-              });
-            } else {
-              throw err;
+
+          // Webcam murah (UVC) seperti Kisonli HD2K lambat melepas device
+          // setelah handle sebelumnya di-stop (StrictMode remount di dev, atau
+          // saat ganti device). getUserMedia bisa gagal dengan
+          // "NotReadableError: Could not start video source" padahal device
+          // sebenarnya bebas beberapa ratus ms kemudian. Retry singkat dengan
+          // backoff mengatasi race ini.
+          const getStreamWithRetry = async (
+            c: MediaStreamConstraints,
+            retries = 3,
+          ): Promise<MediaStream> => {
+            let lastErr: unknown;
+            for (let attempt = 0; attempt <= retries; attempt++) {
+              if (cancelled) throw new DOMException("cancelled", "AbortError");
+              try {
+                return await navigator.mediaDevices.getUserMedia(c);
+              } catch (err) {
+                lastErr = err;
+                const name = (err as DOMException)?.name;
+                // hanya retry untuk error "device sibuk sesaat"
+                if (name !== "NotReadableError" && name !== "AbortError") {
+                  throw err;
+                }
+                if (attempt === retries) break;
+                await new Promise((r) => setTimeout(r, 350 * (attempt + 1)));
+              }
+            }
+            throw lastErr;
+          };
+
+          // Rantai fallback bertingkat:
+          //   1. device pilihan + 720p ideal
+          //   2. kamera default 720p (kalau device pilihan gagal)
+          //   3. { video: true } — biarkan browser pilih mode native webcam.
+          // Webcam murah (Kisonli HD2K) sering gagal "Could not start video
+          // source" di resolusi tertentu tapi jalan dengan video:true.
+          const attempts: MediaStreamConstraints[] = [constraints];
+          if (deviceId) {
+            attempts.push({
+              video: { width: { ideal: 1280 }, height: { ideal: 720 } },
+              audio: false,
+            });
+          }
+          attempts.push({ video: true, audio: false });
+
+          let stream: MediaStream | null = null;
+          let lastErr: unknown = null;
+          for (let i = 0; i < attempts.length; i++) {
+            try {
+              stream = await getStreamWithRetry(attempts[i]);
+              break;
+            } catch (err) {
+              lastErr = err;
+              const name = (err as DOMException)?.name;
+              // izin ditolak / dibatalkan → tidak ada gunanya fallback
+              if (
+                name === "NotAllowedError" ||
+                name === "PermissionDeniedError" ||
+                name === "AbortError"
+              ) {
+                throw err;
+              }
+              // attempt terakhir tetap gagal → lempar ke handler error
+              if (i === attempts.length - 1) throw err;
             }
           }
+          if (!stream) throw lastErr;
           if (cancelled) {
             stream.getTracks().forEach((t) => t.stop());
             return;
@@ -403,6 +446,7 @@ export const FaceCaptureCamera = React.forwardRef<FaceCaptureHandle, Props>(
             /* ignore */
           }
         } catch (e) {
+          if (cancelled) return;
           const err = e as DOMException;
           const denied =
             err?.name === "NotAllowedError" || err?.name === "PermissionDeniedError";
@@ -412,6 +456,20 @@ export const FaceCaptureCamera = React.forwardRef<FaceCaptureHandle, Props>(
           setErrorMsg(msg);
           setState(denied ? "denied" : "error");
           onErrorRef.current?.(msg);
+          // Tetap enumerasi device walau gagal — supaya dropdown tidak mentok
+          // di "Memuat daftar webcam…" dan user bisa pilih webcam lain manual.
+          try {
+            const list = await navigator.mediaDevices.enumerateDevices();
+            const cams = list
+              .filter((d) => d.kind === "videoinput")
+              .map((d) => ({
+                deviceId: d.deviceId,
+                label: d.label || `Kamera ${d.deviceId.slice(0, 6)}`,
+              }));
+            if (!cancelled) setDevices(cams);
+          } catch {
+            /* ignore */
+          }
         }
       };
 

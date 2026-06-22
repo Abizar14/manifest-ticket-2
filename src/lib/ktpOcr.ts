@@ -4,6 +4,7 @@ type TesseractWorker = {
   recognize: (image: Blob | string | HTMLCanvasElement) => Promise<{
     data: { text: string };
   }>;
+  setParameters?: (params: Record<string, string>) => Promise<unknown>;
   terminate: () => Promise<void>;
 };
 
@@ -14,7 +15,18 @@ async function getWorker(): Promise<TesseractWorker> {
   workerPromise = (async () => {
     const mod = await import("tesseract.js");
     const createWorker = (mod as unknown as { createWorker: (lang: string) => Promise<TesseractWorker> }).createWorker;
-    return createWorker("ind");
+    const worker = await createWorker("ind");
+    try {
+      // PSM 6 = anggap satu blok teks seragam (cocok untuk crop area nama
+      // yang berisi beberapa baris: label NIK/Nama + nilainya).
+      await worker.setParameters?.({
+        tessedit_pageseg_mode: "6",
+        preserve_interword_spaces: "1",
+      });
+    } catch {
+      /* setParameters tidak tersedia — pakai default */
+    }
+    return worker;
   })();
   return workerPromise;
 }
@@ -113,11 +125,14 @@ function parseKtpName(rawText: string): string | null {
     .filter(Boolean);
 
   const cleanName = (raw: string): string => {
-    return raw
+    let s = raw
       .replace(/[^A-Za-z.\s'-]/g, "")
       .replace(/\s+/g, " ")
       .trim()
       .toUpperCase();
+    // Buang label field yang kadang ikut terbaca ("NAMA PRAYUDA…" → "PRAYUDA…").
+    s = s.replace(/^(NAMA|NAME|NIK)\b[\s:.'-]*/g, "").trim();
+    return s;
   };
 
   // 1. Cari label "Nama" eksplisit (OCR kadang baca "Narna", "Nema", dll).
@@ -148,7 +163,8 @@ function parseKtpName(rawText: string): string | null {
   for (const line of lines) {
     if (!/^[A-Z][A-Z\s'.-]{4,}$/.test(line)) continue;
     if (isHeaderOrLabel(line)) continue;
-    return line.replace(/\s+/g, " ").trim();
+    const name = cleanName(line);
+    if (name.length >= 3) return name;
   }
   return null;
 }
@@ -158,7 +174,18 @@ export interface KtpOcrResult {
   name: string | null;
 }
 
-async function preprocessForOcr(blob: Blob): Promise<HTMLCanvasElement | Blob> {
+/** Region crop relatif (0..1) terhadap gambar penuh. */
+export interface CropRect {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+async function preprocessForOcr(
+  blob: Blob,
+  cropRect?: CropRect,
+): Promise<HTMLCanvasElement | Blob> {
   try {
     const url = URL.createObjectURL(blob);
     const img = await new Promise<HTMLImageElement>((resolve, reject) => {
@@ -167,23 +194,73 @@ async function preprocessForOcr(blob: Blob): Promise<HTMLCanvasElement | Blob> {
       el.onerror = reject;
       el.src = url;
     });
+    const fullW = img.naturalWidth;
+    const fullH = img.naturalHeight;
+    // Crop ke area nama bila diberikan — supaya OCR HANYA membaca bagian nama,
+    // bukan NIK/alamat/field lain di KTP.
+    const sx = cropRect ? Math.max(0, Math.round(cropRect.x * fullW)) : 0;
+    const sy = cropRect ? Math.max(0, Math.round(cropRect.y * fullH)) : 0;
+    const sw = cropRect
+      ? Math.min(fullW - sx, Math.round(cropRect.w * fullW))
+      : fullW;
+    const sh = cropRect
+      ? Math.min(fullH - sy, Math.round(cropRect.h * fullH))
+      : fullH;
+    // Upscale crop kecil supaya teks nama cukup besar untuk OCR (Tesseract
+    // optimal di teks ~tinggi 30-40px). Crop sempit → perbesar 2x.
+    const scale = sw < 1200 ? 2 : 1;
+    const outW = sw * scale;
+    const outH = sh * scale;
     const canvas = document.createElement("canvas");
-    canvas.width = img.naturalWidth;
-    canvas.height = img.naturalHeight;
+    canvas.width = outW;
+    canvas.height = outH;
     const ctx = canvas.getContext("2d");
     if (!ctx) {
       URL.revokeObjectURL(url);
       return blob;
     }
-    ctx.drawImage(img, 0, 0);
-    const data = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = "high";
+    ctx.drawImage(img, sx, sy, sw, sh, 0, 0, outW, outH);
+    const data = ctx.getImageData(0, 0, outW, outH);
     const px = data.data;
-    // grayscale + contrast boost (CLAHE-ish simple stretch)
-    const contrast = 1.4;
-    const intercept = 128 - contrast * 128;
-    for (let i = 0; i < px.length; i += 4) {
-      const g = 0.299 * px[i] + 0.587 * px[i + 1] + 0.114 * px[i + 2];
-      const v = Math.max(0, Math.min(255, contrast * g + intercept));
+    const n = outW * outH;
+
+    // 1) grayscale + histogram
+    const gray = new Uint8Array(n);
+    const hist = new Array(256).fill(0);
+    for (let i = 0, j = 0; i < px.length; i += 4, j++) {
+      const g = (0.299 * px[i] + 0.587 * px[i + 1] + 0.114 * px[i + 2]) | 0;
+      gray[j] = g;
+      hist[g]++;
+    }
+
+    // 2) Otsu threshold — pisahkan teks (gelap) dari latar (terang) secara
+    //    otomatis; jauh lebih tahan variasi cahaya daripada contrast linear.
+    let total = 0;
+    for (let t = 0; t < 256; t++) total += t * hist[t];
+    let sumB = 0;
+    let wB = 0;
+    let maxVar = -1;
+    let thr = 127;
+    for (let t = 0; t < 256; t++) {
+      wB += hist[t];
+      if (wB === 0) continue;
+      const wF = n - wB;
+      if (wF === 0) break;
+      sumB += t * hist[t];
+      const mB = sumB / wB;
+      const mF = (total - sumB) / wF;
+      const between = wB * wF * (mB - mF) * (mB - mF);
+      if (between > maxVar) {
+        maxVar = between;
+        thr = t;
+      }
+    }
+
+    // 3) binarisasi (hitam/putih)
+    for (let i = 0, j = 0; i < px.length; i += 4, j++) {
+      const v = gray[j] > thr ? 255 : 0;
       px[i] = px[i + 1] = px[i + 2] = v;
     }
     ctx.putImageData(data, 0, 0);
@@ -194,9 +271,12 @@ async function preprocessForOcr(blob: Blob): Promise<HTMLCanvasElement | Blob> {
   }
 }
 
-export async function recognizeKtp(image: Blob): Promise<KtpOcrResult> {
+export async function recognizeKtp(
+  image: Blob,
+  opts?: { cropRect?: CropRect },
+): Promise<KtpOcrResult> {
   const worker = await getWorker();
-  const processed = await preprocessForOcr(image);
+  const processed = await preprocessForOcr(image, opts?.cropRect);
   const result = await worker.recognize(processed);
   const rawText = result.data.text ?? "";
   return { rawText, name: parseKtpName(rawText) };

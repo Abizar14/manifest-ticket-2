@@ -28,6 +28,8 @@ export interface AppSettings {
   sikerenStation: string;
   /** Sinkronisasi scan & flight ke backend AFVS (NestJS). */
   apiSyncEnabled: boolean;
+  /** Auto-tarik jadwal keberangkatan dari FIDS bandara tiap beberapa menit. */
+  fidsAutoSync: boolean;
   ktpVerifyEnabled: boolean;
   ktpAutoPassThreshold: number;
   ktpManualThreshold: number;
@@ -60,6 +62,7 @@ const DEFAULTS: AppSettings = {
   sikerenSyncMode: "auto",
   sikerenStation: "",
   apiSyncEnabled: false,
+  fidsAutoSync: true,
   ktpVerifyEnabled: false,
   ktpAutoPassThreshold: 0.85,
   ktpManualThreshold: 0.6,

@@ -43,6 +43,7 @@ export function ScanStatusBadge({ status }: { status: ScanResultStatus }) {
     FLIGHT_NOT_ACTIVE: { tone: "danger", label: "Not Active", dot: "bg-rose-500" },
     UNKNOWN_FLIGHT: { tone: "danger", label: "Unknown Flight", dot: "bg-rose-500" },
     INVALID_BARCODE: { tone: "danger", label: "Invalid Barcode", dot: "bg-rose-500" },
+    KTP_MISMATCH: { tone: "danger", label: "KTP Tidak Cocok", dot: "bg-rose-500" },
   };
   const v = map[status];
   return (

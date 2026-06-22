@@ -45,6 +45,7 @@ const STATUS_COLORS: Record<ScanResultStatus, string> = {
   FLIGHT_NOT_ACTIVE: "#fb7185",
   UNKNOWN_FLIGHT: "#ef4444",
   INVALID_BARCODE: "#a855f7",
+  KTP_MISMATCH: "#e11d48",
 };
 
 const STATUS_LABEL: Record<ScanResultStatus, string> = {
@@ -54,6 +55,7 @@ const STATUS_LABEL: Record<ScanResultStatus, string> = {
   FLIGHT_NOT_ACTIVE: "Tidak aktif",
   UNKNOWN_FLIGHT: "Flight tdk dikenal",
   INVALID_BARCODE: "Barcode rusak",
+  KTP_MISMATCH: "KTP tidak cocok",
 };
 
 export default function AnalyticsPage() {

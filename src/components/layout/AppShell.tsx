@@ -19,6 +19,7 @@ import {
   Database,
   BarChart3,
   BrainCircuit,
+  CalendarClock,
   Settings as SettingsIcon,
   ChevronRight,
   ChevronLeft,
@@ -34,7 +35,9 @@ import { SessionUser, UserRole } from "@/lib/types";
 import { archiveOldScanEvents, ensureSeed, getSession } from "@/lib/storage";
 import { sweepPastDayFlights } from "@/lib/flightSweeper";
 import { logout } from "@/lib/auth";
-import { cn } from "@/lib/utils";
+import { cn, todayDateString } from "@/lib/utils";
+import { getSettings } from "@/lib/settings";
+import { pullFidsKeberangkatan } from "@/lib/jadwal/flightSync";
 import { useT, useLocale } from "@/lib/useT";
 import { BottomNav } from "./BottomNav";
 import { ThemeSwitch } from "@/components/ui/ThemeSwitch";
@@ -90,6 +93,12 @@ const NAV_SECTIONS: NavSection[] = [
         href: "/flights",
         labelKey: "nav.flights",
         icon: Plane,
+        roles: ["admin", "supervisor"],
+      },
+      {
+        href: "/jadwal",
+        labelKey: "nav.jadwalFids",
+        icon: CalendarClock,
         roles: ["admin", "supervisor"],
       },
       {
@@ -221,6 +230,23 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
     return () => {
       window.removeEventListener("online", up);
       window.removeEventListener("offline", down);
+    };
+  }, []);
+
+  // Auto-sync FIDS → data flight tiap 3 menit (silent, fire-and-forget).
+  // Saklar di Pengaturan (fidsAutoSync); dicek tiap tick agar bisa di-on/off
+  // tanpa reload. Pull memancarkan event "afvs:flights-updated" → UI refresh.
+  useEffect(() => {
+    const run = () => {
+      if (!getSettings().fidsAutoSync) return;
+      if (typeof navigator !== "undefined" && navigator.onLine === false) return;
+      pullFidsKeberangkatan(todayDateString()).catch(() => {});
+    };
+    const first = setTimeout(run, 5000); // beri jeda setelah first paint
+    const id = setInterval(run, 180_000); // 3 menit
+    return () => {
+      clearTimeout(first);
+      clearInterval(id);
     };
   }, []);
 
@@ -620,6 +646,7 @@ function breadcrumbTail(pathname: string, t: (k: string) => string) {
     return "Edit";
   if (pathname.startsWith("/flights/")) return "Detail";
   if (pathname === "/flights") return t("nav.flights");
+  if (pathname.startsWith("/jadwal")) return t("nav.jadwalFids");
   if (pathname.startsWith("/scan-events")) return t("nav.scanEvents");
   if (pathname.startsWith("/scan")) return t("nav.scan");
   if (pathname.startsWith("/passengers")) return t("nav.passengers");
@@ -638,6 +665,7 @@ function currentTitle(pathname: string, t: (k: string) => string) {
   if (pathname === "/flights") return t("nav.flights");
   if (pathname.startsWith("/flights/create")) return "Tambah Penerbangan";
   if (pathname.startsWith("/flights/")) return "Detail Penerbangan";
+  if (pathname.startsWith("/jadwal")) return t("nav.jadwalFids");
   if (pathname.startsWith("/scan-events")) return t("nav.scanEvents");
   if (pathname.startsWith("/scan")) return t("nav.scan");
   if (pathname.startsWith("/passengers")) return t("nav.passengers");

@@ -123,6 +123,7 @@ const PREVIOUS_SCAN_STATUS_LABEL: Record<ScanResultStatus, string> = {
   FLIGHT_NOT_ACTIVE: "ditolak karena flight tidak aktif",
   UNKNOWN_FLIGHT: "ditolak karena flight tidak dikenal",
   INVALID_BARCODE: "ditolak karena barcode invalid",
+  KTP_MISMATCH: "ditolak karena KTP tidak cocok",
 };
 
 function previousScanNote(rawBarcode: string, events: ScanEvent[]): string {
@@ -172,11 +173,11 @@ export function validateBarcode(raw: string): ValidationOutcome {
   const events = getScanEvents();
   const previousNote = previousScanNote(cleaned, events);
 
-  const flight = flights.find(
+  const matches = flights.filter(
     (f) => f.flightNumber.toUpperCase() === parsed.flightNumber.toUpperCase(),
   );
 
-  if (!flight) {
+  if (matches.length === 0) {
     return {
       status: "UNKNOWN_FLIGHT",
       message: `Ditolak: flight ${parsed.flightNumber} tidak terdaftar.${previousNote}`,
@@ -184,6 +185,17 @@ export function validateBarcode(raw: string): ValidationOutcome {
       parsed,
     };
   }
+
+  // Kalau ada beberapa flight dengan nomor sama (mis. jadwal beda tanggal atau
+  // data seed lama dari hari sebelumnya), utamakan yang JADWALNYA HARI INI &
+  // boardable — supaya scan tidak nyangkut ke record basi lalu salah menolak
+  // "BUKAN HARI INI". Fallback ke record pertama hanya untuk pesan error.
+  const flight =
+    matches.find(
+      (f) => f.departureDate === today && (f.status === "OPEN" || f.status === "ACTIVE"),
+    ) ??
+    matches.find((f) => f.departureDate === today) ??
+    matches[0];
 
   if (flight.departureDate !== today) {
     return {

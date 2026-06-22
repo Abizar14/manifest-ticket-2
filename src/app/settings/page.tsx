@@ -622,7 +622,7 @@ export default function SettingsPage() {
                     icon={<ScanFace className="h-4 w-4" />}
                     iconBg="bg-rose-100 text-rose-700"
                     title="Wajibkan KTP cocok untuk status VALID"
-                    subtitle="Kalau aktif, scan tidak dihitung VALID kecuali operator konfirmasi KTP."
+                    subtitle="Kalau aktif, scan otomatis DITOLAK (status KTP tidak cocok) bila nama KTP tidak cocok dengan boarding pass. Operator tidak bisa override."
                     trailing={
                       <ListSwitch
                         checked={settings.ktpRequireForValid}
@@ -859,6 +859,13 @@ export default function SettingsPage() {
                       onChange={(v) => update({ autoClosePastDayFlights: v })}
                     />
                     <ToggleRow
+                      icon={<RefreshCw className="h-4 w-4" />}
+                      title="Auto-sync jadwal FIDS"
+                      description="Tarik keberangkatan dari FIDS bandara otomatis tiap 3 menit & merge ke Jadwal Penerbangan (status manual & pax tetap aman)."
+                      checked={settings.fidsAutoSync}
+                      onChange={(v) => update({ fidsAutoSync: v })}
+                    />
+                    <ToggleRow
                       icon={<DoorOpen className="h-4 w-4" />}
                       title="Aktifkan buka boarding otomatis"
                       description="Jika dimatikan, flight harus diubah ke OPEN manual oleh supervisor."
@@ -1003,7 +1010,7 @@ export default function SettingsPage() {
                     <ToggleRow
                       icon={<ScanFace className="h-4 w-4" />}
                       title="Wajibkan KTP cocok untuk status VALID"
-                      description="Kalau aktif, scan tidak dihitung VALID kecuali operator konfirmasi KTP cocok."
+                      description="Kalau aktif, scan otomatis DITOLAK (status KTP tidak cocok) bila nama KTP tidak cocok dengan boarding pass. Operator tidak bisa override."
                       checked={settings.ktpRequireForValid}
                       onChange={(v) => update({ ktpRequireForValid: v })}
                     />

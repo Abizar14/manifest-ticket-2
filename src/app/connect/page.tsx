@@ -10,6 +10,7 @@ import {
   Loader2,
   LogIn,
   LogOut,
+  Plane,
   Plug,
   RefreshCw,
   Server,
@@ -30,6 +31,7 @@ import {
   subscribeAuth,
 } from "@/lib/api/client";
 import { pullFlights } from "@/lib/api/flightSync";
+import { pullFidsKeberangkatan } from "@/lib/jadwal/flightSync";
 import {
   ApiOutboxSummary,
   clearApiOutbox,
@@ -63,6 +65,10 @@ export default function ConnectPage() {
   const [pullStation, setPullStation] = useState("");
   const [pulling, setPulling] = useState(false);
   const [flushing, setFlushing] = useState(false);
+
+  // Pull jadwal dari FIDS bandara (tanpa perlu login backend)
+  const [fidsDate, setFidsDate] = useState(() => todayDateString());
+  const [fidsPulling, setFidsPulling] = useState(false);
 
   const refresh = useCallback(() => {
     setAuthed(isAuthed());
@@ -135,6 +141,20 @@ export default function ConnectPage() {
       );
     } else {
       toast.error(res.error ?? "Gagal tarik jadwal", "Gagal");
+    }
+  };
+
+  const handleFidsPull = async () => {
+    setFidsPulling(true);
+    const res = await pullFidsKeberangkatan(fidsDate || undefined);
+    setFidsPulling(false);
+    if (res.ok) {
+      toast.success(
+        `${res.total} jadwal (+${res.added} baru, ${res.updated} update)`,
+        "Jadwal FIDS ditarik",
+      );
+    } else {
+      toast.error(res.error ?? "Gagal tarik jadwal FIDS", "Gagal");
     }
   };
 
@@ -339,6 +359,47 @@ export default function ConnectPage() {
           <p className="mt-2 text-[11px] text-ink-subtle">
             Jadwal di-merge ke data lokal (cocok by nomor flight + tanggal).
             Lihat hasilnya di menu Jadwal Penerbangan.
+          </p>
+        </section>
+
+        {/* Pull jadwal dari FIDS bandara */}
+        <section className="rounded-3xl border border-slate-200/70 bg-white/95 p-5 shadow-card dark:border-hairline dark:bg-surface/95">
+          <div className="flex items-center gap-2 text-sm font-semibold text-ink">
+            <Plane className="h-4 w-4 text-emerald-600" />
+            Tarik jadwal dari FIDS Bandara
+          </div>
+          <p className="mt-1 text-xs text-ink-muted">
+            Sumber langsung dari display jadwal bandara (APT Pranoto). Hanya
+            keberangkatan yang di-merge ke data scan. Tidak perlu login backend.
+          </p>
+          <div className="mt-3 grid gap-3 sm:grid-cols-[1fr_auto] sm:items-end">
+            <label className="block">
+              <span className="mb-1 block text-xs font-semibold text-ink-muted">
+                Tanggal
+              </span>
+              <input
+                type="date"
+                value={fidsDate}
+                onChange={(e) => setFidsDate(e.target.value)}
+                className="w-full rounded-xl border border-hairline bg-surface px-3 py-2 text-sm text-ink outline-none ring-emerald-200 focus:ring-2"
+              />
+            </label>
+            <button
+              type="button"
+              onClick={handleFidsPull}
+              disabled={fidsPulling}
+              className="inline-flex h-[38px] items-center justify-center gap-1.5 rounded-xl bg-emerald-600 px-4 text-sm font-bold text-white shadow-sm transition hover:bg-emerald-700 disabled:opacity-60"
+            >
+              {fidsPulling ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <DownloadCloud className="h-4 w-4" />
+              )}
+              Tarik FIDS
+            </button>
+          </div>
+          <p className="mt-2 text-[11px] text-ink-subtle">
+            Lihat papan keberangkatan &amp; kedatangan di menu Jadwal (FIDS).
           </p>
         </section>
 

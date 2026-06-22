@@ -61,6 +61,12 @@ const STYLES: Record<ScanResultStatus, ResultStyle> = {
     badge: "bg-rose-50 text-rose-700 ring-rose-200",
     label: "Invalid",
   },
+  KTP_MISMATCH: {
+    icon: XCircle,
+    iconBg: "bg-rose-100 text-rose-700",
+    badge: "bg-rose-50 text-rose-700 ring-rose-200",
+    label: "KTP tidak cocok",
+  },
 };
 
 /**

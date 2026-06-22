@@ -112,22 +112,23 @@ export function Modal({
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[100] flex items-center justify-center overflow-y-auto px-4 py-4 print:hidden"
+      className="fixed inset-0 z-[1000] isolate flex items-center justify-center overflow-y-auto px-4 py-4 print:hidden"
       role="dialog"
       aria-modal="true"
     >
-      {/* Backdrop */}
+      {/* Backdrop — z-0 eksplisit supaya layer backdrop-blur tidak ter-composite
+          di atas dialog (bug stacking Chromium saat backdrop-filter + transform). */}
       <button
         type="button"
         aria-label="Tutup"
         onClick={closeOnBackdrop ? onClose : undefined}
-        className="absolute inset-0 cursor-default bg-slate-900/50 backdrop-blur-sm animate-fade-up"
+        className="absolute inset-0 z-0 cursor-default bg-slate-900/50 backdrop-blur-sm animate-fade-up"
       />
 
-      {/* Dialog */}
+      {/* Dialog — z-10 eksplisit: selalu di atas backdrop, tidak bergantung urutan DOM. */}
       <div
         className={cn(
-          "relative my-auto flex max-h-[calc(100dvh-2rem)] w-full flex-col overflow-hidden rounded-2xl border border-slate-200/70 bg-white shadow-lift animate-fade-up dark:border-hairline dark:bg-surface",
+          "relative z-10 my-auto flex max-h-[calc(100dvh-2rem)] w-full flex-col overflow-hidden rounded-2xl border border-slate-200/70 bg-white shadow-lift animate-fade-up dark:border-hairline dark:bg-surface",
           SIZE[size],
         )}
         onClick={(e) => e.stopPropagation()}

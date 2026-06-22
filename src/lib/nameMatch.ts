@@ -36,6 +36,14 @@ function stripDiacritics(s: string): string {
   return s.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 }
 
+// Gelar/label tanpa titik & label field yang sering ikut terbaca OCR — dibuang
+// sebagai token utuh di mana pun posisinya (mis. "PRAYUDA MR ELFANDRO" → "prayuda
+// elfandro", "NAMA PRAYUDA" → "prayuda").
+const DROP_TOKENS = new Set([
+  "mr", "mrs", "ms", "tn", "ny", "sdr", "sdri", "hj",
+  "nama", "name", "nik",
+]);
+
 export function normalizeName(input: string): string {
   let s = stripDiacritics(input).toLowerCase();
   s = s.replace(/[^a-z\s.]/g, " ");
@@ -44,6 +52,10 @@ export function normalizeName(input: string): string {
   }
   s = s.replace(/[.]/g, " ");
   s = s.replace(/\s+/g, " ").trim();
+  s = s
+    .split(" ")
+    .filter((t) => t && !DROP_TOKENS.has(t))
+    .join(" ");
   return s;
 }
 
@@ -102,5 +114,10 @@ export function similarity(a: string | null | undefined, b: string | null | unde
   if (na === nb) return 1;
   const lev = levenshteinSim(na, nb);
   const tok = tokenSetSim(a, b);
-  return Math.max(lev, tok) * 0.6 + Math.min(lev, tok) * 0.4;
+  const base = Math.max(lev, tok) * 0.6 + Math.min(lev, tok) * 0.4;
+  // Toleran salah-spasi OCR: "ELFANDRO" sering terbaca "ELF ANDRO" (atau
+  // sebaliknya). Bandingkan juga versi tanpa spasi — kalau hurufnya sama
+  // persis selain spasi, anggap cocok penuh.
+  const compact = levenshteinSim(na.replace(/\s+/g, ""), nb.replace(/\s+/g, ""));
+  return Math.max(base, compact);
 }

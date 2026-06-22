@@ -72,7 +72,8 @@ export type ScanResultStatus =
   | "FLIGHT_NOT_TODAY"
   | "FLIGHT_NOT_ACTIVE"
   | "UNKNOWN_FLIGHT"
-  | "INVALID_BARCODE";
+  | "INVALID_BARCODE"
+  | "KTP_MISMATCH";
 
 export interface ScanEvent {
   id: string;

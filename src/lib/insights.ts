@@ -46,6 +46,7 @@ const REJECTED_STATUSES: ScanResultStatus[] = [
   "FLIGHT_NOT_ACTIVE",
   "UNKNOWN_FLIGHT",
   "INVALID_BARCODE",
+  "KTP_MISMATCH",
 ];
 
 const STATUS_LABEL: Record<ScanResultStatus, string> = {
@@ -55,6 +56,7 @@ const STATUS_LABEL: Record<ScanResultStatus, string> = {
   FLIGHT_NOT_ACTIVE: "Flight tidak aktif",
   UNKNOWN_FLIGHT: "Flight tidak dikenal",
   INVALID_BARCODE: "Barcode rusak",
+  KTP_MISMATCH: "KTP tidak cocok",
 };
 
 export function buildAppInsightReport(input: {
