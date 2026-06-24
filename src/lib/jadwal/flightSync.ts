@@ -16,16 +16,50 @@ import { fetchKeberangkatan } from "./client";
 import { HOME_IATA, JadwalKeberangkatan, expectedPaxFor } from "./types";
 
 /**
- * remark FIDS → FlightStatus. Status final (Cancelled/Departed) dihormati;
- * sisanya jadi DRAFT agar getEffectiveFlightStatus yang menentukan
- * OPEN/ACTIVE/CLOSED berdasarkan waktu + boarding window.
+ * remark FIDS → FlightStatus (mode pos pendataan / "hybrid").
+ *
+ *  - Cancelled/Batal           → CANCELLED (final)
+ *  - Departured/Closed/Tutup   → CLOSED (pesawat sudah berangkat / gate tutup)
+ *  - selain itu (Check In Open, Estimate, Boarding, Delay, Scheduled, …)
+ *    → OPEN, supaya boarding pass bisa di-scan di pos pemeriksaan SELAMA flight
+ *      masih hidup di papan FIDS. Penutupan mengikuti FIDS ("Departured"),
+ *      dengan pengaman waktu STD+closeAfter di getEffectiveFlightStatus bila
+ *      FIDS belum sempat melapor.
  */
 function mapRemarkStatus(remark: string | null): FlightStatus {
   const s = (remark ?? "").toLowerCase();
   if (s.includes("cancel") || s.includes("batal")) return "CANCELLED";
-  if (s.includes("depart") || s.includes("berangkat") || s.includes("closed"))
+  if (
+    s.includes("depart") ||
+    s.includes("berangkat") ||
+    s.includes("closed") ||
+    s.includes("tutup")
+  )
     return "CLOSED";
-  return "DRAFT";
+  return "OPEN";
+}
+
+/**
+ * Gabungkan status lokal dengan status hasil pemetaan FIDS saat merge.
+ *
+ * Aturan (mendahulukan keselamatan & menghormati keputusan manual supervisor):
+ *  - CANCELLED lokal itu final — tak bisa dibuka lagi oleh FIDS.
+ *  - FIDS terminal (CANCELLED / CLOSED=Departured) SELALU menutup — inilah inti
+ *    "tutup ikut FIDS": flight yang sudah OPEN pun ikut CLOSED saat berangkat.
+ *  - CLOSED manual oleh supervisor tetap tertutup (FIDS aktif tak membukanya).
+ *  - ACTIVE (final call manual) dipertahankan.
+ *  - selain itu (DRAFT/OPEN + FIDS aktif) → OPEN.
+ */
+function nextStatus(
+  existing: FlightStatus,
+  incoming: FlightStatus,
+): FlightStatus {
+  if (existing === "CANCELLED") return "CANCELLED";
+  if (incoming === "CANCELLED") return "CANCELLED";
+  if (incoming === "CLOSED") return "CLOSED";
+  if (existing === "CLOSED") return "CLOSED";
+  if (existing === "ACTIVE") return "ACTIVE";
+  return "OPEN";
 }
 
 export function keberangkatanToFlight(j: JadwalKeberangkatan): Flight {
@@ -82,9 +116,10 @@ export async function pullFidsKeberangkatan(
         ...existing,
         ...inc,
         id: existing.id, // pertahankan id lokal
-        // Jangan timpa status manual supervisor (CANCELLED/CLOSED/OPEN/ACTIVE);
-        // hanya pakai status FIDS bila record lokal masih DRAFT.
-        status: existing.status === "DRAFT" ? inc.status : existing.status,
+        // Status mengikuti FIDS dengan aturan aman (lihat nextStatus): FIDS
+        // boleh MENUTUP (Departured/Cancelled) walau lokal sudah OPEN, tapi
+        // tak boleh membuka kembali yang sudah CLOSED/CANCELLED manual.
+        status: nextStatus(existing.status, inc.status),
         // Pertahankan pax yang sudah diisi; default FIDS hanya mengisi yang kosong.
         expectedPax:
           existing.expectedPax && existing.expectedPax > 0

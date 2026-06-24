@@ -1,5 +1,6 @@
 import { PrismaClient } from "@prisma/client";
 import * as bcrypt from "bcryptjs";
+import { pinLookupHash } from "../src/common/pin-lookup";
 
 const prisma = new PrismaClient();
 
@@ -23,6 +24,7 @@ async function ensureOperator(data: {
       email: data.email,
       passwordHash: await bcrypt.hash(data.password, 10),
       pinHash: data.pin ? await bcrypt.hash(data.pin, 10) : null,
+      pinLookup: data.pin ? pinLookupHash(data.pin) : null,
       name: data.name,
       role: data.role,
       station: data.station ?? null,
@@ -35,6 +37,17 @@ async function ensureOperator(data: {
 }
 
 async function main() {
+  // F-04: jangan seed akun/PIN demo yang dapat ditebak di produksi.
+  if (
+    process.env.NODE_ENV === "production" &&
+    process.env.SEED_ALLOW_DEMO !== "true"
+  ) {
+    console.log(
+      "[seed] NODE_ENV=production → lewati seed akun demo (set SEED_ALLOW_DEMO=true untuk memaksa).",
+    );
+    return;
+  }
+
   // Admin & operator demo
   await ensureOperator({
     email: process.env.SEED_ADMIN_EMAIL ?? "admin@afvs.local",

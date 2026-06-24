@@ -2,16 +2,32 @@ import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 import { Type } from "class-transformer";
 import {
   IsDateString,
+  IsIn,
   IsNumber,
   IsOptional,
   IsString,
+  Matches,
   MaxLength,
 } from "class-validator";
+
+// F-08: status hasil scan yang sah (validasi enum, jangan terima string bebas).
+const RESULT_STATUSES = [
+  "INVALID_BARCODE",
+  "UNKNOWN_FLIGHT",
+  "FLIGHT_NOT_TODAY",
+  "FLIGHT_NOT_ACTIVE",
+  "DUPLICATE_SCAN",
+  "VALID_FLIGHT",
+] as const;
 
 export class PushScanDto {
   @ApiProperty({ description: "Client-generated UUID for idempotency" })
   @IsString()
   @MaxLength(64)
+  // F-10: cegah path-traversal — eventId dipakai sebagai nama file foto.
+  @Matches(/^[A-Za-z0-9_-]+$/, {
+    message: "eventId hanya boleh huruf, angka, '-' dan '_'.",
+  })
   eventId!: string;
 
   @ApiProperty()
@@ -44,9 +60,8 @@ export class PushScanDto {
   @IsString()
   passengerName?: string;
 
-  @ApiProperty()
-  @IsString()
-  @MaxLength(32)
+  @ApiProperty({ enum: RESULT_STATUSES })
+  @IsIn(RESULT_STATUSES)
   resultStatus!: string;
 
   @ApiPropertyOptional()

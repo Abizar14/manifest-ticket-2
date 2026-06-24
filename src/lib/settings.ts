@@ -39,6 +39,31 @@ export interface AppSettings {
 
 const KEY = "afvs.settings";
 
+/**
+ * Setelan boarding rekomendasi untuk POS PENDATAAN PRA X-RAY (mode hybrid):
+ * scan dibuka lama (4 jam sebelum STD), final call dimatikan, penutupan utama
+ * mengikuti papan FIDS ("Departured") dengan pengaman waktu STD+30. Dipakai
+ * sebagai default DAN oleh tombol "Reset boarding ke rekomendasi" di Pengaturan.
+ */
+export type BoardingSettings = Pick<
+  AppSettings,
+  | "boardingOpenEnabled"
+  | "boardingOpenMinutesBefore"
+  | "boardingActiveEnabled"
+  | "boardingActiveMinutesBefore"
+  | "boardingCloseEnabled"
+  | "boardingCloseMinutesAfter"
+>;
+
+export const RECOMMENDED_BOARDING: BoardingSettings = {
+  boardingOpenEnabled: true,
+  boardingOpenMinutesBefore: 240,
+  boardingActiveEnabled: false,
+  boardingActiveMinutesBefore: 30,
+  boardingCloseEnabled: true,
+  boardingCloseMinutesAfter: 30,
+};
+
 const DEFAULTS: AppSettings = {
   soundOn: true,
   hapticOn: true,
@@ -46,12 +71,8 @@ const DEFAULTS: AppSettings = {
   theme: "airport",
   flightListShowOnlyToday: true,
   autoClosePastDayFlights: true,
-  boardingOpenEnabled: true,
-  boardingOpenMinutesBefore: 60,
-  boardingActiveEnabled: true,
-  boardingActiveMinutesBefore: 30,
-  boardingCloseEnabled: true,
-  boardingCloseMinutesAfter: 10,
+  // Pos pendataan pra X-ray (mode hybrid) — lihat RECOMMENDED_BOARDING.
+  ...RECOMMENDED_BOARDING,
   faceCaptureEnabled: true,
   faceCameraDeviceId: null,
   kioskAutoEnter: false,

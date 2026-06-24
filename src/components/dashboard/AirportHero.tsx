@@ -26,7 +26,7 @@ export function AirportHero({
     <section className="relative isolate overflow-hidden rounded-[28px] shadow-[0_24px_60px_-20px_rgba(15,42,98,0.45)] ring-1 ring-slate-200/70 dark:ring-sky-400/20">
       {/* Photo background — always full color, no washed-out overlay */}
       <img
-        src="/asset-cards/card-bg-dashboard.png"
+        src="/asset-cards/card-bg-dashboard.webp"
         alt=""
         aria-hidden
         className="pointer-events-none absolute inset-0 -z-30 h-full w-full object-cover object-center"

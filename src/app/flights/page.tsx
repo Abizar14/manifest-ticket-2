@@ -15,13 +15,14 @@ import {
   Save,
   DownloadCloud,
   Loader2,
+  Clock,
+  DoorOpen,
 } from "lucide-react";
+import { getAirlineMeta } from "@/lib/airlines";
 import { AppShell } from "@/components/layout/AppShell";
 import { CardBody } from "@/components/ui/Card";
-import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
-import { FlightStatusBadge } from "@/components/ui/StatusBadge";
 import { Flight, FlightStatus, ScanEvent, SessionUser } from "@/lib/types";
 import {
   deleteFlight,
@@ -43,7 +44,11 @@ import {
   clearCustomSeed,
   readCustomSeed,
 } from "@/lib/seedSnapshot";
-import { getBoardingProgress } from "@/lib/boarding";
+import {
+  boardingProgressFromCount,
+  buildBoardedCounts,
+  getBoardingProgress,
+} from "@/lib/boarding";
 import { pullFidsKeberangkatan } from "@/lib/jadwal/flightSync";
 import { getSettings, subscribeSettings } from "@/lib/settings";
 import { getEffectiveFlightStatus } from "@/lib/flightStatus";
@@ -235,6 +240,9 @@ export default function FlightsPage() {
     return filtered.slice(start, start + PAGE_SIZE);
   }, [filtered, currentPage]);
 
+  // P-07: index boarded-count dibangun sekali, dipakai per-flight O(1).
+  const boardedCounts = useMemo(() => buildBoardedCounts(events), [events]);
+
   const onDelete = async (id: string) => {
     const target = flights.find((f) => f.id === id);
     const res = await confirm({
@@ -346,7 +354,7 @@ export default function FlightsPage() {
             {paginated.map((f) => {
               const eff = getEffectiveFlightStatus(f, now, settings);
               const differs = eff.status !== f.status;
-              const progress = getBoardingProgress(f, events);
+              const progress = boardingProgressFromCount(f, boardedCounts.get(f.id) ?? 0);
               return (
                 <FlightRow
                   key={f.id}
@@ -480,215 +488,33 @@ export default function FlightsPage() {
               </button>
             </div>
 
-            {/* Mobile: card stack */}
-            <div className="md:hidden">
-              {filtered.length === 0 ? (
-                <EmptyState
-                  tone="info"
-                  icon={<Plane className="h-6 w-6" />}
-                  title="Tidak ada penerbangan sesuai filter"
-                  description="Coba bersihkan pencarian atau ubah filter tanggal / status."
-                />
-              ) : (
-                <ul className="space-y-2.5">
-                  {paginated.map((f, idx) => (
-                    <li
-                      key={f.id}
-                      className="animate-fade-up"
-                      style={{ animationDelay: `${idx * 30}ms` }}
-                    >
-                      <Link
-                        href={`/flights/${f.id}`}
-                        className="block rounded-2xl bg-white p-3.5 shadow-card ring-1 ring-slate-200 transition active:scale-[0.99] dark:bg-surface dark:ring-hairline"
-                      >
-                        <div className="flex items-start gap-3">
-                          <AirlineLogo code={f.airlineCode} size="md" />
-                          <div className="min-w-0 flex-1">
-                            <div className="flex items-center justify-between gap-2">
-                              <p className="truncate text-sm font-bold text-slate-800 dark:text-ink">
-                                {f.flightNumber}
-                              </p>
-                              <EffectiveBadge
-                                flight={f}
-                                now={now}
-                                settings={settings}
-                              />
-                            </div>
-                            <p className="mt-0.5 text-xs text-slate-500 dark:text-ink-muted">
-                              <span className="font-medium text-slate-700 dark:text-ink/85">
-                                {f.originAirport}
-                              </span>{" "}
-                              →{" "}
-                              <span className="font-medium text-slate-700 dark:text-ink/85">
-                                {f.destinationAirport}
-                              </span>
-                            </p>
-                            <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-slate-500 dark:text-ink-muted">
-                              <span className="inline-flex items-center gap-1 rounded-full bg-slate-50 px-2 py-0.5 ring-1 ring-slate-200 dark:bg-white/5 dark:ring-hairline">
-                                <Calendar className="h-3 w-3" />
-                                {f.departureDate}
-                              </span>
-                              <span className="inline-flex items-center gap-1 rounded-full bg-slate-50 px-2 py-0.5 font-mono font-semibold text-slate-700 ring-1 ring-slate-200 dark:bg-white/5 dark:text-ink dark:ring-hairline">
-                                {f.departureTime}
-                              </span>
-                              <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-0.5 font-semibold text-blue-700 ring-1 ring-blue-200 dark:bg-sky-500/15 dark:text-sky-300 dark:ring-sky-500/30">
-                                {f.gateOrCheckpoint}
-                              </span>
-                            </div>
-                            <div className="mt-2">
-                              <ProgressMini
-                                progress={getBoardingProgress(f, events)}
-                              />
-                            </div>
-                          </div>
-                        </div>
-                        {canManage && (
-                          <div
-                            className="mt-3 flex items-center justify-end gap-1 border-t border-slate-100 pt-2"
-                            onClick={(e) => e.preventDefault()}
-                          >
-                            <Link href={`/flights/${f.id}/edit`}>
-                              <Button variant="ghost" size="sm">
-                                <Pencil className="h-3.5 w-3.5 text-blue-700" />
-                                Edit
-                              </Button>
-                            </Link>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={(e) => {
-                                e.preventDefault();
-                                onDelete(f.id);
-                              }}
-                            >
-                              <Trash2 className="h-3.5 w-3.5 text-rose-600" />
-                              Hapus
-                            </Button>
-                          </div>
-                        )}
-                      </Link>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-
-            {/* Desktop: grid-aligned table */}
-            <div className="hidden md:block">
-              {filtered.length === 0 ? (
-                <EmptyState
-                  tone="info"
-                  icon={<Plane className="h-6 w-6" />}
-                  title="Tidak ada penerbangan sesuai filter"
-                  description="Coba bersihkan pencarian atau ubah filter tanggal / status."
-                />
-              ) : (
-                <div>
-                  {/* Column headers */}
-                  <div className="grid items-center gap-3 border-b border-slate-200/80 px-3 py-2.5 text-[10.5px] font-bold uppercase tracking-[0.12em] text-slate-400 dark:border-hairline dark:text-ink-subtle grid-cols-[minmax(150px,1.4fr)_minmax(110px,1fr)_minmax(110px,1fr)_70px_minmax(80px,0.9fr)_minmax(130px,1.3fr)_110px_100px]">
-                    <span>Flight</span>
-                    <span>Rute</span>
-                    <span>Tanggal</span>
-                    <span>Waktu</span>
-                    <span>Gate</span>
-                    <span>Boarding</span>
-                    <span>Status</span>
-                    <span className="text-right">Aksi</span>
-                  </div>
-                  <ul className="divide-y divide-slate-100 dark:divide-hairline">
-                    {paginated.map((f, idx) => {
-                      const eff = getEffectiveFlightStatus(f, now, settings);
-                      const differs = eff.status !== f.status;
-                      const progress = getBoardingProgress(f, events);
-                      return (
-                        <li
-                          key={f.id}
-                          className="animate-fade-up grid items-center gap-3 rounded-xl px-3 py-3 transition-colors hover:bg-slate-50/70 dark:hover:bg-surface-elev/60 grid-cols-[minmax(150px,1.4fr)_minmax(110px,1fr)_minmax(110px,1fr)_70px_minmax(80px,0.9fr)_minmax(130px,1.3fr)_110px_100px]"
-                          style={{ animationDelay: `${idx * 30}ms` }}
-                        >
-                          {/* Flight */}
-                          <div className="flex min-w-0 items-center gap-2.5">
-                            <AirlineLogo code={f.airlineCode} size="sm" />
-                            <div className="min-w-0">
-                              <Link
-                                href={`/flights/${f.id}`}
-                                className="block truncate text-[13.5px] font-bold tracking-tight text-slate-800 hover:text-blue-700 dark:text-ink dark:hover:text-blue-300"
-                              >
-                                {f.flightNumber}
-                              </Link>
-                              <div className="text-[11px] text-slate-500 dark:text-ink-muted">
-                                {f.airlineCode}
-                              </div>
-                            </div>
-                          </div>
-                          {/* Rute */}
-                          <span className="text-[13px] text-slate-700 dark:text-ink">
-                            <span className="font-medium">{f.originAirport}</span>
-                            <span className="mx-1 text-slate-400">→</span>
-                            <span className="font-medium">
-                              {f.destinationAirport}
-                            </span>
-                          </span>
-                          {/* Tanggal */}
-                          <span className="inline-flex items-center gap-1.5 text-[12.5px] text-slate-700 dark:text-ink-muted">
-                            <Calendar className="h-3.5 w-3.5 text-slate-400" />
-                            {f.departureDate}
-                          </span>
-                          {/* Waktu */}
-                          <span className="text-[12.5px] font-semibold tabular-nums text-slate-700 dark:text-ink">
-                            {f.departureTime}
-                          </span>
-                          {/* Gate */}
-                          <span className="text-[12.5px] text-slate-700 dark:text-ink">
-                            {f.gateOrCheckpoint}
-                          </span>
-                          {/* Boarding */}
-                          <ProgressMini progress={progress} />
-                          {/* Status */}
-                          <SolidStatusPill
-                            status={eff.status}
-                            title={
-                              differs
-                                ? `Manual: ${f.status} • ${eff.description}`
-                                : eff.description
-                            }
-                          />
-                          {/* Aksi */}
-                          <div className="flex items-center justify-end gap-1.5">
-                            <Link
-                              href={`/flights/${f.id}`}
-                              className="flex h-7 w-7 items-center justify-center rounded-lg text-slate-500 transition hover:bg-slate-100 hover:text-slate-700 dark:text-ink-muted dark:hover:bg-surface-elev dark:hover:text-ink"
-                              title="Detail"
-                            >
-                              <Eye className="h-3.5 w-3.5" />
-                            </Link>
-                            {canManage && (
-                              <>
-                                <Link
-                                  href={`/flights/${f.id}/edit`}
-                                  className="flex h-7 w-7 items-center justify-center rounded-lg text-blue-600 transition hover:bg-blue-50 hover:text-blue-700 dark:text-blue-300 dark:hover:bg-blue-500/15"
-                                  title="Edit"
-                                >
-                                  <Pencil className="h-3.5 w-3.5" />
-                                </Link>
-                                <button
-                                  type="button"
-                                  onClick={() => onDelete(f.id)}
-                                  className="flex h-7 w-7 items-center justify-center rounded-lg text-rose-500 transition hover:bg-rose-50 hover:text-rose-700 dark:text-rose-300 dark:hover:bg-rose-500/15"
-                                  title="Hapus"
-                                >
-                                  <Trash2 className="h-3.5 w-3.5" />
-                                </button>
-                              </>
-                            )}
-                          </div>
-                        </li>
-                      );
-                    })}
-                  </ul>
-                </div>
-              )}
-            </div>
+            {/* Card grid — branded per maskapai, responsif & beranimasi */}
+            {filtered.length === 0 ? (
+              <EmptyState
+                tone="info"
+                icon={<Plane className="h-6 w-6" />}
+                title="Tidak ada penerbangan sesuai filter"
+                description="Coba bersihkan pencarian atau ubah filter tanggal / status."
+              />
+            ) : (
+              <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 2xl:grid-cols-3">
+                {paginated.map((f, idx) => (
+                  <FlightBrandCard
+                    key={f.id}
+                    flight={f}
+                    index={idx}
+                    now={now}
+                    settings={settings}
+                    progress={boardingProgressFromCount(
+                      f,
+                      boardedCounts.get(f.id) ?? 0,
+                    )}
+                    canManage={canManage}
+                    onDelete={onDelete}
+                  />
+                ))}
+              </ul>
+            )}
 
             {filtered.length > 0 && (
               <Pagination
@@ -730,7 +556,7 @@ function FlightsHero({
     <section className="relative isolate overflow-hidden rounded-3xl border border-slate-200/70 p-6 shadow-[0_18px_40px_-22px_rgba(15,42,98,0.45)] dark:border-sky-500/20">
       {/* Photo background — full color, no washed-out overlay */}
       <img
-        src="/asset-cards/card-bg-jadwal_penerbangan.png"
+        src="/asset-cards/card-bg-jadwal_penerbangan.webp"
         alt=""
         aria-hidden
         className="pointer-events-none absolute inset-0 -z-20 h-full w-full object-cover object-center"
@@ -1012,6 +838,165 @@ function FlightsHero({
   );
 }
 
+function FlightBrandCard({
+  flight,
+  index,
+  now,
+  settings,
+  progress,
+  canManage,
+  onDelete,
+}: {
+  readonly flight: Flight;
+  readonly index: number;
+  readonly now: Date;
+  readonly settings: ReturnType<typeof getSettings>;
+  readonly progress: ReturnType<typeof getBoardingProgress>;
+  readonly canManage: boolean;
+  readonly onDelete: (id: string) => void;
+}) {
+  const meta = getAirlineMeta(flight.airlineCode);
+  const eff = getEffectiveFlightStatus(flight, now, settings);
+  const differs = eff.status !== flight.status;
+
+  return (
+    <li
+      className="animate-fade-up"
+      style={{ animationDelay: `${Math.min(index, 14) * 40}ms` }}
+    >
+      <div className="group relative h-full overflow-hidden rounded-2xl border border-slate-200/70 bg-white shadow-card transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_22px_48px_-22px_rgba(15,42,98,0.5)] dark:border-hairline dark:bg-surface">
+        {/* Pita gradient warna maskapai */}
+        <div className={cn("h-1.5 w-full bg-gradient-to-r", meta.gradient)} />
+        {/* Glow warna maskapai di sudut */}
+        <div
+          aria-hidden
+          className={cn(
+            "pointer-events-none absolute -right-10 -top-4 h-28 w-28 rounded-full bg-gradient-to-br opacity-[0.18] blur-2xl transition-opacity duration-300 group-hover:opacity-40",
+            meta.gradient,
+          )}
+        />
+
+        <div className="relative p-4">
+          {/* Header */}
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex min-w-0 items-center gap-3">
+              <AirlineLogo code={flight.airlineCode} size="md" />
+              <div className="min-w-0">
+                <Link
+                  href={`/flights/${flight.id}`}
+                  className="block truncate text-[15px] font-extrabold tracking-tight text-slate-800 hover:text-blue-700 dark:text-ink dark:hover:text-blue-300"
+                >
+                  {flight.flightNumber}
+                </Link>
+                <p className="truncate text-[11px] font-medium text-slate-500 dark:text-ink-muted">
+                  {meta.name}
+                </p>
+              </div>
+            </div>
+            <SolidStatusPill
+              status={eff.status}
+              title={
+                differs
+                  ? `Manual: ${flight.status} • ${eff.description}`
+                  : eff.description
+              }
+            />
+          </div>
+
+          {/* Rute */}
+          <div className="mt-3 flex items-center gap-3 rounded-xl bg-slate-50/80 px-3.5 py-2.5 ring-1 ring-slate-100 dark:bg-white/[0.03] dark:ring-hairline">
+            <div className="shrink-0 text-center">
+              <div className="font-mono text-lg font-black leading-none tracking-tight text-slate-800 dark:text-ink">
+                {flight.originAirport}
+              </div>
+              <div className="mt-1 text-[9px] font-bold uppercase tracking-wider text-slate-400 dark:text-ink-subtle">
+                Asal
+              </div>
+            </div>
+            <div className="flex flex-1 items-center gap-1.5">
+              <span className="h-px flex-1 bg-gradient-to-r from-slate-200 to-slate-300 dark:from-hairline dark:to-hairline-soft" />
+              <span
+                className={cn(
+                  "flex h-7 w-7 items-center justify-center rounded-full bg-gradient-to-br text-white shadow-sm ring-2 ring-white/70 dark:ring-surface",
+                  meta.gradient,
+                )}
+              >
+                <Plane className="h-3.5 w-3.5 rotate-90" />
+              </span>
+              <span className="h-px flex-1 bg-gradient-to-r from-slate-300 to-slate-200 dark:from-hairline-soft dark:to-hairline" />
+            </div>
+            <div className="shrink-0 text-center">
+              <div className="font-mono text-lg font-black leading-none tracking-tight text-slate-800 dark:text-ink">
+                {flight.destinationAirport}
+              </div>
+              <div className="mt-1 text-[9px] font-bold uppercase tracking-wider text-slate-400 dark:text-ink-subtle">
+                Tujuan
+              </div>
+            </div>
+          </div>
+
+          {/* Chip meta */}
+          <div className="mt-3 flex flex-wrap items-center gap-2 text-[11.5px]">
+            <span className="inline-flex items-center gap-1 rounded-lg bg-slate-50 px-2 py-1 font-medium text-slate-600 ring-1 ring-slate-200 dark:bg-white/5 dark:text-ink-muted dark:ring-hairline">
+              <Calendar className="h-3 w-3" />
+              {flight.departureDate}
+            </span>
+            <span className="inline-flex items-center gap-1 rounded-lg bg-slate-900 px-2 py-1 font-mono font-bold tabular-nums text-sky-300 ring-1 ring-white/10 dark:bg-black/40">
+              <Clock className="h-3 w-3 text-sky-400/80" />
+              {flight.departureTime}
+            </span>
+            <span
+              className={cn(
+                "inline-flex items-center gap-1 rounded-lg bg-white px-2 py-1 font-bold text-slate-700 ring-1 dark:bg-white/5 dark:text-ink",
+                meta.ring,
+              )}
+            >
+              <DoorOpen className="h-3 w-3" />
+              {flight.gateOrCheckpoint}
+            </span>
+          </div>
+
+          {/* Boarding */}
+          <div className="mt-3">
+            <ProgressMini progress={progress} />
+          </div>
+
+          {/* Aksi */}
+          <div className="mt-3 flex items-center justify-end gap-1.5 border-t border-slate-100 pt-2.5 dark:border-hairline">
+            <Link
+              href={`/flights/${flight.id}`}
+              className="flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-[12px] font-semibold text-slate-500 transition hover:bg-slate-100 hover:text-slate-700 dark:text-ink-muted dark:hover:bg-surface-elev dark:hover:text-ink"
+              title="Detail"
+            >
+              <Eye className="h-3.5 w-3.5" />
+              Detail
+            </Link>
+            {canManage && (
+              <>
+                <Link
+                  href={`/flights/${flight.id}/edit`}
+                  className="flex h-8 w-8 items-center justify-center rounded-lg text-blue-600 transition hover:bg-blue-50 hover:text-blue-700 dark:text-blue-300 dark:hover:bg-blue-500/15"
+                  title="Edit"
+                >
+                  <Pencil className="h-3.5 w-3.5" />
+                </Link>
+                <button
+                  type="button"
+                  onClick={() => onDelete(flight.id)}
+                  className="flex h-8 w-8 items-center justify-center rounded-lg text-rose-500 transition hover:bg-rose-50 hover:text-rose-700 dark:text-rose-300 dark:hover:bg-rose-500/15"
+                  title="Hapus"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+    </li>
+  );
+}
+
 const SOLID_PILL: Record<
   ReturnType<typeof getEffectiveFlightStatus>["status"],
   { bg: string; text: string; label: string }
@@ -1070,39 +1055,6 @@ function SolidStatusPill({
       )}
     >
       {t.label}
-    </span>
-  );
-}
-
-function EffectiveBadge({
-  flight,
-  now,
-  settings,
-}: {
-  flight: Flight;
-  now: Date;
-  settings: ReturnType<typeof getSettings>;
-}) {
-  const eff = getEffectiveFlightStatus(flight, now, settings);
-  const differs = eff.status !== flight.status;
-  return (
-    <span
-      className="inline-flex items-center gap-1"
-      title={
-        differs
-          ? `Manual: ${flight.status} • ${eff.description}`
-          : eff.description
-      }
-    >
-      <FlightStatusBadge status={eff.status} />
-      {differs && (
-        <span
-          aria-label="Auto-derived"
-          className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-slate-500 ring-1 ring-slate-200"
-        >
-          auto
-        </span>
-      )}
     </span>
   );
 }

@@ -42,8 +42,16 @@ export interface FaceCaptureHandle {
   /**
    * Ukur ketajaman frame saat ini (Laplacian variance pada grayscale).
    * Nilai lebih besar = lebih tajam. Threshold praktis: > 80 = tajam, < 30 = blur.
+   *
+   * `opts.region` (relatif 0..1) membatasi pengukuran ke sub-area tertentu —
+   * mis. kotak NAMA pada KTP — supaya fokus dinilai TEPAT di area yang akan
+   * dibaca OCR, bukan tengah frame. `opts.aspect` = rasio frame capture
+   * (captureFrame center-crop ke aspect ini) supaya region presisi sama.
    */
-  measureSharpness: () => number;
+  measureSharpness: (opts?: {
+    region?: { x: number; y: number; w: number; h: number };
+    aspect?: number;
+  }) => number;
   isReady: () => boolean;
   getFaceState: () => FaceState;
   isFaceDetectionSupported: () => boolean;
@@ -119,7 +127,7 @@ export const FaceCaptureCamera = React.forwardRef<FaceCaptureHandle, Props>(
         getDetectionMode: () => detectionModeRef.current,
         getVideoElement: () => videoRef.current,
         getStream: () => streamRef.current,
-        measureSharpness: () => {
+        measureSharpness: (opts) => {
           const v = videoRef.current;
           if (!v || v.readyState < 2) return 0;
           const W = 240;
@@ -135,11 +143,38 @@ export const FaceCaptureCamera = React.forwardRef<FaceCaptureHandle, Props>(
           if (!ctx) return 0;
           const vw = v.videoWidth || W;
           const vh = v.videoHeight || H;
-          const scale = Math.max(W / vw, H / vh);
-          const sw = W / scale;
-          const sh = H / scale;
-          const sx = (vw - sw) / 2;
-          const sy = (vh - sh) / 2;
+          let sx: number;
+          let sy: number;
+          let sw: number;
+          let sh: number;
+          const region = opts?.region;
+          if (region) {
+            // Ukur ketajaman TEPAT pada area yang akan dibaca OCR (kotak nama
+            // KTP), bukan tengah frame. Cegah capture saat tengah kartu sudah
+            // fokus tapi nama-nya masih buram.
+            // 1) tiru center-crop ke aspect capture (captureFrame pakai aspect
+            //    yang sama), supaya koordinat region klop dengan hasil OCR.
+            const aspect = opts?.aspect ?? vw / vh;
+            let cw = vw;
+            let ch = vw / aspect;
+            if (ch > vh) {
+              ch = vh;
+              cw = vh * aspect;
+            }
+            const cx = (vw - cw) / 2;
+            const cy = (vh - ch) / 2;
+            // 2) ambil sub-region nama relatif terhadap frame ter-crop.
+            sx = cx + region.x * cw;
+            sy = cy + region.y * ch;
+            sw = Math.max(1, region.w * cw);
+            sh = Math.max(1, region.h * ch);
+          } else {
+            const scale = Math.max(W / vw, H / vh);
+            sw = W / scale;
+            sh = H / scale;
+            sx = (vw - sw) / 2;
+            sy = (vh - sh) / 2;
+          }
           ctx.drawImage(v, sx, sy, sw, sh, 0, 0, W, H);
           const data = ctx.getImageData(0, 0, W, H).data;
           const gray = new Float32Array(W * H);

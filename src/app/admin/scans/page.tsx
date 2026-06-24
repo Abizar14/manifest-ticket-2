@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import {
   AlertOctagon,
@@ -19,11 +19,14 @@ import { AppShell } from "@/components/layout/AppShell";
 import { cn, todayDateString } from "@/lib/utils";
 import {
   ApiScanEvent,
-  apiListScans,
+  apiListAllScans,
   getFacePhotoObjectUrl,
   isAuthed,
   subscribeAuth,
 } from "@/lib/api/client";
+import { Pagination } from "@/components/ui/Pagination";
+
+const PAGE_SIZE = 25; // P-08: render bertahap, bukan 200 baris sekaligus
 
 const STATIONS = [
   { key: "", label: "Semua pos" },
@@ -66,6 +69,7 @@ export default function AdminScansPage() {
     "idle",
   );
   const [error, setError] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
 
   const load = useCallback(async () => {
     if (!isAuthed()) {
@@ -74,10 +78,9 @@ export default function AdminScansPage() {
     }
     setAuthed(true);
     setStatus("loading");
-    const res = await apiListScans({
+    const res = await apiListAllScans({
       station: station || undefined,
       date: date || undefined,
-      perPage: 200,
     });
     if (res.ok && res.data) {
       setItems(res.data.items);
@@ -114,6 +117,17 @@ export default function AdminScansPage() {
     }
     return s;
   }, [items]);
+
+  // P-08: paginasi client-side — hanya ~25 baris (& ~25 fetch foto) per halaman.
+  const totalPages = Math.max(1, Math.ceil(items.length / PAGE_SIZE));
+  const currentPage = Math.min(page, totalPages);
+  const paginated = useMemo(
+    () => items.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE),
+    [items, currentPage],
+  );
+  useEffect(() => {
+    setPage(1);
+  }, [station, date]);
 
   return (
     <AppShell>
@@ -217,11 +231,23 @@ export default function AdminScansPage() {
                   Tidak ada scan pada filter ini.
                 </p>
               ) : (
-                <div className="divide-y divide-hairline">
-                  {items.map((it) => (
-                    <ScanRow key={it.eventId} ev={it} />
-                  ))}
-                </div>
+                <>
+                  <div className="divide-y divide-hairline">
+                    {paginated.map((it) => (
+                      <ScanRow key={it.eventId} ev={it} />
+                    ))}
+                  </div>
+                  <div className="px-3 py-3 sm:px-4">
+                    <Pagination
+                      page={currentPage}
+                      totalPages={totalPages}
+                      total={items.length}
+                      pageSize={PAGE_SIZE}
+                      onPageChange={setPage}
+                      label="scan"
+                    />
+                  </div>
+                </>
               )}
             </section>
           </>
@@ -284,9 +310,34 @@ function FaceThumb({
   hasPhoto: boolean;
 }) {
   const [url, setUrl] = useState<string | null>(null);
+  const [visible, setVisible] = useState(false);
+  const placeholderRef = useRef<HTMLSpanElement | null>(null);
+
+  // P-08: tunda fetch foto sampai thumbnail benar-benar mendekati viewport,
+  // supaya tidak ratusan fetch sekaligus saat halaman dibuka.
+  useEffect(() => {
+    if (!hasPhoto || visible) return;
+    const el = placeholderRef.current;
+    if (!el) return;
+    if (typeof IntersectionObserver === "undefined") {
+      setVisible(true);
+      return;
+    }
+    const obs = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting)) {
+          setVisible(true);
+          obs.disconnect();
+        }
+      },
+      { rootMargin: "200px" },
+    );
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, [hasPhoto, visible]);
 
   useEffect(() => {
-    if (!hasPhoto) return;
+    if (!hasPhoto || !visible) return;
     let revoked: string | null = null;
     let active = true;
     getFacePhotoObjectUrl(eventId).then((u) => {
@@ -301,7 +352,7 @@ function FaceThumb({
       active = false;
       if (revoked) URL.revokeObjectURL(revoked);
     };
-  }, [eventId, hasPhoto]);
+  }, [eventId, hasPhoto, visible]);
 
   if (url) {
     // eslint-disable-next-line @next/next/no-img-element
@@ -314,7 +365,10 @@ function FaceThumb({
     );
   }
   return (
-    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-surface-2 text-ink-subtle ring-1 ring-hairline">
+    <span
+      ref={placeholderRef}
+      className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-surface-2 text-ink-subtle ring-1 ring-hairline"
+    >
       {hasPhoto ? (
         <Camera className="h-4 w-4 animate-pulse" />
       ) : (

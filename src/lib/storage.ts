@@ -20,12 +20,33 @@ function isBrowser() {
   return typeof window !== "undefined";
 }
 
+// P-09: cache in-memory hasil parse per-key. Getter (getFlights/getScanEvents/…)
+// dipanggil berkali-kali per render/siklus; tanpa cache tiap panggilan = JSON.parse
+// penuh (blocking). Cache disinkronkan saat write() dan diinvalidasi saat
+// localStorage diubah dari TAB LAIN (event "storage").
+// Catatan: nilai yang dikembalikan diperlakukan READ-ONLY oleh pemanggil
+// (semua update memakai pola immutable: filter/map/spread).
+const cache = new Map<string, unknown>();
+
+function invalidate(key: string) {
+  cache.delete(key);
+}
+
+if (typeof window !== "undefined") {
+  window.addEventListener("storage", (e) => {
+    if (e.key === null) cache.clear();
+    else cache.delete(e.key);
+  });
+}
+
 function read<T>(key: string, fallback: T): T {
   if (!isBrowser()) return fallback;
+  if (cache.has(key)) return cache.get(key) as T;
   try {
     const raw = window.localStorage.getItem(key);
-    if (!raw) return fallback;
-    return JSON.parse(raw) as T;
+    const value = raw ? (JSON.parse(raw) as T) : fallback;
+    cache.set(key, value);
+    return value;
   } catch {
     return fallback;
   }
@@ -34,6 +55,7 @@ function read<T>(key: string, fallback: T): T {
 function write<T>(key: string, value: T) {
   if (!isBrowser()) return;
   window.localStorage.setItem(key, JSON.stringify(value));
+  cache.set(key, value);
 }
 
 export function ensureSeed() {
@@ -51,6 +73,7 @@ export function ensureSeed() {
 export function resetAll() {
   if (!isBrowser()) return;
   Object.values(KEYS).forEach((k) => window.localStorage.removeItem(k));
+  cache.clear();
   ensureSeed();
 }
 
@@ -87,6 +110,7 @@ export function setSession(user: SessionUser | null) {
   if (!isBrowser()) return;
   if (user === null) {
     window.localStorage.removeItem(KEYS.session);
+    invalidate(KEYS.session);
   } else {
     write(KEYS.session, user);
     // Tandai sesi login baru agar AI Insight hanya auto-popup sekali tepat
@@ -109,9 +133,8 @@ export function saveFlights(flights: Flight[]) {
 }
 
 export function addFlight(flight: Flight) {
-  const list = getFlights();
-  list.push(flight);
-  saveFlights(list);
+  // P-09: jangan mutasi array hasil getFlights() (kini bisa ter-cache) — pakai copy.
+  saveFlights([...getFlights(), flight]);
 }
 
 export function updateFlight(id: string, patch: Partial<Flight>) {
@@ -135,9 +158,8 @@ export function saveScanEvents(events: ScanEvent[]) {
 }
 
 export function addScanEvent(event: ScanEvent) {
-  const list = getScanEvents();
-  list.unshift(event);
-  saveScanEvents(list);
+  // P-09: jangan mutasi array hasil getScanEvents() (kini bisa ter-cache) — pakai copy.
+  saveScanEvents([event, ...getScanEvents()]);
 }
 
 export function updateScanEvent(id: string, patch: Partial<ScanEvent>) {
@@ -159,6 +181,7 @@ function saveScanEventsArchive(events: ScanEvent[]) {
 export function purgeScanEventsArchive() {
   if (!isBrowser()) return;
   window.localStorage.removeItem(KEYS.scanEventsArchive);
+  invalidate(KEYS.scanEventsArchive);
 }
 
 /**
@@ -167,6 +190,8 @@ export function purgeScanEventsArchive() {
  * Idempotent — aman dipanggil tiap mount AppShell; menggunakan
  * `KEYS.archiveAt` untuk menghindari re-run pada hari yang sama.
  */
+const ARCHIVE_MAX = 5000; // P-18: batas entri arsip agar localStorage tak membengkak
+
 export function archiveOldScanEvents(keepDays = 1): {
   moved: number;
   ranToday: boolean;
@@ -191,7 +216,11 @@ export function archiveOldScanEvents(keepDays = 1): {
 
   if (move.length > 0) {
     const archive = getScanEventsArchive();
-    saveScanEventsArchive([...move, ...archive]);
+    // P-18: gabung (terbaru di depan) lalu batasi ukuran — buang yang paling lama.
+    const merged = [...move, ...archive];
+    saveScanEventsArchive(
+      merged.length > ARCHIVE_MAX ? merged.slice(0, ARCHIVE_MAX) : merged,
+    );
     saveScanEvents(keep);
   }
   window.localStorage.setItem(KEYS.archiveAt, todayStr);

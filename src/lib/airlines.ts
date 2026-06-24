@@ -54,7 +54,7 @@ const REGISTRY: Record<string, AirlineMeta> = {
     solid: "bg-sky-700",
     text: "text-white",
     ring: "ring-sky-300/40",
-    logoSrc: "/airlines/GA.png",
+    logoSrc: "/airlines/GA.webp",
   },
   JT: {
     code: "JT",
@@ -71,7 +71,7 @@ const REGISTRY: Record<string, AirlineMeta> = {
     solid: "bg-blue-800",
     text: "text-white",
     ring: "ring-blue-300/40",
-    logoSrc: "/airlines/ID.png",
+    logoSrc: "/airlines/ID.webp",
   },
   QZ: {
     code: "QZ",
@@ -96,7 +96,7 @@ const REGISTRY: Record<string, AirlineMeta> = {
     solid: "bg-orange-500",
     text: "text-white",
     ring: "ring-orange-300/40",
-    logoSrc: "/airlines/IW.png",
+    logoSrc: "/airlines/IW.webp",
   },
   QG: {
     code: "QG",
@@ -105,7 +105,7 @@ const REGISTRY: Record<string, AirlineMeta> = {
     solid: "bg-emerald-600",
     text: "text-white",
     ring: "ring-emerald-300/40",
-    logoSrc: "/airlines/QG.png",
+    logoSrc: "/airlines/QG.webp",
   },
   IU: {
     code: "IU",
@@ -114,7 +114,7 @@ const REGISTRY: Record<string, AirlineMeta> = {
     solid: "bg-pink-600",
     text: "text-white",
     ring: "ring-pink-300/40",
-    logoSrc: "/airlines/IU.png",
+    logoSrc: "/airlines/IU.webp",
   },
   SAA: {
     code: "SAA",
@@ -123,7 +123,7 @@ const REGISTRY: Record<string, AirlineMeta> = {
     solid: "bg-sky-600",
     text: "text-white",
     ring: "ring-sky-300/40",
-    logoSrc: "/airlines/SAA.png",
+    logoSrc: "/airlines/SAA.webp",
   },
   IP: {
     code: "IP",

@@ -121,6 +121,12 @@ const config: Config = {
           "90%": { opacity: "0.6" },
           "100%": { transform: "translate(120%, -30%) rotate(-12deg)", opacity: "0" },
         },
+        "route-fly": {
+          "0%": { left: "0%", opacity: "0" },
+          "12%": { opacity: "1" },
+          "88%": { opacity: "1" },
+          "100%": { left: "100%", opacity: "0" },
+        },
         "gradient-shift": {
           "0%, 100%": { backgroundPosition: "0% 50%" },
           "50%": { backgroundPosition: "100% 50%" },
@@ -177,6 +183,7 @@ const config: Config = {
         drift: "drift 9s ease-in-out infinite",
         "spin-slow": "spin-slow 22s linear infinite",
         "fly-by": "fly-by 14s ease-in-out infinite",
+        "route-fly": "route-fly 3.2s ease-in-out infinite",
         "gradient-shift": "gradient-shift 8s ease-in-out infinite",
         "tilt-soft": "tilt-soft 6s ease-in-out infinite",
         "bp-rise": "bp-rise 0.7s cubic-bezier(0.2, 0.8, 0.2, 1) both",

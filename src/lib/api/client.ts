@@ -229,6 +229,20 @@ export async function apiMe(): Promise<ApiResult<ApiUser>> {
   }
 }
 
+const API_MAX_PER_PAGE = 200; // sesuai cap backend (Math.min(200, …))
+
+// P-16: dedup GET in-flight — panggilan identik yang bersamaan (mis. poll 60 dtk
+// bertemu refresh manual / beberapa komponen) berbagi SATU request, bukan
+// masing-masing menembak network. Promise dihapus saat selesai.
+const inflightGet = new Map<string, Promise<unknown>>();
+function dedupGet<T>(key: string, fn: () => Promise<T>): Promise<T> {
+  const hit = inflightGet.get(key);
+  if (hit) return hit as Promise<T>;
+  const p = fn().finally(() => inflightGet.delete(key));
+  inflightGet.set(key, p);
+  return p;
+}
+
 export async function apiListFlights(params: {
   station?: string;
   date?: string;
@@ -236,20 +250,45 @@ export async function apiListFlights(params: {
   page?: number;
   perPage?: number;
 }): Promise<ApiResult<Paginated<ApiFlight>>> {
-  try {
-    const qs = new URLSearchParams();
-    if (params.station) qs.set("station", params.station);
-    if (params.date) qs.set("date", params.date);
-    if (params.status) qs.set("status", params.status);
-    if (params.page) qs.set("page", String(params.page));
-    if (params.perPage) qs.set("perPage", String(params.perPage));
-    const res = await authedFetch(`/flights?${qs.toString()}`);
-    const body = await readJson(res);
-    if (!res.ok) return { ok: false, status: res.status, error: httpError(res.status, body) };
-    return { ok: true, status: res.status, data: body as Paginated<ApiFlight> };
-  } catch (e) {
-    return { ok: false, error: errMsg(e) };
+  const qs = new URLSearchParams();
+  if (params.station) qs.set("station", params.station);
+  if (params.date) qs.set("date", params.date);
+  if (params.status) qs.set("status", params.status);
+  if (params.page) qs.set("page", String(params.page));
+  if (params.perPage) qs.set("perPage", String(params.perPage));
+  const path = `/flights?${qs.toString()}`;
+  return dedupGet(path, async () => {
+    try {
+      const res = await authedFetch(path);
+      const body = await readJson(res);
+      if (!res.ok)
+        return { ok: false, status: res.status, error: httpError(res.status, body) };
+      return { ok: true, status: res.status, data: body as Paginated<ApiFlight> };
+    } catch (e) {
+      return { ok: false, error: errMsg(e) };
+    }
+  });
+}
+
+/**
+ * P-16: tarik SEMUA halaman flights (backend cap perPage=200) lalu gabung —
+ * hindari kehilangan data >200 secara diam-diam.
+ */
+export async function apiListAllFlights(params: {
+  station?: string;
+  date?: string;
+  status?: string;
+}): Promise<ApiResult<Paginated<ApiFlight>>> {
+  const all: ApiFlight[] = [];
+  let total = 0;
+  for (let page = 1; page <= 50; page++) {
+    const res = await apiListFlights({ ...params, page, perPage: API_MAX_PER_PAGE });
+    if (!res.ok || !res.data) return res;
+    all.push(...res.data.items);
+    total = res.data.total;
+    if (res.data.items.length === 0 || all.length >= total) break;
   }
+  return { ok: true, status: 200, data: { items: all, page: 1, perPage: all.length, total } };
 }
 
 /** Push satu scan event (multipart, idempotent by eventId). */
@@ -316,21 +355,47 @@ export async function apiListScans(params: {
   page?: number;
   perPage?: number;
 }): Promise<ApiResult<Paginated<ApiScanEvent>>> {
-  try {
-    const qs = new URLSearchParams();
-    if (params.station) qs.set("station", params.station);
-    if (params.date) qs.set("date", params.date);
-    if (params.resultStatus) qs.set("resultStatus", params.resultStatus);
-    if (params.flightNumber) qs.set("flightNumber", params.flightNumber);
-    if (params.page) qs.set("page", String(params.page));
-    if (params.perPage) qs.set("perPage", String(params.perPage));
-    const res = await authedFetch(`/scan-events?${qs.toString()}`);
-    const body = await readJson(res);
-    if (!res.ok) return { ok: false, status: res.status, error: httpError(res.status, body) };
-    return { ok: true, status: res.status, data: body as Paginated<ApiScanEvent> };
-  } catch (e) {
-    return { ok: false, error: errMsg(e) };
+  const qs = new URLSearchParams();
+  if (params.station) qs.set("station", params.station);
+  if (params.date) qs.set("date", params.date);
+  if (params.resultStatus) qs.set("resultStatus", params.resultStatus);
+  if (params.flightNumber) qs.set("flightNumber", params.flightNumber);
+  if (params.page) qs.set("page", String(params.page));
+  if (params.perPage) qs.set("perPage", String(params.perPage));
+  const path = `/scan-events?${qs.toString()}`;
+  return dedupGet(path, async () => {
+    try {
+      const res = await authedFetch(path);
+      const body = await readJson(res);
+      if (!res.ok)
+        return { ok: false, status: res.status, error: httpError(res.status, body) };
+      return { ok: true, status: res.status, data: body as Paginated<ApiScanEvent> };
+    } catch (e) {
+      return { ok: false, error: errMsg(e) };
+    }
+  });
+}
+
+/**
+ * P-16: tarik SEMUA halaman scan-events (backend cap perPage=200) lalu gabung —
+ * hindari kehilangan data >200 secara diam-diam.
+ */
+export async function apiListAllScans(params: {
+  station?: string;
+  date?: string;
+  resultStatus?: string;
+  flightNumber?: string;
+}): Promise<ApiResult<Paginated<ApiScanEvent>>> {
+  const all: ApiScanEvent[] = [];
+  let total = 0;
+  for (let page = 1; page <= 50; page++) {
+    const res = await apiListScans({ ...params, page, perPage: API_MAX_PER_PAGE });
+    if (!res.ok || !res.data) return res;
+    all.push(...res.data.items);
+    total = res.data.total;
+    if (res.data.items.length === 0 || all.length >= total) break;
   }
+  return { ok: true, status: 200, data: { items: all, page: 1, perPage: all.length, total } };
 }
 
 // ─────────────────────────── Operators (admin) ───────────────────────────

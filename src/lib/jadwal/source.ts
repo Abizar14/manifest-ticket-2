@@ -175,6 +175,7 @@ export function normalizeKedatangan(raw: RawKedatangan): JadwalKedatangan {
 
 const PER_REQUEST_TIMEOUT_MS = 12000;
 const MAX_PAGES = 50; // backstop anti-loop
+const FETCH_CONCURRENCY = 6; // P-04: halaman ditarik paralel (bukan 1-per-1)
 
 /** Ambil satu halaman, lempar Error bila gagal / bentuk tak terduga. */
 async function fetchPage<T>(
@@ -223,11 +224,29 @@ export async function fetchAllPages<T>(
   const first = await fetchPage<T>(baseUrl, jenis, 1);
   const items = [...first.data];
   const lastPage = Math.min(first.last_page || 1, MAX_PAGES);
-
-  for (let p = 2; p <= lastPage; p++) {
-    const next = await fetchPage<T>(baseUrl, jenis, p);
-    items.push(...next.data);
+  if (lastPage <= 1) {
+    return { items, total: first.total ?? items.length, pages: lastPage };
   }
+
+  // P-04: tarik halaman 2..lastPage PARALEL dengan batas konkurensi, bukan
+  // berurutan (sebelumnya ≤49 round-trip serial). Urutan hasil tetap dijaga
+  // lewat index supaya gabungan items konsisten dengan paginasi.
+  const restPages: number[] = [];
+  for (let p = 2; p <= lastPage; p++) restPages.push(p);
+  const chunks: T[][] = new Array(restPages.length);
+  let cursor = 0;
+  const worker = async () => {
+    for (;;) {
+      const i = cursor++;
+      if (i >= restPages.length) return;
+      const res = await fetchPage<T>(baseUrl, jenis, restPages[i]);
+      chunks[i] = res.data;
+    }
+  };
+  await Promise.all(
+    Array.from({ length: Math.min(FETCH_CONCURRENCY, restPages.length) }, worker),
+  );
+  for (const chunk of chunks) if (chunk) items.push(...chunk);
 
   return { items, total: first.total ?? items.length, pages: lastPage };
 }

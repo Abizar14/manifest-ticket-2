@@ -127,8 +127,20 @@ export function InsightBubble() {
   }, []);
 
   useEffect(() => {
-    const refresh = () => setVersion((v) => v + 1);
-    const interval = window.setInterval(refresh, 30000);
+    const refresh = () => {
+      // P-03: jangan rebuild laporan (4 parse localStorage + komputasi) saat tab
+      // tidak terlihat — komponen ini hidup di AppShell jadi jalan di semua halaman.
+      if (
+        typeof document !== "undefined" &&
+        document.visibilityState !== "visible"
+      ) {
+        return;
+      }
+      setVersion((v) => v + 1);
+    };
+    // Interval 60 dtk (dari 30) — badge advisory tidak perlu sesering itu;
+    // event "focus" & "afvs:settings" tetap menyegarkan saat user kembali/ubah setting.
+    const interval = window.setInterval(refresh, 60000);
     window.addEventListener("focus", refresh);
     window.addEventListener("afvs:settings", refresh);
     return () => {

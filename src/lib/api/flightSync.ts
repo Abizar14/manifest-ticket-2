@@ -8,7 +8,7 @@
 
 import { getFlights, saveFlights } from "../storage";
 import type { Flight, FlightStatus } from "../types";
-import { ApiFlight, apiListFlights } from "./client";
+import { ApiFlight, apiListAllFlights } from "./client";
 
 function pad(n: number) {
   return String(n).padStart(2, "0");
@@ -73,7 +73,7 @@ export async function pullFlights(params: {
   station?: string;
   date?: string;
 }): Promise<PullResult> {
-  const res = await apiListFlights({ ...params, perPage: 200 });
+  const res = await apiListAllFlights(params);
   if (!res.ok || !res.data) {
     return { ok: false, added: 0, updated: 0, total: 0, error: res.error };
   }

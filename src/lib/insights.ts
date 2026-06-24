@@ -1,4 +1,4 @@
-import { getBoardingProgress } from "./boarding";
+import { boardingProgressFromCount, buildBoardedCounts } from "./boarding";
 import { getEffectiveFlightStatus } from "./flightStatus";
 import type { AppSettings } from "./settings";
 import type { Flight, FlightAuditEvent, ScanEvent, ScanResultStatus } from "./types";
@@ -242,10 +242,12 @@ function addFlightInsights(
     effectiveByFlight: Map<string, ReturnType<typeof getEffectiveFlightStatus>>;
   },
 ) {
+  // P-07: index boarded-count dibangun sekali untuk semua flight.
+  const boardedCounts = buildBoardedCounts(input.events);
   const upcomingRisk = input.flightsToday
     .map((flight) => {
       const effective = input.effectiveByFlight.get(flight.id);
-      const progress = getBoardingProgress(flight, input.events);
+      const progress = boardingProgressFromCount(flight, boardedCounts.get(flight.id) ?? 0);
       const departureAt = new Date(`${flight.departureDate}T${flight.departureTime}`);
       const minsToDeparture = Math.round(
         (departureAt.getTime() - input.now.getTime()) / 60000,

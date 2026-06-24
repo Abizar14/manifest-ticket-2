@@ -71,12 +71,15 @@ export class ScanEventsController {
   }
 
   @Get()
-  list(@Query() q: ListScansQuery) {
-    return this.svc.list(q);
+  list(@Req() req: { user: JwtPayload }, @Query() q: ListScansQuery) {
+    return this.svc.list(q, req.user); // F-05: scoping per-station/role
   }
 
   @Get(":eventId")
-  findOne(@Param("eventId") eventId: string) {
-    return this.svc.findByEventId(eventId);
+  findOne(
+    @Req() req: { user: JwtPayload },
+    @Param("eventId") eventId: string,
+  ) {
+    return this.svc.findByEventId(eventId, req.user); // F-05
   }
 }

@@ -31,6 +31,13 @@ type Phase =
  */
 const KTP_NAME_CROP = { x: 0.08, y: 0.1, w: 0.68, h: 0.46 };
 
+/**
+ * Rasio frame yang di-capture (captureFrame width/height di bawah). Dipakai
+ * supaya pengukuran ketajaman pada KTP_NAME_CROP klop persis dengan area yang
+ * di-OCR — fokus dinilai di kotak nama, bukan tengah frame.
+ */
+const KTP_CAPTURE_ASPECT = 1280 / 800;
+
 interface Props {
   open: boolean;
   expectedName: string | null;
@@ -130,18 +137,26 @@ export function KtpVerifyModal({
           await sleep(200);
           continue;
         }
-        const s = cam.measureSharpness?.() ?? 0;
+        // Ukur ketajaman TEPAT di kotak nama (area yang di-OCR), bukan tengah
+        // frame — supaya tidak meng-capture saat nama masih buram.
+        const s = cam.measureSharpness?.({
+          region: KTP_NAME_CROP,
+          aspect: KTP_CAPTURE_ASPECT,
+        }) ?? 0;
         setSharpness(s);
         if (s < SHARP_THRESHOLD) {
           // tunggu sampai tajam dulu — jangan OCR frame buram
-          await sleep(180);
+          await sleep(140);
           continue;
         }
         // Konfirmasi steady (anti motion-blur): cek lagi setelah jeda singkat;
         // hanya OCR kalau dua kali berturut tetap tajam.
-        await sleep(120);
+        await sleep(110);
         if (cancelled) return;
-        const s2 = cam.measureSharpness?.() ?? 0;
+        const s2 = cam.measureSharpness?.({
+          region: KTP_NAME_CROP,
+          aspect: KTP_CAPTURE_ASPECT,
+        }) ?? 0;
         setSharpness(s2);
         if (s2 < SHARP_THRESHOLD) continue;
 

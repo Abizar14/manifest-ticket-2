@@ -417,7 +417,7 @@ export default function AnalyticsPage() {
         <section className="relative animate-fade-up overflow-hidden rounded-3xl border border-white/15 px-7 py-6 text-white shadow-lift">
           {/* photo bg */}
           <img
-            src="/asset-cards/card-bg-statistik.png"
+            src="/asset-cards/card-bg-statistik.webp"
             alt=""
             aria-hidden
             className="pointer-events-none absolute inset-0 -z-20 h-full w-full object-cover object-center"

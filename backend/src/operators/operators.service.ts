@@ -7,6 +7,7 @@ import {
 import { randomBytes, randomInt } from "crypto";
 import * as bcrypt from "bcryptjs";
 import { PrismaService } from "../prisma/prisma.service";
+import { pinLookupHash } from "../common/pin-lookup";
 import {
   CreateOperatorDto,
   ListOperatorsQuery,
@@ -76,6 +77,7 @@ export class OperatorsService {
         station: dto.station ?? null,
         passwordHash: await bcrypt.hash(password, 10),
         pinHash: await bcrypt.hash(pin, 10),
+        pinLookup: pinLookupHash(pin), // P-05/P-06: lookup O(1)
         active: true,
       },
       select: SELECT_WITH_PIN_FLAG,
@@ -122,7 +124,10 @@ export class OperatorsService {
 
     await this.prisma.operator.update({
       where: { id },
-      data: { pinHash: await bcrypt.hash(pin, 10) },
+      data: {
+        pinHash: await bcrypt.hash(pin, 10),
+        pinLookup: pinLookupHash(pin), // P-05/P-06: lookup O(1)
+      },
     });
     return { pin };
   }
@@ -185,15 +190,29 @@ export class OperatorsService {
    * PIN (jumlah kecil). loginPin mencocokkan PIN→petugas, jadi PIN harus unik.
    */
   private async isPinFree(pin: string, excludeId?: string): Promise<boolean> {
-    const others = await this.prisma.operator.findMany({
+    const lookup = pinLookupHash(pin);
+    // O(1): operator aktif lain dengan pinLookup sama → PIN sudah dipakai.
+    const clash = await this.prisma.operator.findFirst({
+      where: {
+        active: true,
+        pinLookup: lookup,
+        ...(excludeId ? { id: { not: excludeId } } : {}),
+      },
+      select: { id: true },
+    });
+    if (clash) return false;
+    // Legacy: operator PIN lama (pinLookup belum diisi) → fallback bcrypt
+    // (jumlah menyusut seiring login/reset; akhirnya 0).
+    const legacy = await this.prisma.operator.findMany({
       where: {
         active: true,
         pinHash: { not: null },
+        pinLookup: null,
         ...(excludeId ? { id: { not: excludeId } } : {}),
       },
       select: { pinHash: true },
     });
-    for (const o of others) {
+    for (const o of legacy) {
       if (o.pinHash && (await bcrypt.compare(pin, o.pinHash))) return false;
     }
     return true;

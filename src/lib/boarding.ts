@@ -20,11 +20,38 @@ export function getBoardedCount(
   return keys.size;
 }
 
-export function getBoardingProgress(
+/**
+ * Bangun index `flightId -> jumlah boarded` SEKALI dari seluruh events (O(events)).
+ * Dipakai oleh halaman yang me-render banyak flight (dashboard/flights/insights)
+ * agar tidak men-scan ulang semua events per-flight (hindari O(flight × events)).
+ */
+export function buildBoardedCounts(events: ScanEvent[]): Map<string, number> {
+  const sets = new Map<string, Set<string>>();
+  for (const e of events) {
+    if (e.resultStatus !== "VALID_FLIGHT") continue;
+    if (!e.flightId) continue;
+    const key = `${e.parsedPnr ?? ""}-${e.parsedSeatNumber ?? ""}-${e.parsedTicketNumber ?? ""}`;
+    let set = sets.get(e.flightId);
+    if (!set) {
+      set = new Set<string>();
+      sets.set(e.flightId, set);
+    }
+    set.add(key);
+  }
+  const counts = new Map<string, number>();
+  for (const [id, set] of sets) counts.set(id, set.size);
+  return counts;
+}
+
+/**
+ * Versi cepat (O(1)): hitung progress dari jumlah boarded yang sudah disiapkan
+ * via buildBoardedCounts(). Logika expected/percent/tone identik dengan
+ * getBoardingProgress.
+ */
+export function boardingProgressFromCount(
   flight: Flight,
-  events: ScanEvent[],
+  boarded: number,
 ): BoardingProgress {
-  const boarded = getBoardedCount(flight.id, events);
   const expected =
     typeof flight.expectedPax === "number" && flight.expectedPax > 0
       ? flight.expectedPax
@@ -52,4 +79,12 @@ export function getBoardingProgress(
           : "neutral";
 
   return { boarded, expected, remaining, percent, tone };
+}
+
+/** Convenience single-flight (O(events)) — untuk halaman detail 1 flight. */
+export function getBoardingProgress(
+  flight: Flight,
+  events: ScanEvent[],
+): BoardingProgress {
+  return boardingProgressFromCount(flight, getBoardedCount(flight.id, events));
 }

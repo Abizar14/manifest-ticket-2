@@ -18,7 +18,11 @@ import { Flight, ScanEvent } from "@/lib/types";
 import { getFlights, getScanEvents, getSession } from "@/lib/storage";
 import { cn, formatTime, todayDateString } from "@/lib/utils";
 import { useCountUp } from "@/lib/useCountUp";
-import { getBoardingProgress } from "@/lib/boarding";
+import {
+  boardingProgressFromCount,
+  buildBoardedCounts,
+  getBoardingProgress,
+} from "@/lib/boarding";
 import { AirlineLogo } from "@/components/ui/AirlineLogo";
 import { getSettings, subscribeSettings } from "@/lib/settings";
 import { getEffectiveFlightStatus } from "@/lib/flightStatus";
@@ -80,6 +84,9 @@ export default function DashboardPage() {
     () => events.filter((e) => e.scannedAt.slice(0, 10) === today),
     [events, today],
   );
+
+  // P-07: index boarded-count dibangun sekali, dipakai per-flight O(1).
+  const boardedCounts = useMemo(() => buildBoardedCounts(events), [events]);
 
   const validCount = eventsToday.filter(
     (e) => e.resultStatus === "VALID_FLIGHT",
@@ -204,7 +211,7 @@ export default function DashboardPage() {
                   flight={f}
                   effectiveStatus={eff.status}
                   effectiveAuto={eff.status !== f.status}
-                  progress={getBoardingProgress(f, events)}
+                  progress={boardingProgressFromCount(f, boardedCounts.get(f.id) ?? 0)}
                 />
               );
             })
@@ -341,7 +348,7 @@ export default function DashboardPage() {
                     .map((f, idx) => {
                       const eff = getEffectiveFlightStatus(f, now, settings);
                       const differs = eff.status !== f.status;
-                      const progress = getBoardingProgress(f, events);
+                      const progress = boardingProgressFromCount(f, boardedCounts.get(f.id) ?? 0);
                       return (
                         <li
                           key={f.id}

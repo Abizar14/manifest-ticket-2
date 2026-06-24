@@ -53,6 +53,7 @@ import {
 import {
   AppSettings,
   Locale,
+  RECOMMENDED_BOARDING,
   SikerenSyncMode,
   getSettings,
   saveSettings,
@@ -78,6 +79,7 @@ import {
   ListStepper,
 } from "@/components/mobile/GroupedList";
 import { SegmentedControl } from "@/components/mobile/SegmentedControl";
+import { BoardingFlowPreview } from "@/components/settings/BoardingFlowPreview";
 
 const ROLE_LABEL: Record<UserRole, string> = {
   admin: "Administrator",
@@ -128,6 +130,14 @@ export default function SettingsPage() {
   const update = (patch: Partial<AppSettings>) => {
     saveSettings(patch);
     setSettings((prev) => ({ ...prev, ...patch }));
+  };
+
+  const onResetBoarding = () => {
+    update(RECOMMENDED_BOARDING);
+    toast.success(
+      "Buka 4 jam · final call OFF · tutup ikut FIDS (pengaman STD+30').",
+      "Boarding direset ke rekomendasi",
+    );
   };
 
   const onTestSikeren = async () => {
@@ -504,6 +514,8 @@ export default function SettingsPage() {
                 />
               )}
             </ListSection>
+
+            <BoardingFlowPreview settings={settings} onReset={onResetBoarding} />
 
             <ListSection
               header="Mode Kiosk & Capture Wajah"
@@ -925,6 +937,7 @@ export default function SettingsPage() {
                         update({ boardingCloseMinutesAfter: v })
                       }
                     />
+                    <BoardingFlowPreview settings={settings} onReset={onResetBoarding} />
                   </div>
 
                   <SectionDivider

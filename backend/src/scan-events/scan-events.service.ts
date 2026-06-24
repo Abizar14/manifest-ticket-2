@@ -1,6 +1,12 @@
-import { Injectable } from "@nestjs/common";
+import { Injectable, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
+import { JwtPayload } from "../auth/auth.service";
 import { ListScansQuery, PushScanDto } from "./dto";
+
+// F-05: supervisor/admin boleh lintas-station; operator hanya station-nya.
+function isPrivileged(role: string): boolean {
+  return role === "admin" || role === "supervisor";
+}
 
 @Injectable()
 export class ScanEventsService {
@@ -63,13 +69,26 @@ export class ScanEventsService {
     });
   }
 
-  async findByEventId(eventId: string) {
-    return this.prisma.scanEvent.findUnique({ where: { eventId } });
+  async findByEventId(eventId: string, user: JwtPayload) {
+    const ev = await this.prisma.scanEvent.findUnique({ where: { eventId } });
+    // F-05: operator tak boleh mengakses scan station lain. Balas 404 (bukan 403)
+    // agar keberadaan record tidak bisa dienumerasi lintas-station.
+    if (!ev) throw new NotFoundException();
+    if (!isPrivileged(user.role) && ev.station !== user.station) {
+      throw new NotFoundException();
+    }
+    return ev;
   }
 
-  async list(q: ListScansQuery) {
+  async list(q: ListScansQuery, user: JwtPayload) {
     const where: Record<string, unknown> = {};
-    if (q.station) where.station = q.station;
+    // F-05: operator dikunci ke station-nya sendiri; filter station dari klien
+    // diabaikan untuk operator. Supervisor/admin bebas memilih station.
+    if (isPrivileged(user.role)) {
+      if (q.station) where.station = q.station;
+    } else {
+      where.station = user.station ?? "__no_station__";
+    }
     if (q.flightNumber) where.flightNumber = q.flightNumber;
     if (q.resultStatus) where.resultStatus = q.resultStatus;
     if (q.date) {

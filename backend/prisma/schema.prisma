@@ -1,5 +1,7 @@
 // AFVS — Prisma schema
-// Provider default SQLite untuk dev cepat. Ganti ke "postgresql" untuk prod.
+// Provider: MySQL (Laragon, dev). Skema di-apply via `prisma db push` (BUKAN
+// migration history — folder prisma/migrations/ masih Postgres & stale; lihat
+// docs/AUDIT-PERFORMA.md P-11/P-18). `prisma migrate dev` akan error P3019.
 
 generator client {
   provider = "prisma-client-js"
@@ -18,7 +20,8 @@ model Operator {
   id           String   @id @default(cuid())
   email        String   @unique
   passwordHash String
-  pinHash      String?  // PIN cepat untuk petugas AVSEC (login-pin)
+  pinHash      String?  // PIN cepat untuk petugas AVSEC (login-pin) — verifikasi bcrypt
+  pinLookup    String?  // HMAC PIN utk lookup O(1) (login & cek-unik), BUKAN verifikasi (P-05/P-06)
   name         String
   role         String   @default("operator")
   station      String?
@@ -29,6 +32,7 @@ model Operator {
   scanEvents   ScanEvent[]
 
   @@index([station])
+  @@index([pinLookup]) // login-PIN & cek-unik O(1) (P-05/P-06)
 }
 
 model Flight {
@@ -81,4 +85,6 @@ model ScanEvent {
   @@index([station, scannedAt])
   @@index([flightId])
   @@index([resultStatus])
+  @@index([flightNumber]) // filter list by flightNumber (P-11)
+  @@index([scannedAt]) // filter/urut tanggal lintas-station (P-11)
 }

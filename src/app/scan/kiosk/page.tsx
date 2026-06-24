@@ -372,13 +372,22 @@ export default function KioskPage() {
   // up-to-date tanpa harus reload halaman.
   React.useEffect(() => {
     const refresh = () => {
+      // P-02: skip kerja saat tab tidak terlihat (hemat parse + re-render).
+      if (
+        typeof document !== "undefined" &&
+        document.visibilityState !== "visible"
+      ) {
+        return;
+      }
       const today = new Date().toISOString().slice(0, 10);
-      setTodayFlights(getFlights().filter((f) => f.departureDate === today));
+      // P-02: getFlights() dipanggil SEKALI (sebelumnya 2×) lalu hasilnya dipakai ulang.
+      const todays = getFlights().filter((f) => f.departureDate === today);
+      setTodayFlights(todays);
+      setFlightsToday(todays.length);
       const all = getScanEvents();
       setTodayScans(all.filter((e) => e.scannedAt.slice(0, 10) === today));
-      setFlightsToday(getFlights().filter((f) => f.departureDate === today).length);
     };
-    const id = window.setInterval(refresh, 3000);
+    const id = window.setInterval(refresh, 5000);
     const onStorage = (e: StorageEvent) => {
       if (!e.key || e.key.startsWith("afvs.")) refresh();
     };

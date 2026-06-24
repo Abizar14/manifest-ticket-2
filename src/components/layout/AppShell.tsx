@@ -171,7 +171,6 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
   const [open, setOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
   const [ready, setReady] = useState(false);
-  const [now, setNow] = useState<Date | null>(null);
   const [online, setOnline] = useState(true);
 
   useEffect(() => {
@@ -214,11 +213,8 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
     setOpen(false);
   }, [pathname]);
 
-  useEffect(() => {
-    setNow(new Date());
-    const id = setInterval(() => setNow(new Date()), 1000);
-    return () => clearInterval(id);
-  }, []);
+  // P-15: jam dipindah ke komponen <LiveClock/> sendiri agar update tiap detik
+  // tidak me-render ulang seluruh shell.
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -557,36 +553,8 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
                 {online ? "Online" : "Offline"}
               </div>
 
-              {/* Live clock */}
-              <div className="hidden items-center gap-2 rounded-xl bg-white/80 px-3 py-1.5 text-xs font-semibold text-slate-600 ring-1 ring-slate-200 backdrop-blur md:inline-flex">
-                <ClockIcon className="h-3.5 w-3.5 text-blue-600" />
-                <span className="font-mono tabular-nums tracking-tight text-slate-800">
-                  {now
-                    ? now.toLocaleTimeString(
-                        locale === "id" ? "id-ID" : "en-US",
-                        {
-                          hour: "2-digit",
-                          minute: "2-digit",
-                          second: "2-digit",
-                        },
-                      )
-                    : "--:--:--"}
-                </span>
-              </div>
-
-              {/* Date */}
-              <div className="hidden items-center gap-2 rounded-xl bg-white/80 px-3 py-1.5 text-xs font-semibold text-slate-600 ring-1 ring-slate-200 backdrop-blur lg:inline-flex">
-                <CalendarDays className="h-3.5 w-3.5 text-blue-600" />
-                {(now ?? new Date()).toLocaleDateString(
-                  locale === "id" ? "id-ID" : "en-US",
-                  {
-                    weekday: "short",
-                    day: "2-digit",
-                    month: "short",
-                    year: "numeric",
-                  },
-                )}
-              </div>
+              {/* Live clock + date — P-15: komponen sendiri (re-render terisolasi). */}
+              <LiveClock locale={locale} />
 
               {/* Theme switch — visible mobile + desktop */}
               <ThemeSwitch />
@@ -636,6 +604,55 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
         <BottomNav onMoreClick={() => setOpen(true)} />
       )}
     </div>
+  );
+}
+
+// P-15: jam terisolasi. State `now` di sini → hanya komponen ini yang re-render
+// tiap detik, bukan seluruh AppShell. Berhenti saat tab tidak terlihat.
+function LiveClock({ locale }: { locale: string }) {
+  const [now, setNow] = useState<Date | null>(null);
+  useEffect(() => {
+    setNow(new Date());
+    const id = setInterval(() => {
+      if (typeof document !== "undefined" && document.visibilityState !== "visible") {
+        return;
+      }
+      setNow(new Date());
+    }, 1000);
+    const onVis = () => {
+      if (document.visibilityState === "visible") setNow(new Date());
+    };
+    document.addEventListener("visibilitychange", onVis);
+    return () => {
+      clearInterval(id);
+      document.removeEventListener("visibilitychange", onVis);
+    };
+  }, []);
+  return (
+    <>
+      <div className="hidden items-center gap-2 rounded-xl bg-white/80 px-3 py-1.5 text-xs font-semibold text-slate-600 ring-1 ring-slate-200 backdrop-blur md:inline-flex">
+        <ClockIcon className="h-3.5 w-3.5 text-blue-600" />
+        <span className="font-mono tabular-nums tracking-tight text-slate-800">
+          {now
+            ? now.toLocaleTimeString(locale === "id" ? "id-ID" : "en-US", {
+                hour: "2-digit",
+                minute: "2-digit",
+                second: "2-digit",
+              })
+            : "--:--:--"}
+        </span>
+      </div>
+
+      <div className="hidden items-center gap-2 rounded-xl bg-white/80 px-3 py-1.5 text-xs font-semibold text-slate-600 ring-1 ring-slate-200 backdrop-blur lg:inline-flex">
+        <CalendarDays className="h-3.5 w-3.5 text-blue-600" />
+        {(now ?? new Date()).toLocaleDateString(locale === "id" ? "id-ID" : "en-US", {
+          weekday: "short",
+          day: "2-digit",
+          month: "short",
+          year: "numeric",
+        })}
+      </div>
+    </>
   );
 }
 
