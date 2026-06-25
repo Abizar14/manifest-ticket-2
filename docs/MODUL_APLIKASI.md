@@ -265,8 +265,10 @@ src/
 │   │   ├── kiosk/page.tsx    # Mode kiosk fullscreen
 │   │   └── page.tsx          # Scan standard
 │   ├── scan-events/
-│   ├── seeders/              # Demo data generator
-│   └── settings/
+│   ├── seeders/              # Demo data generator (boarding pass dari jadwal)
+│   ├── settings/
+│   ├── error.tsx             # Error boundary per-route (lapor Sentry)
+│   └── global-error.tsx      # Error boundary root layout
 ├── components/
 │   ├── dashboard/            # AirportHero, PremiumStatCard
 │   ├── flights/              # SeatMap, PassengerDetailModal
@@ -278,6 +280,7 @@ src/
 │   └── ui/                   # Base components (Button, Modal, Toast, etc.)
 └── lib/
     ├── api/                  # Client backend: client.ts, outbox.ts, flightSync.ts
+    ├── barcode.ts            # Parser barcode MURNI (BCBP + pipe) — di-unit-test
     ├── radarService.ts       # Fetch OpenSky + simulator demo + geo helpers
     ├── airlines.ts           # Registry maskapai + warna brand
     ├── audit.ts              # Audit log helpers
@@ -318,9 +321,47 @@ src/
 | Peta / Radar | Leaflet + tile CartoDB + OpenSky Network API |
 | Scanner Lib | Native `BarcodeDetector` + Web FaceDetector API |
 | Audio/Voice | Web Audio API + Web Speech API (TTS) |
-| Backend (opsional) | NestJS 10 + Prisma + **PostgreSQL** · JWT auth |
+| Backend (opsional) | NestJS 10 + Prisma + **MySQL** (Laragon dev, `prisma db push`) · JWT auth |
 | Build | npm / Next.js compiler |
 | Dev Server | `npm run dev:https` (HTTPS untuk getUserMedia di non-localhost) |
+| Testing | **Vitest** (frontend, 21 test) + **Jest** (backend NestJS, 12 test) |
+| CI | **GitHub Actions** (`.github/workflows/ci.yml`): lint·typecheck·test·build (FE) + typecheck·test (BE) |
+| Observability | **Sentry** env-gated (`@sentry/nextjs` + `@sentry/node`) + error boundaries + global exception filter |
+
+---
+
+## 7b. Catatan Rilis v0.4
+
+Ringkasan perubahan terbaru (lihat git log untuk detail):
+
+- **Redesign Kelola Petugas** (`/admin/officers`) — dari list jadi **grid card premium**:
+  hero + 4 stat card + search & 3 filter (status/area/posisi); komponen `StaffAvatar`,
+  `OfficerCard`, `StatCard`, `FilterSelect`, `OfficerDetail` (modal detail beranimasi).
+  - **Avatar** = foto bundar `object-cover` dalam frame gradient + **cincin gradient
+    berputar** (`animate-spin-ring`) + dot status. Foto di `public/petugas/` (mapping
+    `AVATAR_BY_EMAIL`); fallback inisial bila foto tak ada. Spesifikasi foto: lihat
+    `public/petugas/README.md` (PNG, 1:1, 600×600).
+  - _Catatan teknis:_ varian efek 3D pop-out/tilt sempat dicoba tetapi di-rollback
+    karena `transform-style: preserve-3d` + `overflow-hidden` merusak layering di
+    sebagian render. Versi `object-cover` dipilih karena robust.
+- **Snapshot jadwal FIDS → DB** — `POST /flights/sync` (upsert idempotent by
+  `station+flightNumber+std`); tarik FIDS kini menyimpan jadwal harian sebagai riwayat.
+- **Keamanan PIN** — PIN bisa dipilih sendiri saat create/reset + guard tolak PIN lemah
+  (angka sama/berurutan), di backend (`assertPinStrong`) & UI.
+- **Seeder boarding pass dari jadwal** — `generateBoardingPasses.ts`: 10 boarding pass
+  per penerbangan (deterministik, payload scannable). Seeder page filter maskapai +
+  dropdown penerbangan + muat ulang.
+- **Kestabilan & kualitas:**
+  - React **error boundaries** (`app/error.tsx`, `app/global-error.tsx`).
+  - **ESLint** (`next/core-web-vitals`) + CI menjalankan lint·typecheck·test·build.
+  - **Unit test**: Vitest (FE: barcode, generateBoardingPasses, boarding) + Jest
+    (BE: guard PIN, flights bulkUpsert). Parser barcode dipisah ke `lib/barcode.ts`.
+  - **GitHub Actions CI** (`.github/workflows/ci.yml`).
+- **Observability — Sentry (env-gated):** `@sentry/nextjs` (config client/server/edge +
+  `instrumentation.ts`) & `@sentry/node` (`instrument.ts`). **Global exception filter**
+  NestJS (`AllExceptionsFilter`) — format error konsisten + lapor 5xx. Aktif begitu
+  `NEXT_PUBLIC_SENTRY_DSN` / `SENTRY_DSN` diisi (lihat `.env.local.example` &
+  `backend/.env.example`).
 
 ---
 

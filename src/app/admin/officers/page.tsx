@@ -767,11 +767,10 @@ function avatarSrc(email: string): string {
 }
 
 /**
- * Avatar petugas 2.5D pop-out: lingkaran gradient biru sebagai frame, foto
- * (PNG transparan) tampil lebih tinggi dari lingkaran sehingga kepala/pundak
- * "keluar" dari frame; ring putih, glow biru, dan dot status. Foto dari
- * `public/petugas/` (lihat avatarSrc). Bila gagal dimuat → fallback inisial
- * nama di dalam lingkaran; layout tidak rusak.
+ * Avatar petugas: foto bundar dalam frame gradient + cincin gradient berputar
+ * (animasi) di belakang, dengan dot status. Foto `object-cover` mengisi
+ * lingkaran (robust untuk berbagai framing). Foto dari `public/petugas/` (lihat
+ * avatarSrc); bila gagal dimuat → fallback inisial nama, layout tidak rusak.
  */
 function StaffAvatar({
   name,
@@ -785,113 +784,50 @@ function StaffAvatar({
   size?: "card" | "lg";
 }) {
   const [imgError, setImgError] = useState(false);
-  const [hovering, setHovering] = useState(false);
-  const [tilt, setTilt] = useState({ rx: 0, ry: 0 });
   const src = avatarSrc(email);
   const big = size === "lg";
-  // Tinggi foto > diameter lingkaran → selisihnya jadi "pop-out" kepala.
-  const PHOTO_H = big ? 176 : 120;
-  const CIRCLE = big ? 116 : 80;
-  const headZ = big ? 32 : 22; // kedalaman 3D kepala → parallax saat tilt
-  const dot = big ? 20 : 16;
-
-  // Tilt 3D mengikuti mouse → avatar terasa "hidup"/bergaya ke arah kursor.
-  const onMove = (e: React.MouseEvent<HTMLDivElement>) => {
-    const r = e.currentTarget.getBoundingClientRect();
-    const px = (e.clientX - r.left) / r.width - 0.5;
-    const py = (e.clientY - r.top) / r.height - 0.5;
-    setTilt({ rx: px * 24, ry: -py * 20 });
-  };
-  const reset = () => {
-    setHovering(false);
-    setTilt({ rx: 0, ry: 0 });
-  };
+  const CIRCLE = big ? 104 : 76;
+  const dot = big ? 18 : 15;
 
   return (
     <div
-      className="relative shrink-0"
-      style={{ width: CIRCLE, height: PHOTO_H, perspective: 900 }}
-      onMouseEnter={() => setHovering(true)}
-      onMouseMove={onMove}
-      onMouseLeave={reset}
+      className="group relative shrink-0"
+      style={{ width: CIRCLE + 10, height: CIRCLE + 10 }}
     >
+      {/* glow */}
+      <div className="pointer-events-none absolute inset-1 rounded-full bg-blue-500/20 blur-md" />
+      {/* cincin gradient BERPUTAR */}
+      <div className="pointer-events-none absolute inset-0 animate-spin-ring rounded-full [background:conic-gradient(from_0deg,#38bdf8,#3b82f6,#a855f7,#22d3ee,#38bdf8)]" />
+      {/* foto bundar (object-cover) + pemisah putih tipis via ring */}
       <div
-        className={cn(
-          "absolute inset-0 [transform-style:preserve-3d]",
-          !hovering && "animate-float",
-        )}
-        style={
-          hovering
-            ? {
-                transform: `rotateX(${tilt.ry}deg) rotateY(${tilt.rx}deg) scale(1.05)`,
-                transition: "transform .12s ease-out",
-              }
-            : { transition: "transform .35s ease-out" }
-        }
+        className="absolute left-1/2 top-1/2 flex -translate-x-1/2 -translate-y-1/2 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br from-blue-500 via-blue-400 to-cyan-400 shadow-md ring-2 ring-white transition-transform duration-300 group-hover:scale-105 dark:ring-surface-elev"
+        style={{ width: CIRCLE, height: CIRCLE }}
       >
-        {/* glow */}
-        <div
-          className="pointer-events-none absolute inset-x-0 bottom-0 rounded-full bg-blue-500/25 blur-xl"
-          style={{ height: CIRCLE }}
-        />
-        {/* cincin gradient BERPUTAR */}
-        <div
-          className="pointer-events-none absolute left-1/2 -translate-x-1/2 animate-spin-ring rounded-full [background:conic-gradient(from_0deg,#38bdf8,#3b82f6,#a855f7,#22d3ee,#38bdf8)]"
-          style={{ width: CIRCLE + 10, height: CIRCLE + 10, bottom: -5 }}
-        />
-        {/* pemisah tipis */}
-        <div
-          className="pointer-events-none absolute left-1/2 -translate-x-1/2 rounded-full bg-surface"
-          style={{ width: CIRCLE + 4, height: CIRCLE + 4, bottom: -2 }}
-        />
-        {/* frame lingkaran + BADAN (di-clip lengkung lingkaran) */}
-        <div
-          className="absolute bottom-0 left-1/2 flex -translate-x-1/2 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br from-blue-500 via-blue-400 to-cyan-400 shadow-lg shadow-blue-500/30"
-          style={{ width: CIRCLE, height: CIRCLE }}
-        >
-          {imgError ? (
-            <span
-              className="font-extrabold tracking-tight text-white"
-              style={{ fontSize: big ? 36 : 20 }}
-            >
-              {initialsOf(name)}
-            </span>
-          ) : (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={src}
-              alt=""
-              aria-hidden
-              onError={() => setImgError(true)}
-              style={{ height: PHOTO_H }}
-              className="absolute bottom-0 left-1/2 w-auto max-w-none -translate-x-1/2 object-contain object-bottom"
-            />
-          )}
-        </div>
-        {/* KEPALA pop-out 3D (translateZ → parallax saat tilt) */}
-        {!imgError && (
+        {imgError ? (
+          <span
+            className="font-extrabold tracking-tight text-white"
+            style={{ fontSize: big ? 32 : 20 }}
+          >
+            {initialsOf(name)}
+          </span>
+        ) : (
           // eslint-disable-next-line @next/next/no-img-element
           <img
             src={src}
             alt={name}
             onError={() => setImgError(true)}
-            style={{
-              height: PHOTO_H,
-              clipPath: `inset(0 0 ${CIRCLE - 6}px 0)`,
-              transform: `translateX(-50%) translateZ(${headZ}px)`,
-            }}
-            className="pointer-events-none absolute bottom-0 left-1/2 w-auto max-w-none object-contain object-bottom"
+            className="h-full w-full object-cover object-top"
           />
         )}
-        {/* dot status */}
-        <span
-          className={cn(
-            "absolute z-20 rounded-full ring-2 ring-white dark:ring-surface-elev",
-            active ? "bg-emerald-500" : "bg-rose-400",
-          )}
-          style={{ width: dot, height: dot, bottom: big ? 6 : 4, right: big ? 6 : 4 }}
-        />
       </div>
+      {/* dot status */}
+      <span
+        className={cn(
+          "absolute z-20 rounded-full ring-2 ring-white dark:ring-surface-elev",
+          active ? "bg-emerald-500" : "bg-rose-400",
+        )}
+        style={{ width: dot, height: dot, bottom: big ? 4 : 2, right: big ? 4 : 2 }}
+      />
     </div>
   );
 }
