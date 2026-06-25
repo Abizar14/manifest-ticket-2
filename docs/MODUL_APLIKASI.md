@@ -290,7 +290,8 @@ src/
     ├── i18n.ts + useT.ts     # Translation
     ├── mockData.ts           # Seed flights
     ├── scanService.ts        # Core logic scan + face capture
-    ├── seedBoardingPasses.ts # Seed boarding pass sample
+    ├── seedBoardingPasses.ts # Seed boarding pass sample (statis)
+    ├── generateBoardingPasses.ts # Generate boarding pass dari jadwal (10/flight)
     ├── settings.ts           # App settings (localStorage)
     ├── storage.ts            # localStorage wrapper
     ├── theme.ts              # Theme switcher

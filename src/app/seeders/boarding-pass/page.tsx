@@ -1,7 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { Ticket, Plane, QrCode, Copy, Printer } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Ticket, Plane, QrCode, Copy, Printer, RefreshCw } from "lucide-react";
 import { AppShell } from "@/components/layout/AppShell";
 import { PageHero, HeroChip } from "@/components/layout/PageHero";
 import { Card, CardBody } from "@/components/ui/Card";
@@ -13,16 +13,12 @@ import {
   SeedBoardingPass,
   buildPayload,
 } from "@/lib/seedBoardingPasses";
+import { buildBoardingPassesFromFlights } from "@/lib/generateBoardingPasses";
+import { getFlights } from "@/lib/storage";
 import { todayDateString, tomorrowDateString } from "@/lib/utils";
 import { cn } from "@/lib/utils";
 
-const AIRLINES: SeedBoardingPass["airlineCode"][] = [
-  "GA",
-  "JT",
-  "QZ",
-  "SJ",
-  "ID",
-];
+const PER_FLIGHT = 10;
 
 function resolveDate(ref: "today" | "tomorrow"): string {
   return ref === "today" ? todayDateString() : tomorrowDateString();
@@ -45,27 +41,67 @@ function formatDateLabel(yyyyMmDd: string): string {
 }
 
 export default function BoardingPassSeederPage() {
-  const [filter, setFilter] = useState<"ALL" | SeedBoardingPass["airlineCode"]>(
-    "ALL",
-  );
+  const [passes, setPasses] = useState<SeedBoardingPass[]>([]);
+  const [usingFallback, setUsingFallback] = useState(false);
+  const [airline, setAirline] = useState<string>("ALL");
+  const [flightFilter, setFlightFilter] = useState<string>("ALL");
   const [active, setActive] = useState<SeedBoardingPass | null>(null);
   const toast = useToast();
 
-  const filtered = useMemo(
-    () =>
-      filter === "ALL"
-        ? SEED_BOARDING_PASSES
-        : SEED_BOARDING_PASSES.filter((bp) => bp.airlineCode === filter),
-    [filter],
-  );
+  // Generate boarding pass dari jadwal yang tersedia (10 per penerbangan).
+  // Bila belum ada jadwal → fallback ke contoh statis agar halaman tak kosong.
+  const load = useCallback(() => {
+    const flights = getFlights();
+    if (flights.length === 0) {
+      setPasses(SEED_BOARDING_PASSES);
+      setUsingFallback(true);
+    } else {
+      setPasses(buildBoardingPassesFromFlights(flights, PER_FLIGHT));
+      setUsingFallback(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    load();
+    const onUpdated = () => load();
+    window.addEventListener("afvs:flights-updated", onUpdated);
+    return () => window.removeEventListener("afvs:flights-updated", onUpdated);
+  }, [load]);
+
+  const airlines = useMemo(() => {
+    const s = new Set<string>();
+    passes.forEach((p) => s.add(p.airlineCode));
+    return Array.from(s).sort();
+  }, [passes]);
+
+  const flightOptions = useMemo(() => {
+    const s = new Set<string>();
+    passes.forEach((p) => {
+      if (airline === "ALL" || p.airlineCode === airline) s.add(p.flightNumber);
+    });
+    return Array.from(s).sort();
+  }, [passes, airline]);
 
   const countByAirline = useMemo(() => {
     const out: Record<string, number> = {};
-    for (const bp of SEED_BOARDING_PASSES) {
-      out[bp.airlineCode] = (out[bp.airlineCode] ?? 0) + 1;
-    }
+    for (const p of passes) out[p.airlineCode] = (out[p.airlineCode] ?? 0) + 1;
     return out;
-  }, []);
+  }, [passes]);
+
+  const filtered = useMemo(
+    () =>
+      passes.filter(
+        (p) =>
+          (airline === "ALL" || p.airlineCode === airline) &&
+          (flightFilter === "ALL" || p.flightNumber === flightFilter),
+      ),
+    [passes, airline, flightFilter],
+  );
+
+  const flightCount = useMemo(
+    () => new Set(passes.map((p) => p.flightNumber)).size,
+    [passes],
+  );
 
   const copyPayload = (bp: SeedBoardingPass) => {
     const payload = buildPayload(bp);
@@ -86,62 +122,111 @@ export default function BoardingPassSeederPage() {
           eyebrowIcon={<Ticket className="h-3.5 w-3.5" />}
           ghostIcon={<Ticket className="h-full w-full" strokeWidth={1.5} />}
           title="Boarding Pass Seeder"
-          description="25 contoh boarding pass siap-scan (5 per maskapai). Klik kartu untuk lihat tampilan penuh dengan QR code — bisa di-scan langsung dari layar lain."
+          description={
+            usingFallback
+              ? "Belum ada jadwal penerbangan — menampilkan contoh bawaan. Isi/tarik jadwal dulu untuk generate boarding pass dari penerbangan nyata."
+              : `${PER_FLIGHT} boarding pass per penerbangan, dibuat otomatis dari jadwal yang tersedia. Klik kartu untuk QR penuh — bisa di-scan langsung dari layar.`
+          }
           meta={
             <>
               <HeroChip
                 icon={<Ticket className="h-3 w-3" />}
                 label="Total"
-                value={SEED_BOARDING_PASSES.length}
+                value={passes.length}
               />
               <HeroChip
                 icon={<Plane className="h-3 w-3" />}
-                label="Maskapai"
-                value={AIRLINES.length}
+                label="Penerbangan"
+                value={flightCount}
               />
             </>
           }
         />
 
-        {/* Filter pills */}
+        {/* Filter */}
         <Card>
-          <CardBody className="flex flex-wrap items-center gap-2">
-            <FilterPill
-              active={filter === "ALL"}
-              onClick={() => setFilter("ALL")}
-              label="Semua"
-              count={SEED_BOARDING_PASSES.length}
-            />
-            {AIRLINES.map((code) => {
-              const meta = getAirlineMeta(code);
-              return (
-                <FilterPill
-                  key={code}
-                  active={filter === code}
-                  onClick={() => setFilter(code)}
-                  label={`${code} · ${meta.name}`}
-                  count={countByAirline[code] ?? 0}
-                  accent={meta.gradient}
-                />
-              );
-            })}
+          <CardBody className="flex flex-col gap-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <FilterPill
+                active={airline === "ALL"}
+                onClick={() => {
+                  setAirline("ALL");
+                  setFlightFilter("ALL");
+                }}
+                label="Semua maskapai"
+                count={passes.length}
+              />
+              {airlines.map((code) => {
+                const meta = getAirlineMeta(code);
+                return (
+                  <FilterPill
+                    key={code}
+                    active={airline === code}
+                    onClick={() => {
+                      setAirline(code);
+                      setFlightFilter("ALL");
+                    }}
+                    label={`${code} · ${meta.name}`}
+                    count={countByAirline[code] ?? 0}
+                    accent={meta.gradient}
+                  />
+                );
+              })}
+            </div>
+            <div className="flex flex-wrap items-center gap-2 border-t border-slate-100 pt-3">
+              <label className="inline-flex items-center gap-2 text-xs font-semibold text-slate-600">
+                <Plane className="h-3.5 w-3.5 text-slate-400" />
+                Penerbangan
+                <select
+                  value={flightFilter}
+                  onChange={(e) => setFlightFilter(e.target.value)}
+                  className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 outline-none ring-violet-200 focus:ring-2"
+                >
+                  <option value="ALL">Semua penerbangan</option>
+                  {flightOptions.map((fn) => (
+                    <option key={fn} value={fn}>
+                      {fn}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <button
+                type="button"
+                onClick={load}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
+              >
+                <RefreshCw className="h-3.5 w-3.5" />
+                Muat ulang
+              </button>
+              <span className="ml-auto text-xs text-slate-500">
+                {filtered.length} boarding pass
+              </span>
+            </div>
           </CardBody>
         </Card>
 
         {/* Grid of tickets */}
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-          {filtered.map((bp, idx) => (
-            <button
-              key={bp.id}
-              type="button"
-              onClick={() => setActive(bp)}
-              className="animate-fade-up text-left transition focus:outline-none"
-              style={{ animationDelay: `${idx * 30}ms` }}
-            >
-              <MiniBoardingPass bp={bp} />
-            </button>
-          ))}
-        </div>
+        {filtered.length === 0 ? (
+          <Card>
+            <CardBody className="py-12 text-center text-sm text-slate-500">
+              Tidak ada boarding pass untuk filter ini.
+            </CardBody>
+          </Card>
+        ) : (
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+            {filtered.map((bp, idx) => (
+              <button
+                key={bp.id}
+                type="button"
+                onClick={() => setActive(bp)}
+                className="animate-fade-up text-left transition focus:outline-none"
+                style={{ animationDelay: `${Math.min(idx, 20) * 30}ms` }}
+              >
+                <MiniBoardingPass bp={bp} />
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Detail modal */}
@@ -290,7 +375,9 @@ function BoardingPassModal({
 }) {
   if (!bp) return null;
   const meta = getAirlineMeta(bp.airlineCode);
-  const date = formatDateLabel(resolveDate(bp.dateRef));
+  const date = formatDateLabel(
+    bp.departureDate ?? resolveDate(bp.dateRef ?? "today"),
+  );
   const payload = buildPayload(bp);
   const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=440x440&margin=8&data=${encodeURIComponent(
     payload,

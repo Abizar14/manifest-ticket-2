@@ -6,7 +6,8 @@
 
 export interface SeedBoardingPass {
   id: string;
-  airlineCode: "GA" | "JT" | "QZ" | "SJ" | "ID";
+  /** Kode IATA maskapai (apa pun — getAirlineMeta punya fallback). */
+  airlineCode: string;
   flightNumber: string;
   origin: string;
   originCity: string;
@@ -19,8 +20,10 @@ export interface SeedBoardingPass {
   cabinClass: "Economy" | "Business";
   gate: string;
   boardingTime: string; // HH:mm
-  /** "today" akan di-resolve ke todayDateString() saat render */
-  dateRef: "today" | "tomorrow";
+  /** "today"/"tomorrow" di-resolve saat render (dipakai seed statis). */
+  dateRef?: "today" | "tomorrow";
+  /** Tanggal nyata YYYY-MM-DD (dipakai boarding pass hasil generate). */
+  departureDate?: string;
 }
 
 export const SEED_BOARDING_PASSES: SeedBoardingPass[] = [
