@@ -182,6 +182,7 @@ const config: Config = {
         float: "float 3.5s ease-in-out infinite",
         drift: "drift 9s ease-in-out infinite",
         "spin-slow": "spin-slow 22s linear infinite",
+        "spin-ring": "spin-slow 5s linear infinite",
         "fly-by": "fly-by 14s ease-in-out infinite",
         "route-fly": "route-fly 3.2s ease-in-out infinite",
         "gradient-shift": "gradient-shift 8s ease-in-out infinite",

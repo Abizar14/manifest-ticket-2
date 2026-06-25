@@ -49,12 +49,13 @@ Backend NestJS sudah **ter-install, ter-migrate, dan ter-seed** di folder [backe
 | GET    | `/api/auth/me`                | Bearer   | Profile current user                        |
 | GET    | `/api/flights`                | Bearer   | List flights (filter `station/date/status`) |
 | POST   | `/api/flights`                | sup/ad   | Create flight                               |
+| POST   | `/api/flights/sync`           | Bearer   | Snapshot jadwal harian (upsert massal idempotent by `station+flightNumber+std`) — dipakai saat tarik FIDS |
 | PATCH  | `/api/flights/:id`            | sup/ad   | Update `status`/`std`                       |
 | DELETE | `/api/flights/:id`            | admin    | Hapus flight                                |
 | GET    | `/api/operators`              | admin    | List petugas (filter `station/role/q`)      |
 | POST   | `/api/operators`              | admin    | Tambah petugas → return `{operator, pin}`   |
 | PATCH  | `/api/operators/:id`          | admin    | Update nama/email/role/station/active       |
-| POST   | `/api/operators/:id/pin`      | admin    | Set/reset PIN (kosong = acak) → `{pin}`     |
+| POST   | `/api/operators/:id/pin`      | admin    | Set/reset PIN — `{pin}` 4-6 digit (PIN pilihan, ditolak bila lemah) atau kosong = acak → `{pin}` |
 | DELETE | `/api/operators/:id`          | admin    | Hapus petugas (blok bila punya riwayat scan)|
 | POST   | `/api/scan-events`            | Bearer   | Push scan (multipart, idempotent)           |
 | GET    | `/api/scan-events`            | Bearer   | List scans (filter)                         |
@@ -154,7 +155,8 @@ Frontend kini tersambung ke backend lewat halaman **`/connect`** (menu "Koneksi 
    - `client.ts` — fetch wrapper auto-attach Bearer token.
    - `outbox.ts` — outbox idempotent (pola [sikerenOutbox.ts](../src/lib/sikerenOutbox.ts)); tiap scan di-enqueue, flush ke `POST /scan-events` (FormData + foto wajah dari `facePhotoStore`), auto-flush tiap 20 dtk.
    - `flightSync.ts` — pull `GET /flights?station=...&date=...`, map ke tipe Flight frontend, merge ke `localStorage afvs.flights`.
-4. ✅ **Flight sync** — tombol "Tarik jadwal" di `/connect`.
+   - `jadwal/flightSync.ts` — tarik jadwal dari FIDS → merge ke localStorage **dan** push snapshot ke `POST /flights/sync` (best-effort, hanya bila login) supaya jadwal jadi riwayat permanen di DB, bukan cuma di localStorage. `station`/`origin` = `AAP`, `std` naif-Z dari tanggal+jam papan.
+4. ✅ **Flight sync** — tombol "Tarik jadwal" di `/connect`; tarik FIDS di `/jadwal` (auto-simpan snapshot harian ke server).
 5. ⬜ **Dashboard admin** (opsional, belum) — page `/admin/scans` untuk supervisor lihat semua scan + foto + KTP dari server.
 
 > Sync di-gate oleh setting `apiSyncEnabled` (otomatis ON setelah login di `/connect`). Aplikasi tetap berfungsi penuh offline; backend hanya menggabungkan data 2 titik pemeriksaan (SCP 2 sebelum X-ray & Lounge Bluesky).
@@ -195,7 +197,7 @@ Alternatif (dev/bulk): Prisma Studio (langkah 6 di atas) atau extend `prisma/see
 Halaman admin untuk mengelola petugas AVSEC tanpa menyentuh DB:
 
 - **Tambah** — isi nama (wajib), peran, pos (`SCP2`/`BLUESKY`). Email opsional (auto dari nama bila kosong); password login otomatis acak (login utama AVSEC via PIN). PIN bisa diisi manual 4-6 digit atau dikosongkan untuk **PIN acak** dari server.
-- **Set/Reset PIN** — tombol kunci di tiap baris. PIN baru ditampilkan **sekali** (dengan tombol salin) lalu disimpan ter-hash — tidak bisa dilihat lagi, hanya bisa di-reset.
+- **Set/Reset PIN** — tombol kunci di tiap baris membuka dialog: admin bisa **mengetik PIN pilihan petugas** (4-6 digit, biar mudah diingat) atau pilih **"Acak otomatis"**. PIN gampang ditebak (angka sama/berurutan spt `1234`, `000000`) ditolak — penting karena login-PIN dicocokkan ke semua petugas aktif. PIN baru ditampilkan **sekali** (dengan tombol salin) lalu disimpan ter-hash — tidak bisa dilihat lagi, hanya bisa di-reset.
 - **Edit / Nonaktifkan / Hapus** — ubah data, toggle aktif, atau hapus. Petugas yang punya riwayat scan **tidak bisa dihapus** (FK audit) — nonaktifkan saja. Admin tidak bisa menghapus akun sendiri.
 - **Anti-bentrok PIN** — server menolak PIN yang sudah dipakai petugas aktif lain (login-PIN memetakan PIN→petugas, jadi harus unik).
 

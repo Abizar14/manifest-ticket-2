@@ -1,6 +1,11 @@
 import { Injectable, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
-import { CreateFlightDto, ListFlightsQuery, UpdateFlightDto } from "./dto";
+import {
+  CreateFlightDto,
+  ListFlightsQuery,
+  SyncFlightsDto,
+  UpdateFlightDto,
+} from "./dto";
 
 @Injectable()
 export class FlightsService {
@@ -33,6 +38,45 @@ export class FlightsService {
     return this.prisma.flight.create({
       data: { ...dto, std: new Date(dto.std) },
     });
+  }
+
+  /**
+   * Snapshot jadwal harian (mis. tarik FIDS): upsert massal by kunci unik
+   * [station, flightNumber, std]. Aman dipanggil berulang — record yang sudah
+   * ada di-update (status/rute), yang baru dibuat. Tidak menghapus apa pun,
+   * sehingga jadwal hari/tanggal lampau tetap tersimpan sebagai riwayat.
+   */
+  async bulkUpsert(dto: SyncFlightsDto) {
+    // Dedupe input by kunci unik supaya tak ada bentrok create dalam 1 batch.
+    const byKey = new Map<string, CreateFlightDto>();
+    for (const f of dto.flights) {
+      const stdIso = new Date(f.std).toISOString();
+      byKey.set(`${f.station}__${f.flightNumber}__${stdIso}`, f);
+    }
+    const unique = Array.from(byKey.values());
+
+    const ops = unique.map((f) => {
+      const std = new Date(f.std);
+      return this.prisma.flight.upsert({
+        where: {
+          station_flightNumber_std: {
+            station: f.station,
+            flightNumber: f.flightNumber,
+            std,
+          },
+        },
+        create: { ...f, std },
+        update: {
+          airlineCode: f.airlineCode,
+          origin: f.origin,
+          destination: f.destination,
+          status: f.status,
+        },
+      });
+    });
+
+    await this.prisma.$transaction(ops);
+    return { ok: true, synced: unique.length };
   }
 
   async update(id: string, dto: UpdateFlightDto) {

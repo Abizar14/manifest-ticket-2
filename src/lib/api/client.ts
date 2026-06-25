@@ -291,6 +291,43 @@ export async function apiListAllFlights(params: {
   return { ok: true, status: 200, data: { items: all, page: 1, perPage: all.length, total } };
 }
 
+/** Satu jadwal untuk di-upsert ke backend (snapshot harian / FIDS). */
+export interface FlightSyncPayload {
+  flightNumber: string;
+  airlineCode: string;
+  origin: string;
+  destination: string;
+  std: string; // ISO
+  status: string; // SCHEDULED | OPEN | ACTIVE | CLOSED | CANCELLED
+  station: string;
+}
+
+/**
+ * Simpan snapshot jadwal harian ke backend (tabel Flight, upsert idempotent
+ * by station+flightNumber+std). Dipakai saat tarik FIDS agar jadwalnya jadi
+ * riwayat permanen, bukan cuma di localStorage.
+ */
+export async function apiSyncFlights(
+  flights: FlightSyncPayload[],
+): Promise<ApiResult<{ ok: boolean; synced: number }>> {
+  if (flights.length === 0) {
+    return { ok: true, data: { ok: true, synced: 0 } };
+  }
+  try {
+    const res = await authedFetch("/flights/sync", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ flights }),
+    });
+    const body = await readJson(res);
+    if (!res.ok)
+      return { ok: false, status: res.status, error: httpError(res.status, body) };
+    return { ok: true, status: res.status, data: body as { ok: boolean; synced: number } };
+  } catch (e) {
+    return { ok: false, error: errMsg(e) };
+  }
+}
+
 /** Push satu scan event (multipart, idempotent by eventId). */
 export async function apiPushScan(
   fields: ScanPushFields,

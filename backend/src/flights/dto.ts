@@ -1,11 +1,14 @@
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 import { Type } from "class-transformer";
 import {
+  ArrayMaxSize,
+  IsArray,
   IsDateString,
   IsIn,
   IsOptional,
   IsString,
   MaxLength,
+  ValidateNested,
 } from "class-validator";
 import { FLIGHT_STATUSES, FlightStatus } from "../common/roles";
 
@@ -42,6 +45,20 @@ export class CreateFlightDto {
   @IsString()
   @MaxLength(32)
   station!: string;
+}
+
+/**
+ * Sinkronisasi massal jadwal (mis. snapshot harian dari FIDS). Tiap item
+ * di-upsert by kunci unik [station, flightNumber, std] sehingga aman dipanggil
+ * berulang (tarik FIDS tiap 60 dtk) tanpa menggandakan record.
+ */
+export class SyncFlightsDto {
+  @ApiProperty({ type: [CreateFlightDto] })
+  @IsArray()
+  @ArrayMaxSize(2000)
+  @ValidateNested({ each: true })
+  @Type(() => CreateFlightDto)
+  flights!: CreateFlightDto[];
 }
 
 export class UpdateFlightDto {

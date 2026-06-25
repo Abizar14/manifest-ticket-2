@@ -213,9 +213,13 @@ export default function JadwalPage() {
     const res = await pullFidsKeberangkatan(tanggal || undefined);
     setSyncing(false);
     if (res.ok) {
+      const serverNote =
+        res.synced && res.synced > 0
+          ? `${res.synced} tersimpan ke server`
+          : "Tersimpan lokal (server offline/tak login)";
       toast.success(
         `${res.total} jadwal (+${res.added} baru, ${res.updated} update)`,
-        "Disinkron ke data scan",
+        serverNote,
       );
     } else {
       toast.error(res.error ?? "Gagal sinkron", "Gagal");

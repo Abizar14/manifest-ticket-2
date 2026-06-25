@@ -204,6 +204,7 @@ Integrasi **opsional** ke backend NestJS + PostgreSQL (lihat [BACKEND_SETUP.md](
 - **Login JWT** ke server; token disimpan di `localStorage` (`afvs.api.token`).
 - **Push scan otomatis** — setiap scan masuk outbox lokal lalu di-flush ke `POST /scan-events` (idempotent by `eventId`, offline-safe, foto wajah ikut terkirim). Auto-flush tiap 20 dtk + saat online.
 - **Tarik jadwal** — `GET /flights` per station/tanggal, di-merge ke data lokal.
+- **Snapshot jadwal FIDS** — saat tarik FIDS di `/jadwal`, jadwal hari itu di-push ke `POST /flights/sync` (upsert idempotent by `station+flightNumber+std`) sehingga tersimpan permanen di DB sebagai riwayat per tanggal, bukan cuma di `localStorage`. Best-effort: bila offline/belum login, jadwal tetap aman di lokal.
 - **Monitor antrian** — status pending/gagal + tombol flush/retry.
 - **Dashboard server** (`/admin/scans`, admin/supervisor) — lihat scan **gabungan 2 pos** (SCP 2 + Lounge Bluesky) langsung dari server, lengkap foto wajah & statistik per pos.
 - Di-gate oleh setting `apiSyncEnabled`; base URL dari env `NEXT_PUBLIC_AFVS_API_BASE`.

@@ -10,6 +10,7 @@
  * hanya tampil di papan FIDS.
  */
 
+import { apiSyncFlights, isAuthed, type FlightSyncPayload } from "../api/client";
 import { getFlights, saveFlights } from "../storage";
 import type { Flight, FlightStatus } from "../types";
 import { fetchKeberangkatan } from "./client";
@@ -86,11 +87,37 @@ function keyOf(f: Flight) {
   return `${f.flightNumber.toUpperCase()}__${f.departureDate}`;
 }
 
+/** Status lokal → enum backend (backend tak punya DRAFT). */
+function toBackendStatus(s: FlightStatus): string {
+  return s === "DRAFT" ? "SCHEDULED" : s;
+}
+
+/**
+ * Flight lokal → payload backend untuk snapshot harian. `std` dibentuk sebagai
+ * waktu "naif" (suffix Z) dari tanggal+jam papan FIDS supaya filter tanggal
+ * backend (batas hari UTC) mengelompokkannya tepat di tanggal keberangkatan,
+ * tanpa pergeseran zona waktu. `station` = bandara asal (AAP) → snapshot jadwal
+ * keberangkatan bandara, kunci unik stabil (station+flightNumber+std).
+ */
+function toSyncPayload(f: Flight): FlightSyncPayload {
+  return {
+    flightNumber: f.flightNumber,
+    airlineCode: f.airlineCode || "—",
+    origin: f.originAirport,
+    destination: f.destinationAirport,
+    std: `${f.departureDate}T${f.departureTime || "00:00"}:00.000Z`,
+    status: toBackendStatus(f.status),
+    station: f.originAirport,
+  };
+}
+
 export interface FidsPullResult {
   ok: boolean;
   added: number;
   updated: number;
   total: number;
+  /** Jumlah jadwal yang berhasil disimpan ke backend (snapshot). 0 jika offline/tak login. */
+  synced?: number;
   error?: string;
 }
 
@@ -139,5 +166,14 @@ export async function pullFidsKeberangkatan(
   if (typeof window !== "undefined") {
     window.dispatchEvent(new CustomEvent("afvs:flights-updated"));
   }
-  return { ok: true, added, updated, total: incoming.length };
+
+  // Snapshot ke backend (riwayat permanen). Best-effort: kalau belum login ke
+  // backend / backend mati, jadwal tetap aman di localStorage — pull tak gagal.
+  let synced = 0;
+  if (isAuthed() && incoming.length > 0) {
+    const sync = await apiSyncFlights(incoming.map(toSyncPayload));
+    if (sync.ok && sync.data) synced = sync.data.synced;
+  }
+
+  return { ok: true, added, updated, total: incoming.length, synced };
 }

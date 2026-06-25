@@ -66,7 +66,10 @@ export class OperatorsService {
 
     // PIN: pakai input atau generate acak yang belum bentrok dengan petugas aktif.
     const pin = dto.pin ?? (await this.generateUniquePin());
-    if (dto.pin) await this.assertPinFree(dto.pin);
+    if (dto.pin) {
+      this.assertPinStrong(dto.pin);
+      await this.assertPinFree(dto.pin);
+    }
     const password = dto.password ?? this.generatePassword();
 
     const created = await this.prisma.operator.create({
@@ -120,7 +123,10 @@ export class OperatorsService {
     if (!op) throw new NotFoundException("Petugas tidak ditemukan.");
 
     const pin = dto.pin ?? (await this.generateUniquePin(id));
-    if (dto.pin) await this.assertPinFree(dto.pin, id);
+    if (dto.pin) {
+      this.assertPinStrong(dto.pin);
+      await this.assertPinFree(dto.pin, id);
+    }
 
     await this.prisma.operator.update({
       where: { id },
@@ -177,6 +183,24 @@ export class OperatorsService {
       if (await this.isPinFree(pin, excludeId)) return pin;
     }
     throw new ConflictException("Gagal membuat PIN unik, coba lagi.");
+  }
+
+  /**
+   * Tolak PIN yang terlalu gampang ditebak. Penting karena login-PIN
+   * mencocokkan ke SEMUA petugas aktif — PIN lemah bisa dipakai orang lain
+   * masuk sebagai petugas itu. Hanya berlaku untuk PIN pilihan sendiri
+   * (PIN acak sistem sudah pasti tak berpola).
+   */
+  private assertPinStrong(pin: string) {
+    const allSame = /^(\d)\1+$/.test(pin); // 0000, 111111, dst
+    const asc = "0123456789";
+    const desc = "9876543210";
+    const sequential = asc.includes(pin) || desc.includes(pin); // 1234, 6543, dst
+    if (allSame || sequential) {
+      throw new BadRequestException(
+        "PIN terlalu mudah ditebak (angka sama atau berurutan). Pakai kombinasi lain.",
+      );
+    }
   }
 
   private async assertPinFree(pin: string, excludeId?: string) {
