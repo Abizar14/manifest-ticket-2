@@ -1,9 +1,13 @@
+// WAJIB paling awal: inisialisasi Sentry sebelum modul lain di-load.
+import "./instrument";
+
 import { ValidationPipe } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { NestFactory } from "@nestjs/core";
 import { DocumentBuilder, SwaggerModule } from "@nestjs/swagger";
 import helmet from "helmet";
 import { AppModule } from "./app.module";
+import { AllExceptionsFilter } from "./common/all-exceptions.filter";
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, { cors: false });
@@ -37,6 +41,7 @@ async function bootstrap() {
       forbidNonWhitelisted: true,
     }),
   );
+  app.useGlobalFilters(new AllExceptionsFilter());
   app.setGlobalPrefix("api");
 
   // F-12: jangan ekspos Swagger di produksi (membuka peta serangan).

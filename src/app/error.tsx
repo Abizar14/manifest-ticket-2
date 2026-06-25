@@ -7,6 +7,7 @@
  */
 
 import { useEffect } from "react";
+import * as Sentry from "@sentry/nextjs";
 import { AlertTriangle, RotateCw, Home } from "lucide-react";
 
 export default function Error({
@@ -17,7 +18,7 @@ export default function Error({
   reset: () => void;
 }) {
   useEffect(() => {
-    // TODO(observability): kirim ke Sentry/log terstruktur saat sudah dipasang.
+    Sentry.captureException(error); // no-op bila DSN belum diisi
     console.error("[AFVS] Runtime error:", error);
   }, [error]);
 

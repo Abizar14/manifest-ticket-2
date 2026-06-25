@@ -7,6 +7,7 @@
  */
 
 import { useEffect } from "react";
+import * as Sentry from "@sentry/nextjs";
 
 export default function GlobalError({
   error,
@@ -16,6 +17,7 @@ export default function GlobalError({
   reset: () => void;
 }) {
   useEffect(() => {
+    Sentry.captureException(error); // no-op bila DSN belum diisi
     console.error("[AFVS] Global error:", error);
   }, [error]);
 
