@@ -215,7 +215,8 @@ Manajemen petugas lewat UI (admin only) — menggantikan kebutuhan edit `seed.ts
 - **Set/Reset PIN** — PIN bisa diisi manual (4-6 digit) atau di-generate **acak** oleh server. PIN ditampilkan **sekali** setelah dibuat/di-reset (tombol salin) lalu disimpan ter-hash (bcrypt) — tidak bisa dilihat lagi.
 - **Anti-bentrok PIN** — server menolak PIN yang sudah dipakai petugas aktif lain (karena login-PIN mencocokkan PIN→petugas).
 - **Audit-safe** — petugas yang sudah punya riwayat scan tidak bisa di-hard-delete (diarahkan untuk dinonaktifkan saja); admin juga tidak bisa menghapus akunnya sendiri.
-- Endpoint: `GET/POST/PATCH/DELETE /operators` + `POST /operators/:id/pin` (semua role `admin`).
+- **Foto petugas** — upload/ganti/hapus foto dari form Tambah/Edit (JPEG/PNG/WebP, maks 2 MB). File disimpan di `UPLOAD_DIR/operators` dan disajikan **auth-gated** (`GET /operators/:id/photo`), bukan path publik. Avatar di grid/detail otomatis pakai foto upload (lingkaran `object-cover`); bila belum ada foto, fallback ke avatar kurasi/inisial.
+- Endpoint: `GET/POST/PATCH/DELETE /operators` + `POST /operators/:id/pin` + `POST/GET/DELETE /operators/:id/photo` (semua role `admin`).
 
 ---
 
@@ -260,7 +261,7 @@ src/
 │   ├── connect/             # Koneksi & sinkronisasi backend
 │   ├── admin/
 │   │   ├── scans/           # Dashboard scan server (gabungan 2 pos)
-│   │   └── officers/        # Kelola petugas AVSEC (CRUD + set/reset PIN)
+│   │   └── officers/        # Kelola petugas AVSEC (CRUD + set/reset PIN + foto)
 │   ├── scan/
 │   │   ├── kiosk/page.tsx    # Mode kiosk fullscreen
 │   │   └── page.tsx          # Scan standard
@@ -344,6 +345,12 @@ Ringkasan perubahan terbaru (lihat git log untuk detail):
   - _Catatan teknis:_ varian efek 3D pop-out/tilt sempat dicoba tetapi di-rollback
     karena `transform-style: preserve-3d` + `overflow-hidden` merusak layering di
     sebagian render. Versi `object-cover` dipilih karena robust.
+  - **Upload foto petugas per-akun** — kolom `Operator.photoPath` + endpoint
+    `POST/GET/DELETE /operators/:id/photo` (multipart, JPEG/PNG/WebP maks 2 MB,
+    disimpan di `UPLOAD_DIR/operators`, disajikan **auth-gated**). Form Tambah/Edit
+    punya pemilih foto + pratinjau + hapus; `StaffAvatar` pakai foto upload bila ada
+    (`getOperatorPhotoObjectUrl`), jika tidak fallback ke mapping `AVATAR_BY_EMAIL`/inisial.
+    Foto ikut terhapus saat petugas di-hard-delete.
 - **Snapshot jadwal FIDS → DB** — `POST /flights/sync` (upsert idempotent by
   `station+flightNumber+std`); tarik FIDS kini menyimpan jadwal harian sebagai riwayat.
 - **Keamanan PIN** — PIN bisa dipilih sendiri saat create/reset + guard tolak PIN lemah

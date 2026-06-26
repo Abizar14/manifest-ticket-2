@@ -170,6 +170,33 @@ const config: Config = {
           "0%, 100%": { transform: "scaleY(0.35)" },
           "50%": { transform: "scaleY(1)" },
         },
+        // Lineup masuk: SEMUA card animate bersamaan (tanpa stagger/delay-index).
+        // fade-in + slide-up + scale 0.9→1. fill `backwards` (bukan forwards) agar
+        // setelah selesai transform balik ke default → hover:-translate-y tetap jalan.
+        "lineup-in": {
+          "0%": { opacity: "0", transform: "translateY(18px) scale(0.9)" },
+          "100%": { opacity: "1", transform: "translateY(0) scale(1)" },
+        },
+        // Idle floating halus untuk avatar setelah lineup selesai.
+        "avatar-float": {
+          "0%, 100%": { transform: "translateY(0)" },
+          "50%": { transform: "translateY(-5px)" },
+        },
+        // Idle glow "breathing" di belakang avatar.
+        "glow-breath": {
+          "0%, 100%": { opacity: "0.45", transform: "scale(1)" },
+          "50%": { opacity: "0.85", transform: "scale(1.08)" },
+        },
+        // Pulse halus dot status hijau (aktif).
+        "dot-pulse": {
+          "0%, 100%": { transform: "scale(1)", boxShadow: "0 0 0 0 rgba(16,185,129,0.5)" },
+          "50%": { transform: "scale(1.12)", boxShadow: "0 0 0 6px rgba(16,185,129,0)" },
+        },
+        // Ticker info kiosk: track digandakan 2x, geser -50% → loop mulus.
+        marquee: {
+          "0%": { transform: "translateX(0)" },
+          "100%": { transform: "translateX(-50%)" },
+        },
       },
       animation: {
         "fade-up": "fade-up 0.5s ease-out both",
@@ -195,6 +222,11 @@ const config: Config = {
         "flash-once": "flash-once 0.35s ease-out forwards",
         "scan-line": "scan-line 2.4s ease-in-out infinite",
         wave: "wave 1.1s ease-in-out infinite",
+        "lineup-in": "lineup-in 1.2s cubic-bezier(0.2, 0.8, 0.2, 1) backwards",
+        "avatar-float": "avatar-float 4s ease-in-out infinite",
+        "glow-breath": "glow-breath 3.2s ease-in-out infinite",
+        "dot-pulse": "dot-pulse 2.2s ease-in-out infinite",
+        marquee: "marquee 38s linear infinite",
       },
     },
   },

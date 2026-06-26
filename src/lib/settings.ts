@@ -35,6 +35,9 @@ export interface AppSettings {
   ktpManualThreshold: number;
   ktpSavePhoto: boolean;
   ktpRequireForValid: boolean;
+  /** Mode kiosk "KTP dulu": kamera memindai KTP lebih dulu, lalu boarding pass
+   *  dicocokkan ke nama KTP. Tanpa capture wajah. */
+  ktpScanFirst: boolean;
 }
 
 const KEY = "afvs.settings";
@@ -89,6 +92,7 @@ const DEFAULTS: AppSettings = {
   ktpManualThreshold: 0.6,
   ktpSavePhoto: false,
   ktpRequireForValid: false,
+  ktpScanFirst: false,
 };
 
 function isBrowser() {

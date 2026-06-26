@@ -5,6 +5,8 @@ import {
   NotFoundException,
 } from "@nestjs/common";
 import { randomBytes, randomInt } from "crypto";
+import { existsSync } from "node:fs";
+import { unlink } from "node:fs/promises";
 import * as bcrypt from "bcryptjs";
 import { PrismaService } from "../prisma/prisma.service";
 import { pinLookupHash } from "../common/pin-lookup";
@@ -27,14 +29,19 @@ const SAFE_SELECT = {
   updatedAt: true,
 } as const;
 
-// Tambahan: tandai apakah operator punya PIN (untuk badge di UI), tanpa bocorkan hash.
-const SELECT_WITH_PIN_FLAG = { ...SAFE_SELECT, pinHash: true } as const;
+// Tambahan: tandai apakah operator punya PIN & foto (untuk badge/avatar di UI),
+// tanpa bocorkan hash atau path file di disk.
+const SELECT_WITH_FLAGS = {
+  ...SAFE_SELECT,
+  pinHash: true,
+  photoPath: true,
+} as const;
 
-type WithPinHash = { pinHash: string | null };
+type WithFlags = { pinHash: string | null; photoPath: string | null };
 
-function withHasPin<T extends WithPinHash>(op: T) {
-  const { pinHash, ...rest } = op;
-  return { ...rest, hasPin: Boolean(pinHash) };
+function withFlags<T extends WithFlags>(op: T) {
+  const { pinHash, photoPath, ...rest } = op;
+  return { ...rest, hasPin: Boolean(pinHash), hasPhoto: Boolean(photoPath) };
 }
 
 @Injectable()
@@ -54,9 +61,9 @@ export class OperatorsService {
     const items = await this.prisma.operator.findMany({
       where,
       orderBy: [{ active: "desc" }, { name: "asc" }],
-      select: SELECT_WITH_PIN_FLAG,
+      select: SELECT_WITH_FLAGS,
     });
-    return { items: items.map(withHasPin) };
+    return { items: items.map(withFlags) };
   }
 
   async create(dto: CreateOperatorDto) {
@@ -83,11 +90,11 @@ export class OperatorsService {
         pinLookup: pinLookupHash(pin), // P-05/P-06: lookup O(1)
         active: true,
       },
-      select: SELECT_WITH_PIN_FLAG,
+      select: SELECT_WITH_FLAGS,
     });
     // PIN (dan password bila digenerate) hanya dikembalikan SEKALI di sini.
     return {
-      operator: withHasPin(created),
+      operator: withFlags(created),
       pin,
       ...(dto.password ? {} : { password }),
     };
@@ -113,9 +120,9 @@ export class OperatorsService {
         ...(dto.station !== undefined && { station: dto.station || null }),
         ...(dto.active !== undefined && { active: dto.active }),
       },
-      select: SELECT_WITH_PIN_FLAG,
+      select: SELECT_WITH_FLAGS,
     });
-    return withHasPin(updated);
+    return withFlags(updated);
   }
 
   async setPin(id: string, dto: SetPinDto) {
@@ -138,6 +145,57 @@ export class OperatorsService {
     return { pin };
   }
 
+  /** Simpan foto petugas (file sudah ditulis ke disk oleh multer). Hapus foto lama bila beda path. */
+  async setPhoto(id: string, file: Express.Multer.File) {
+    const op = await this.prisma.operator.findUnique({ where: { id } });
+    if (!op) {
+      await this.safeUnlink(file.path); // operator tak ada → buang file yatim
+      throw new NotFoundException("Petugas tidak ditemukan.");
+    }
+    if (op.photoPath && op.photoPath !== file.path) {
+      await this.safeUnlink(op.photoPath);
+    }
+    const updated = await this.prisma.operator.update({
+      where: { id },
+      data: { photoPath: file.path },
+      select: SELECT_WITH_FLAGS,
+    });
+    return withFlags(updated);
+  }
+
+  /** Path foto petugas untuk disajikan (auth-gated). Null bila tak ada / file hilang. */
+  async getPhotoPath(id: string): Promise<string | null> {
+    const op = await this.prisma.operator.findUnique({
+      where: { id },
+      select: { photoPath: true },
+    });
+    if (!op?.photoPath || !existsSync(op.photoPath)) return null;
+    return op.photoPath;
+  }
+
+  /** Hapus foto petugas (file + kolom). */
+  async clearPhoto(id: string) {
+    const op = await this.prisma.operator.findUnique({ where: { id } });
+    if (!op) throw new NotFoundException("Petugas tidak ditemukan.");
+    if (op.photoPath) await this.safeUnlink(op.photoPath);
+    const updated = await this.prisma.operator.update({
+      where: { id },
+      data: { photoPath: null },
+      select: SELECT_WITH_FLAGS,
+    });
+    return withFlags(updated);
+  }
+
+  private async safeUnlink(path: string | null) {
+    if (path && existsSync(path)) {
+      try {
+        await unlink(path);
+      } catch {
+        /* file mungkin sudah hilang — abaikan */
+      }
+    }
+  }
+
   async remove(id: string, currentUserId: string) {
     if (id === currentUserId) {
       throw new BadRequestException("Tidak bisa menghapus akun sendiri.");
@@ -153,6 +211,7 @@ export class OperatorsService {
         `Petugas punya ${scans} riwayat scan — nonaktifkan saja (jangan hapus) agar audit tetap utuh.`,
       );
     }
+    await this.safeUnlink(op.photoPath); // buang foto agar tak jadi file yatim
     await this.prisma.operator.delete({ where: { id } });
     return { ok: true };
   }

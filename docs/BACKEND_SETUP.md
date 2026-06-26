@@ -56,6 +56,9 @@ Backend NestJS sudah **ter-install, ter-migrate, dan ter-seed** di folder [backe
 | POST   | `/api/operators`              | admin    | Tambah petugas → return `{operator, pin}`   |
 | PATCH  | `/api/operators/:id`          | admin    | Update nama/email/role/station/active       |
 | POST   | `/api/operators/:id/pin`      | admin    | Set/reset PIN — `{pin}` 4-6 digit (PIN pilihan, ditolak bila lemah) atau kosong = acak → `{pin}` |
+| POST   | `/api/operators/:id/photo`    | admin    | Upload/ganti foto petugas (multipart, field `photo`; JPEG/PNG/WebP, maks 2 MB) |
+| GET    | `/api/operators/:id/photo`    | admin    | Sajikan foto petugas (auth-gated)           |
+| DELETE | `/api/operators/:id/photo`    | admin    | Hapus foto petugas                          |
 | DELETE | `/api/operators/:id`          | admin    | Hapus petugas (blok bila punya riwayat scan)|
 | POST   | `/api/scan-events`            | Bearer   | Push scan (multipart, idempotent)           |
 | GET    | `/api/scan-events`            | Bearer   | List scans (filter)                         |

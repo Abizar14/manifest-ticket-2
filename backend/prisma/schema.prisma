@@ -26,6 +26,7 @@ model Operator {
   role         String   @default("operator")
   station      String?
   active       Boolean  @default(true)
+  photoPath    String?  // path foto petugas di disk (UPLOAD_DIR/operators) — disajikan auth-gated
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 

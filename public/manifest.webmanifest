@@ -1,6 +1,6 @@
 {
-  "name": "Airport Flight Validation System",
-  "short_name": "AFVS",
+  "name": "SIPANDAI — Sistem Validasi Boarding Pass",
+  "short_name": "SIPANDAI",
   "description": "Sistem validasi boarding pass berbasis barcode untuk operasi bandara.",
   "start_url": "/",
   "scope": "/",

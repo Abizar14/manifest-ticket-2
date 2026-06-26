@@ -5,14 +5,14 @@ import { Providers } from "@/components/providers/Providers";
 import { THEME_INIT_SCRIPT } from "@/lib/theme";
 
 export const metadata: Metadata = {
-  title: "Airport Flight Validation System",
+  title: "SIPANDAI — Sistem Validasi Boarding Pass",
   description:
     "Sistem validasi boarding pass berbasis barcode untuk operasi bandara.",
   manifest: "/manifest.webmanifest",
-  applicationName: "AFVS",
+  applicationName: "SIPANDAI",
   appleWebApp: {
     capable: true,
-    title: "AFVS",
+    title: "SIPANDAI",
     statusBarStyle: "black-translucent",
   },
   icons: {

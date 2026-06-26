@@ -1,5 +1,7 @@
 const { withSentryConfig } = require("@sentry/nextjs");
 
+const isProd = process.env.NODE_ENV === "production";
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
@@ -17,12 +19,15 @@ const nextConfig = {
   },
 
   // Buang console.* di production (kecuali error & warn) agar bundle lebih ramping.
-  compiler: {
-    removeConsole:
-      process.env.NODE_ENV === "production"
-        ? { exclude: ["error", "warn"] }
-        : false,
-  },
+  // Hanya disetel di production: Turbopack (next dev --turbo) belum mendukung
+  // compiler.removeConsole, jadi di dev key ini sengaja tidak ada.
+  ...(isProd
+    ? {
+        compiler: {
+          removeConsole: { exclude: ["error", "warn"] },
+        },
+      }
+    : {}),
 };
 
 // Bungkus dengan Sentry. Tanpa SENTRY_AUTH_TOKEN, upload source map dilewati

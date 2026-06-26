@@ -19,7 +19,7 @@ export default function Error({
 }) {
   useEffect(() => {
     Sentry.captureException(error); // no-op bila DSN belum diisi
-    console.error("[AFVS] Runtime error:", error);
+    console.error("[SIPANDAI] Runtime error:", error);
   }, [error]);
 
   return (

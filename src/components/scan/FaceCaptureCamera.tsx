@@ -71,6 +71,10 @@ interface Props {
   /** "default": status pill + face oval + live badge bawaan.
    *  "minimal": tanpa overlay bawaan — parent menambahkan HUD sendiri. */
   hudVariant?: "default" | "minimal";
+  /** Balik preview horizontal (efek cermin) agar terasa natural saat orang
+   *  menghadap kamera. HANYA tampilan; capture canvas tetap baca video mentah,
+   *  jadi foto tersimpan tidak ikut terbalik. */
+  mirror?: boolean;
 }
 
 interface VideoDevice {
@@ -94,6 +98,7 @@ export const FaceCaptureCamera = React.forwardRef<FaceCaptureHandle, Props>(
       showDevicePicker = false,
       onDeviceChange,
       hudVariant = "default",
+      mirror = false,
     },
     ref,
   ) {
@@ -665,7 +670,9 @@ export const FaceCaptureCamera = React.forwardRef<FaceCaptureHandle, Props>(
       >
         <video
           ref={videoRef}
-          className="h-full w-full object-cover"
+          // mirror: balik tampilan saja (efek cermin). Capture canvas pakai
+          // videoRef mentah → foto tersimpan TIDAK ikut terbalik.
+          className={cn("h-full w-full object-cover", mirror && "-scale-x-100")}
           muted
           playsInline
         />

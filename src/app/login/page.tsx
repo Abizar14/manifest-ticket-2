@@ -157,10 +157,10 @@ export default function LoginPage() {
           </div>
           <div>
             <p className="text-[11px] font-semibold uppercase tracking-[0.25em] text-white/70">
-              AFVS
+              SIPANDAI
             </p>
             <p className="text-lg font-bold tracking-tight">
-              Airport Flight Validation
+              Sistem Validasi Boarding Pass
             </p>
           </div>
         </div>
@@ -217,7 +217,7 @@ export default function LoginPage() {
         </div>
 
         <p className="text-xs text-white/50">
-          © {new Date().getFullYear()} AFVS — Internal Operation Tool.
+          © {new Date().getFullYear()} SIPANDAI — Internal Operation Tool.
         </p>
       </div>
 
@@ -231,13 +231,13 @@ export default function LoginPage() {
               <span className="absolute -right-1 -top-1 h-3 w-3 animate-pulse-glow-emerald rounded-full bg-emerald-400" />
             </div>
             <p className="mt-3 text-[11px] font-semibold uppercase tracking-[0.25em] text-white/70 animate-fade-up">
-              AFVS
+              SIPANDAI
             </p>
             <h1
               className="mt-1 animate-fade-up text-2xl font-black tracking-tight"
               style={{ animationDelay: "120ms" }}
             >
-              Airport Flight Validation
+              Sistem Validasi Boarding Pass
             </h1>
             <p
               className="mt-1 max-w-xs animate-fade-up text-xs text-white/65"
@@ -515,7 +515,7 @@ export default function LoginPage() {
           </div>
 
           <p className="mt-4 text-center text-[11px] text-white/40">
-            © {new Date().getFullYear()} AFVS — Internal Operation Tool.
+            © {new Date().getFullYear()} SIPANDAI — Internal Operation Tool.
           </p>
         </div>
       </div>

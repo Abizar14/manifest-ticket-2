@@ -132,7 +132,17 @@ function parseKtpName(rawText: string): string | null {
       .toUpperCase();
     // Buang label field yang kadang ikut terbaca ("NAMA PRAYUDA…" → "PRAYUDA…").
     s = s.replace(/^(NAMA|NAME|NIK)\b[\s:.'-]*/g, "").trim();
-    return s;
+    // Buang token sampah di ujung (mis. "AA PRAYUDA ELFANDRO J" → "PRAYUDA
+    // ELFANDRO"): potongan label/garis yang nyangkut biasanya 1-2 huruf.
+    // Hanya trim bila masih ada >=2 token "berbobot" (>=3 huruf) supaya nama
+    // pendek sah seperti "ST FATIMAH" tidak ikut terpotong.
+    const tokens = s.split(" ").filter(Boolean);
+    const longCount = tokens.filter((t) => t.length >= 3).length;
+    if (longCount >= 2) {
+      while (tokens.length > 2 && tokens[tokens.length - 1].length <= 2) tokens.pop();
+      while (tokens.length > 2 && tokens[0].length <= 2) tokens.shift();
+    }
+    return tokens.join(" ");
   };
 
   // 1. Cari label "Nama" eksplisit (OCR kadang baca "Narna", "Nema", dll).

@@ -445,6 +445,7 @@ export interface ApiOperator {
   station: string | null;
   active: boolean;
   hasPin: boolean;
+  hasPhoto: boolean; // foto petugas sudah di-upload (disajikan via GET /operators/:id/photo)
   createdAt: string;
   updatedAt: string;
 }
@@ -548,6 +549,58 @@ export async function apiDeleteOperator(
     return { ok: true, status: res.status, data: body as { ok: true } };
   } catch (e) {
     return { ok: false, error: errMsg(e) };
+  }
+}
+
+/** Upload/ganti foto petugas (multipart). Return operator terbaru (hasPhoto: true). */
+export async function apiSetOperatorPhoto(
+  id: string,
+  file: File | Blob,
+): Promise<ApiResult<ApiOperator>> {
+  try {
+    const fd = new FormData();
+    // Sertakan nama asli (dengan ekstensi) agar server simpan ext benar &
+    // serve Content-Type yang cocok. Blob tanpa nama → tebak dari MIME type.
+    const ext = file.type === "image/png" ? "png" : file.type === "image/webp" ? "webp" : "jpg";
+    const filename = file instanceof File && file.name ? file.name : `photo.${ext}`;
+    fd.set("photo", file, filename);
+    const res = await authedFetch(`/operators/${id}/photo`, {
+      method: "POST",
+      body: fd,
+    });
+    const body = await readJson(res);
+    if (!res.ok) return { ok: false, status: res.status, error: httpError(res.status, body) };
+    return { ok: true, status: res.status, data: body as ApiOperator };
+  } catch (e) {
+    return { ok: false, error: errMsg(e) };
+  }
+}
+
+/** Hapus foto petugas. Return operator terbaru (hasPhoto: false). */
+export async function apiDeleteOperatorPhoto(
+  id: string,
+): Promise<ApiResult<ApiOperator>> {
+  try {
+    const res = await authedFetch(`/operators/${id}/photo`, { method: "DELETE" });
+    const body = await readJson(res);
+    if (!res.ok) return { ok: false, status: res.status, error: httpError(res.status, body) };
+    return { ok: true, status: res.status, data: body as ApiOperator };
+  } catch (e) {
+    return { ok: false, error: errMsg(e) };
+  }
+}
+
+/** Ambil foto petugas (auth-gated) sebagai object URL untuk <img>. Null jika tak ada. */
+export async function getOperatorPhotoObjectUrl(
+  id: string,
+): Promise<string | null> {
+  try {
+    const res = await authedFetch(`/operators/${id}/photo`);
+    if (!res.ok) return null;
+    const blob = await res.blob();
+    return URL.createObjectURL(blob);
+  } catch {
+    return null;
   }
 }
 

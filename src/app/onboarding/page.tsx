@@ -40,7 +40,7 @@ export default function OnboardingPage() {
           Selamat Datang
           <br />
           <span className="bg-gradient-to-r from-sky-300 via-cyan-200 to-blue-300 bg-clip-text text-transparent">
-            di AFVS
+            di SIPANDAI
           </span>
         </>
       ),
@@ -170,9 +170,9 @@ export default function OnboardingPage() {
             <span className="absolute -right-1 -top-1 h-2.5 w-2.5 animate-pulse rounded-full bg-emerald-400 ring-2 ring-slate-950" />
           </div>
           <p className="mt-1.5 text-[10px] font-bold uppercase tracking-[0.22em] text-white/70">
-            AFVS
+            SIPANDAI
           </p>
-          <p className="text-[11px] text-white/55">Airport Flight Validation</p>
+          <p className="text-[11px] text-white/55">Sistem Validasi Boarding Pass</p>
         </div>
 
         {/* Title */}

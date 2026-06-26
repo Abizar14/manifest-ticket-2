@@ -1,8 +1,11 @@
 /**
- * Seeder boarding pass — 5 per maskapai (GA, JT, QZ, SJ, ID) = 25 total.
- * Setiap entry terkait dengan flight di mockData (buildSeedFlights).
- * Payload barcode = FLIGHT|PNR|TICKET|SEAT.
+ * Seeder boarding pass — terkait dengan flight di mockData (buildSeedFlights).
+ * Payload barcode = FLIGHT|PNR|TICKET|SEAT|NAMA.
  */
+
+import { Flight } from "./types";
+import { addFlight, getFlights, updateFlight } from "./storage";
+import { todayDateString, uid } from "./utils";
 
 export interface SeedBoardingPass {
   id: string;
@@ -461,9 +464,223 @@ export const SEED_BOARDING_PASSES: SeedBoardingPass[] = [
     boardingTime: "18:50",
     dateRef: "today",
   },
+
+  // ---- CITILINK (QG) — 5 ----
+  {
+    id: "bp-qg-001",
+    airlineCode: "QG",
+    flightNumber: "QG682",
+    origin: "CGK",
+    originCity: "Jakarta",
+    destination: "PDG",
+    destinationCity: "Padang",
+    passengerName: "Wahyu Saputra",
+    seat: "6A",
+    pnr: "QG11AA",
+    ticket: "990026",
+    cabinClass: "Economy",
+    gate: "B1",
+    boardingTime: "07:20",
+    dateRef: "today",
+  },
+  {
+    id: "bp-qg-002",
+    airlineCode: "QG",
+    flightNumber: "QG682",
+    origin: "CGK",
+    originCity: "Jakarta",
+    destination: "PDG",
+    destinationCity: "Padang",
+    passengerName: "Lestari Ningsih",
+    seat: "10C",
+    pnr: "QG22BB",
+    ticket: "990027",
+    cabinClass: "Economy",
+    gate: "B1",
+    boardingTime: "07:20",
+    dateRef: "today",
+  },
+  {
+    id: "bp-qg-003",
+    airlineCode: "QG",
+    flightNumber: "QG682",
+    origin: "CGK",
+    originCity: "Jakarta",
+    destination: "PDG",
+    destinationCity: "Padang",
+    passengerName: "Fajar Ramadhan",
+    seat: "14F",
+    pnr: "QG33CC",
+    ticket: "990028",
+    cabinClass: "Economy",
+    gate: "B1",
+    boardingTime: "07:20",
+    dateRef: "today",
+  },
+  {
+    id: "bp-qg-004",
+    airlineCode: "QG",
+    flightNumber: "QG420",
+    origin: "CGK",
+    originCity: "Jakarta",
+    destination: "JOG",
+    destinationCity: "Yogyakarta",
+    passengerName: "Mega Wulandari",
+    seat: "2B",
+    pnr: "QG44DD",
+    ticket: "990029",
+    cabinClass: "Economy",
+    gate: "B2",
+    boardingTime: "11:15",
+    dateRef: "today",
+  },
+  {
+    id: "bp-qg-005",
+    airlineCode: "QG",
+    flightNumber: "QG420",
+    origin: "CGK",
+    originCity: "Jakarta",
+    destination: "JOG",
+    destinationCity: "Yogyakarta",
+    passengerName: "Doni Kurniawan",
+    seat: "19A",
+    pnr: "QG55EE",
+    ticket: "990030",
+    cabinClass: "Economy",
+    gate: "B2",
+    boardingTime: "11:15",
+    dateRef: "today",
+  },
+
+  // ---- SUPER AIR JET (IU) — 5 ----
+  {
+    id: "bp-iu-001",
+    airlineCode: "IU",
+    flightNumber: "IU737",
+    origin: "CGK",
+    originCity: "Jakarta",
+    destination: "DPS",
+    destinationCity: "Denpasar",
+    passengerName: "Gilang Permadi",
+    seat: "8D",
+    pnr: "IU11FA",
+    ticket: "990031",
+    cabinClass: "Economy",
+    gate: "C1",
+    boardingTime: "10:05",
+    dateRef: "today",
+  },
+  {
+    id: "bp-iu-002",
+    airlineCode: "IU",
+    flightNumber: "IU737",
+    origin: "CGK",
+    originCity: "Jakarta",
+    destination: "DPS",
+    destinationCity: "Denpasar",
+    passengerName: "Anisa Rahmawati",
+    seat: "13B",
+    pnr: "IU22GB",
+    ticket: "990032",
+    cabinClass: "Economy",
+    gate: "C1",
+    boardingTime: "10:05",
+    dateRef: "today",
+  },
+  {
+    id: "bp-iu-003",
+    airlineCode: "IU",
+    flightNumber: "IU737",
+    origin: "CGK",
+    originCity: "Jakarta",
+    destination: "DPS",
+    destinationCity: "Denpasar",
+    passengerName: "Hafidz Maulana",
+    seat: "21C",
+    pnr: "IU33HC",
+    ticket: "990033",
+    cabinClass: "Economy",
+    gate: "C1",
+    boardingTime: "10:05",
+    dateRef: "today",
+  },
+  {
+    id: "bp-iu-004",
+    airlineCode: "IU",
+    flightNumber: "IU212",
+    origin: "CGK",
+    originCity: "Jakarta",
+    destination: "LOP",
+    destinationCity: "Lombok",
+    passengerName: "Salsabila Putri",
+    seat: "4E",
+    pnr: "IU44ID",
+    ticket: "990034",
+    cabinClass: "Economy",
+    gate: "C3",
+    boardingTime: "15:40",
+    dateRef: "today",
+  },
+  {
+    id: "bp-iu-005",
+    airlineCode: "IU",
+    flightNumber: "IU212",
+    origin: "CGK",
+    originCity: "Jakarta",
+    destination: "LOP",
+    destinationCity: "Lombok",
+    passengerName: "Rangga Saputra",
+    seat: "16A",
+    pnr: "IU55JE",
+    ticket: "990035",
+    cabinClass: "Economy",
+    gate: "C3",
+    boardingTime: "15:40",
+    dateRef: "today",
+  },
 ];
 
 export function buildPayload(bp: SeedBoardingPass): string {
   const safeName = bp.passengerName.replace(/\|/g, " ").toUpperCase();
   return `${bp.flightNumber}|${bp.pnr}|${bp.ticket}|${bp.seat}|${safeName}`;
+}
+
+/**
+ * Pastikan flight untuk boarding pass demo ADA di storage & sedang boarding
+ * (jadwal HARI INI, status ACTIVE, STD ≈ sekarang) supaya Demo Scan menghasilkan
+ * VALID — bukan UNKNOWN_FLIGHT saat belum ada jadwal di-seed.
+ * Upsert by flightNumber + tanggal hari ini. Dipakai khusus mode demo/kiosk.
+ */
+export function ensureDemoBoardingFlight(bp: SeedBoardingPass): void {
+  const today = todayDateString();
+  const now = new Date();
+  const hhmm = `${String(now.getHours()).padStart(2, "0")}:${String(
+    now.getMinutes(),
+  ).padStart(2, "0")}`;
+  const existing = getFlights().find(
+    (f) =>
+      f.flightNumber.toUpperCase() === bp.flightNumber.toUpperCase() &&
+      f.departureDate === today,
+  );
+  if (existing) {
+    // Jamin boardable: STD ≈ sekarang + status ACTIVE (final call).
+    updateFlight(existing.id, { status: "ACTIVE", departureTime: hhmm });
+    return;
+  }
+  const iso = now.toISOString();
+  const flight: Flight = {
+    id: uid("flt"),
+    flightNumber: bp.flightNumber,
+    airlineCode: bp.airlineCode,
+    originAirport: bp.origin,
+    destinationAirport: bp.destination,
+    departureDate: today,
+    departureTime: hhmm,
+    gateOrCheckpoint: bp.gate,
+    status: "ACTIVE",
+    expectedPax: 80,
+    createdAt: iso,
+    updatedAt: iso,
+  };
+  addFlight(flight);
 }

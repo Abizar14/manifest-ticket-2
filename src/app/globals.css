@@ -891,3 +891,17 @@ body {
 :root[data-theme="dark"] .border-indigo-200 {
   border-color: rgb(var(--hairline));
 }
+
+/* Hormati prefers-reduced-motion. Idle yang berulang (float/glow/pulse) dimatikan
+   agar tidak memicu vestibular; tapi entrance tetap diberi fade-in opacity-only
+   (tanpa transform/scale) supaya reveal-nya tetap terlihat & tidak terasa "mati". */
+@media (prefers-reduced-motion: reduce) {
+  .animate-avatar-float,
+  .animate-glow-breath,
+  .animate-dot-pulse {
+    animation: none !important;
+  }
+  .animate-lineup-in {
+    animation: fade-in 0.4s ease-out backwards !important;
+  }
+}

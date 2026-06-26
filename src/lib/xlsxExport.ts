@@ -105,7 +105,7 @@ function unwrap(cell: XlsxCell): {
 export async function downloadXlsx(options: XlsxExportOptions): Promise<void> {
   const ExcelJS = (await import("exceljs")).default;
   const wb = new ExcelJS.Workbook();
-  wb.creator = "AFVS";
+  wb.creator = "SIPANDAI";
   wb.created = new Date();
 
   const sheetName = (options.sheetName ?? "Data").slice(0, 31);
@@ -325,7 +325,7 @@ export async function downloadXlsx(options: XlsxExportOptions): Promise<void> {
   ];
 
   // ── Print options ──
-  ws.headerFooter.oddHeader = `&L&"Calibri,Bold"&14${options.title}&R&"Calibri,Italic"&10AFVS`;
+  ws.headerFooter.oddHeader = `&L&"Calibri,Bold"&14${options.title}&R&"Calibri,Italic"&10SIPANDAI`;
   ws.headerFooter.oddFooter = `&LDicetak: ${new Date().toLocaleString("id-ID")}&RHal &P / &N`;
 
   // Reference dataStart so noUnusedLocals doesn't complain (also useful

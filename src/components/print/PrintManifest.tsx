@@ -36,9 +36,9 @@ export function PrintManifest({
       {/* Top brand strip */}
       <div className="pm-strip">
         <div className="pm-brand">
-          <div className="pm-brand-mark">AFVS</div>
+          <div className="pm-brand-mark">SIPANDAI</div>
           <div className="pm-brand-meta">
-            <div className="pm-brand-name">Airport Flight Validation System</div>
+            <div className="pm-brand-name">SIPANDAI — Sistem Validasi Boarding Pass</div>
             <div className="pm-brand-sub">Manifest Penumpang — Boarding Record</div>
           </div>
         </div>
@@ -171,7 +171,7 @@ export function PrintManifest({
       </div>
 
       <div className="pm-printed-meta">
-        Dicetak: {printedAt} · Dokumen ini dihasilkan otomatis oleh sistem AFVS.
+        Dicetak: {printedAt} · Dokumen ini dihasilkan otomatis oleh sistem SIPANDAI.
       </div>
     </div>
   );

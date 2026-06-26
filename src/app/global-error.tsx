@@ -18,7 +18,7 @@ export default function GlobalError({
 }) {
   useEffect(() => {
     Sentry.captureException(error); // no-op bila DSN belum diisi
-    console.error("[AFVS] Global error:", error);
+    console.error("[SIPANDAI] Global error:", error);
   }, [error]);
 
   return (

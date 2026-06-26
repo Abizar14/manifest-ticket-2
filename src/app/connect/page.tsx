@@ -184,7 +184,7 @@ export default function ConnectPage() {
                 Koneksi Backend
               </div>
               <h2 className="mt-3 text-2xl font-extrabold tracking-tight text-ink">
-                Sinkronisasi ke Backend AFVS
+                Sinkronisasi ke Backend SIPANDAI
               </h2>
               <p className="mt-1.5 text-sm leading-6 text-ink-muted">
                 Login ke server NestJS untuk push scan event + tarik jadwal

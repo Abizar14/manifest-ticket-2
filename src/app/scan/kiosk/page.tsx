@@ -30,6 +30,8 @@ import {
   CloudOff,
   Loader2,
   Settings,
+  Megaphone,
+  IdCard,
 } from "lucide-react";
 import Image from "next/image";
 import { cn } from "@/lib/utils";
@@ -41,7 +43,11 @@ import {
 import { Modal } from "@/components/ui/Modal";
 import { getAirlineMeta } from "@/lib/airlines";
 import { AirlineLogo } from "@/components/ui/AirlineLogo";
-import { SEED_BOARDING_PASSES } from "@/lib/seedBoardingPasses";
+import {
+  SEED_BOARDING_PASSES,
+  buildPayload,
+  ensureDemoBoardingFlight,
+} from "@/lib/seedBoardingPasses";
 import { useToast } from "@/components/ui/Toast";
 import {
   getSession,
@@ -71,13 +77,29 @@ import {
   type AppSettings,
 } from "@/lib/settings";
 import { setTheme } from "@/lib/theme";
+import { recognizeKtp, initKtpOcr } from "@/lib/ktpOcr";
+import { similarity } from "@/lib/nameMatch";
 import type {
   Flight,
+  KtpVerification,
   ParsedBarcode,
   ScanEvent,
   ScanResultStatus,
   SessionUser,
 } from "@/lib/types";
+
+// KTP-first: parameter pemindaian KTP di kamera utama (samakan dgn KtpVerifyModal).
+const KTP_NAME_CROP = { x: 0.08, y: 0.1, w: 0.68, h: 0.46 };
+const KTP_CAPTURE_ASPECT = 1280 / 800;
+const KTP_SHARP_THRESHOLD = 90; // > 90 = tajam
+const KTP_PENDING_TTL_MS = 45_000; // identitas KTP kedaluwarsa bila tak ada scan
+
+type PendingKtp = {
+  name: string;
+  rawText: string;
+  photoUrl: string;
+  capturedAt: number;
+};
 
 interface LastResult {
   event: ScanEvent;
@@ -299,6 +321,11 @@ export default function KioskPage() {
   const cameraRef = React.useRef<FaceCaptureHandle>(null);
   const lastFaceUrlRef = React.useRef<string | null>(null);
 
+  // Gerbang hidrasi: halaman kiosk bergantung penuh ke localStorage (settings,
+  // session, tema) → render server (default) bisa beda dgn client → mismatch.
+  // Tunda render UI sampai mounted di client supaya server & client awal sama.
+  const [mounted, setMounted] = React.useState(false);
+  React.useEffect(() => setMounted(true), []);
   const [session, setSession] = React.useState<SessionUser | null>(null);
   const [settings, setSettings] = React.useState<AppSettings>(getSettings());
   const [value, setValue] = React.useState("");
@@ -318,7 +345,15 @@ export default function KioskPage() {
   } | null>(null);
   const [faceState, setFaceState] = React.useState<FaceState>("unknown");
   const [faceDetectorSupported, setFaceDetectorSupported] = React.useState(false);
-  const [sessionStats, setSessionStats] = React.useState<{
+  // KTP-first: identitas KTP yang sudah terbaca, menunggu boarding pass.
+  const [pendingKtp, setPendingKtp] = React.useState<PendingKtp | null>(null);
+  const pendingKtpRef = React.useRef<PendingKtp | null>(null);
+  React.useEffect(() => {
+    pendingKtpRef.current = pendingKtp;
+  }, [pendingKtp]);
+  // Stats sesi tetap dihitung internal (untuk reset), tapi tidak ditampilkan lagi
+  // di header — binding nilai sengaja di-skip agar tak jadi variabel menggantung.
+  const [, setSessionStats] = React.useState<{
     valid: number;
     duplicate: number;
     rejected: number;
@@ -340,6 +375,8 @@ export default function KioskPage() {
 
   const keyTimesRef = React.useRef<number[]>([]);
   const submittingRef = React.useRef(false);
+  // Barcode demo terakhir — dipakai untuk mengulang pass yang sama (uji duplikat).
+  const lastDemoRawRef = React.useRef<string | null>(null);
 
   const isDark = settings.theme === "dark";
 
@@ -400,6 +437,90 @@ export default function KioskPage() {
       window.removeEventListener("focus", onFocus);
     };
   }, []);
+
+  // KTP-first: warm-up OCR engine saat mode dinyalakan (hindari lag baca pertama).
+  React.useEffect(() => {
+    if (settings.ktpScanFirst) initKtpOcr().catch(() => {});
+  }, [settings.ktpScanFirst]);
+
+  // KTP-first: loop pindai KTP di kamera utama saat idle (belum ada identitas &
+  // belum scan). Saat NAMA terbaca → kunci sebagai identitas pending lalu berhenti.
+  React.useEffect(() => {
+    if (!settings.ktpScanFirst) return;
+    if (!settings.faceCaptureEnabled) return; // butuh kamera hidup
+    if (pendingKtp) return; // sudah ada identitas → tunggu boarding pass
+    if (modalOpen || ktpFlow) return; // jangan ganggu saat modal hasil terbuka
+    let cancelled = false;
+    const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+    const run = async () => {
+      while (!cancelled) {
+        if (submittingRef.current) {
+          await sleep(250);
+          continue;
+        }
+        const cam = cameraRef.current;
+        if (!cam || !cam.isReady()) {
+          await sleep(250);
+          continue;
+        }
+        const sharp = () =>
+          cam.measureSharpness?.({
+            region: KTP_NAME_CROP,
+            aspect: KTP_CAPTURE_ASPECT,
+          }) ?? 0;
+        if (sharp() < KTP_SHARP_THRESHOLD) {
+          await sleep(160);
+          continue;
+        }
+        await sleep(110); // konfirmasi steady (anti motion-blur)
+        if (cancelled) return;
+        if (sharp() < KTP_SHARP_THRESHOLD) continue;
+        const blob = await cam.captureFrame({
+          width: 1280,
+          height: 800,
+          quality: 0.95,
+          burst: 1,
+        });
+        if (cancelled) return;
+        if (!blob) {
+          await sleep(180);
+          continue;
+        }
+        let res: { rawText: string; name: string | null };
+        try {
+          res = await recognizeKtp(blob, { cropRect: KTP_NAME_CROP });
+        } catch {
+          res = { rawText: "", name: null };
+        }
+        if (cancelled) return;
+        if (res.name) {
+          const url = URL.createObjectURL(blob);
+          setPendingKtp({
+            name: res.name,
+            rawText: res.rawText,
+            photoUrl: url,
+            capturedAt: Date.now(),
+          });
+          return; // berhenti; lanjut menunggu scan boarding pass
+        }
+        await sleep(200);
+      }
+    };
+    run();
+    return () => {
+      cancelled = true;
+    };
+  }, [settings.ktpScanFirst, settings.faceCaptureEnabled, pendingKtp, modalOpen, ktpFlow]);
+
+  // KTP-first: identitas pending kedaluwarsa setelah TTL bila tak ada scan.
+  React.useEffect(() => {
+    if (!pendingKtp) return;
+    const t = window.setTimeout(() => {
+      URL.revokeObjectURL(pendingKtp.photoUrl);
+      setPendingKtp(null);
+    }, KTP_PENDING_TTL_MS);
+    return () => window.clearTimeout(t);
+  }, [pendingKtp]);
 
   React.useEffect(() => {
     const t = window.setInterval(() => {
@@ -504,6 +625,114 @@ export default function KioskPage() {
     }
     submittingRef.current = true;
 
+    // === Mode KTP-first: nama boarding pass dicocokkan ke KTP yang sudah dipindai
+    // di kamera utama. Tanpa capture wajah, tanpa modal KTP (inline). ===
+    if (settings.ktpScanFirst) {
+      try {
+        const { outcome, event } = processScan(raw, session.email);
+        const pending = pendingKtpRef.current;
+        const expectedName = outcome.parsed?.passengerName ?? null;
+        let finalStatus = outcome.status;
+        let finalMessage = outcome.message;
+
+        if (outcome.status === "VALID_FLIGHT") {
+          if (pending && expectedName) {
+            const sim = similarity(pending.name, expectedName);
+            const matched = sim >= settings.ktpAutoPassThreshold;
+            const ktpRes: KtpVerification = {
+              status: matched ? "matched" : "mismatch",
+              ocrName: pending.name,
+              rawText: pending.rawText,
+              similarity: sim,
+              capturedAt: new Date(pending.capturedAt).toISOString(),
+            };
+            updateScanEvent(event.id, { ktpVerification: ktpRes });
+            event.ktpVerification = ktpRes;
+            // Mode KTP-first: nama WAJIB cocok. Tidak cocok → tolak (apa pun
+            // setting ktpRequireForValid, karena pencocokan ini inti mode-nya).
+            if (!matched) {
+              finalStatus = "KTP_MISMATCH";
+              finalMessage = `Ditolak: nama KTP (${pending.name}) tidak cocok dengan boarding pass (${expectedName}).`;
+              updateScanEvent(event.id, {
+                resultStatus: finalStatus,
+                message: finalMessage,
+              });
+              event.resultStatus = finalStatus;
+              event.message = finalMessage;
+            }
+          } else {
+            // Boarding pass valid tapi KTP belum dipindai → wajib di mode ini.
+            finalStatus = "KTP_MISMATCH";
+            finalMessage =
+              "Ditolak: KTP belum dipindai. Tunjukkan KTP ke kamera lebih dulu.";
+            updateScanEvent(event.id, {
+              resultStatus: finalStatus,
+              message: finalMessage,
+            });
+            event.resultStatus = finalStatus;
+            event.message = finalMessage;
+          }
+        }
+
+        // Audio hasil scan (berhasil/gagal) dimatikan — cukup getar + visual.
+        playFeedbackHaptic(finalStatus);
+        setSessionStats((prev) =>
+          finalStatus === "VALID_FLIGHT"
+            ? { ...prev, valid: prev.valid + 1 }
+            : finalStatus === "DUPLICATE_SCAN"
+              ? { ...prev, duplicate: prev.duplicate + 1 }
+              : { ...prev, rejected: prev.rejected + 1 },
+        );
+        if (finalStatus === "VALID_FLIGHT") {
+          toast.success(
+            `${outcome.flight?.flightNumber ?? "Flight"} · ${
+              pending ? "identitas terverifikasi" : "tanpa KTP"
+            }`,
+            "Valid",
+          );
+        } else if (finalStatus === "DUPLICATE_SCAN") {
+          toast.warning(finalMessage, "Duplicate");
+        } else {
+          toast.error(finalMessage, "Ditolak");
+        }
+
+        // Foto KTP dipakai sebagai gambar hasil — alihkan kepemilikan URL ke
+        // lastFaceUrlRef (jangan revoke saat clear pendingKtp).
+        if (lastFaceUrlRef.current) {
+          URL.revokeObjectURL(lastFaceUrlRef.current);
+          lastFaceUrlRef.current = null;
+        }
+        const ktpPhotoUrl = pending?.photoUrl ?? null;
+        lastFaceUrlRef.current = ktpPhotoUrl;
+
+        setLast({
+          event,
+          flight: outcome.flight,
+          parsed: outcome.parsed,
+          flightNumber:
+            outcome.flight?.flightNumber ?? outcome.parsed?.flightNumber ?? null,
+          seat: outcome.parsed?.seatNumber ?? null,
+          passengerName: outcome.parsed?.passengerName ?? null,
+          route: outcome.flight
+            ? `${outcome.flight.originAirport} → ${outcome.flight.destinationAirport}`
+            : null,
+          faceUrl: ktpPhotoUrl,
+        });
+        const all = getScanEvents();
+        setRecent(all.slice(0, 6));
+        const today = new Date().toISOString().slice(0, 10);
+        setTodayScans(all.filter((e) => e.scannedAt.slice(0, 10) === today));
+        setTodayFlights(getFlights().filter((f) => f.departureDate === today));
+        setModalOpen(true);
+        setPendingKtp(null); // URL kini dimiliki lastFaceUrlRef → jangan revoke
+        setValue("");
+        setTimeout(() => inputRef.current?.focus(), 0);
+      } finally {
+        submittingRef.current = false;
+      }
+      return;
+    }
+
     const captureEnabled = Boolean(
       settings.faceCaptureEnabled && cameraRef.current?.isReady(),
     );
@@ -551,7 +780,7 @@ export default function KioskPage() {
       const requireKtpGate = willOpenKtp && settings.ktpRequireForValid;
 
       if (!requireKtpGate) {
-        playFeedbackSound(outcome.status);
+        // Audio hasil scan (berhasil/gagal) dimatikan — cukup getar + visual.
         playFeedbackHaptic(outcome.status);
 
         setSessionStats((prev) => {
@@ -621,6 +850,15 @@ export default function KioskPage() {
   };
   const toggleTheme = () => setTheme(isDark ? "airport" : "dark");
   const toggleSound = () => saveSettings({ soundOn: !settings.soundOn });
+  const toggleKtp = () =>
+    saveSettings({ ktpVerifyEnabled: !settings.ktpVerifyEnabled });
+  const toggleKtpFirst = () => {
+    if (pendingKtp) {
+      URL.revokeObjectURL(pendingKtp.photoUrl);
+      setPendingKtp(null);
+    }
+    saveSettings({ ktpScanFirst: !settings.ktpScanFirst });
+  };
 
   const onForceSync = async () => {
     if (syncing) return;
@@ -653,6 +891,10 @@ export default function KioskPage() {
       URL.revokeObjectURL(lastFaceUrlRef.current);
       lastFaceUrlRef.current = null;
     }
+    if (pendingKtp) {
+      URL.revokeObjectURL(pendingKtp.photoUrl);
+      setPendingKtp(null);
+    }
     toast.success("Stats & riwayat tampilan dikosongkan", "Reset");
     setTimeout(() => inputRef.current?.focus(), 0);
   };
@@ -661,9 +903,27 @@ export default function KioskPage() {
     if (demoLoading || submittingRef.current) return;
     setDemoLoading(true);
     try {
+      // Kalau scan demo barusan VALID → klik berikutnya MENGULANG pass yang sama
+      // (barcode identik) supaya menghasilkan DUPLICATE. Klik setelahnya acak lagi.
+      if (
+        lastDemoRawRef.current &&
+        last?.event.resultStatus === "VALID_FLIGHT"
+      ) {
+        await submit(lastDemoRawRef.current);
+        return;
+      }
       const pick =
         SEED_BOARDING_PASSES[Math.floor(Math.random() * SEED_BOARDING_PASSES.length)];
-      const raw = `${pick.flightNumber}|${pick.pnr}|${pick.ticket}|${pick.seat}|${pick.passengerName}`;
+      // Pastikan flight-nya ada & sedang boarding hari ini → hasil demo VALID
+      // (bukan UNKNOWN_FLIGHT saat belum ada jadwal di-seed).
+      ensureDemoBoardingFlight(pick);
+      // Segarkan panel "FLIGHT AKTIF · BOARDING" tanpa tunggu polling 5 dtk.
+      const today = new Date().toISOString().slice(0, 10);
+      const todays = getFlights().filter((f) => f.departureDate === today);
+      setTodayFlights(todays);
+      setFlightsToday(todays.length);
+      const raw = buildPayload(pick);
+      lastDemoRawRef.current = raw;
       await submit(raw);
     } finally {
       setDemoLoading(false);
@@ -672,6 +932,11 @@ export default function KioskPage() {
 
   const lastMeta = last ? STATUS_META[last.event.resultStatus] : null;
   const captureEnabledUi = settings.faceCaptureEnabled;
+
+  // Sebelum mounted: render shell kosong (sama di server & client) → no mismatch.
+  if (!mounted) {
+    return <div className="h-screen bg-[#eef3fb] dark:bg-[#0a1226]" />;
+  }
 
   return (
     <div
@@ -705,8 +970,13 @@ export default function KioskPage() {
       {/* Header */}
       <header className="relative z-30 flex items-center justify-between px-6 py-3">
         <div className="flex items-center gap-3">
-          <span className="relative inline-flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-cyan-400 to-blue-600 text-white shadow-lg shadow-cyan-500/30">
-            <ShieldCheck className="h-4.5 w-4.5" />
+          <span className="relative inline-flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-cyan-400 to-blue-600 text-white shadow-lg shadow-cyan-500/40 ring-1 ring-white/40">
+            <span className="pointer-events-none absolute -inset-1 rounded-2xl bg-cyan-400/30 blur-md" />
+            <ShieldCheck className="relative h-5 w-5" />
+            {/* dot online berkedip */}
+            <span className="absolute -bottom-0.5 -right-0.5 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-emerald-500 ring-2 ring-[#eef3fb] dark:ring-[#0a1226]">
+              <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-white" />
+            </span>
           </span>
           <div>
             <h1 className="text-[13px] font-black tracking-[0.18em]">
@@ -728,14 +998,17 @@ export default function KioskPage() {
               onClick={onForceSync}
             />
           )}
-          <SessionStatsChip stats={sessionStats} />
           <ScannerStatusBadge mode={inputMode} />
           <ClockChip now={now} />
           <KioskMenu
             isDark={isDark}
             soundOn={settings.soundOn}
+            ktpOn={settings.ktpVerifyEnabled}
+            ktpFirstOn={settings.ktpScanFirst}
             onToggleSound={toggleSound}
             onToggleTheme={toggleTheme}
+            onToggleKtp={toggleKtp}
+            onToggleKtpFirst={toggleKtpFirst}
             onExit={exitKiosk}
           />
         </div>
@@ -772,7 +1045,10 @@ export default function KioskPage() {
 
         {/* Kanan: scan ready + recent */}
         <section className="flex min-h-0 flex-col gap-4">
-          <ScanReadyCard />
+          <ScanReadyCard
+            ktpFirst={settings.ktpScanFirst}
+            pendingName={pendingKtp?.name ?? null}
+          />
           <ActionRow
             onReset={handleReset}
             onDemo={handleDemoScan}
@@ -790,6 +1066,9 @@ export default function KioskPage() {
           />
         </section>
       </main>
+
+      {/* Ticker info berjalan (bawah) — pengingat keamanan/instruksi, gaya kalem. */}
+      <KioskTicker />
 
       {/* Result Modal */}
       {last && lastMeta && (() => {
@@ -873,13 +1152,11 @@ export default function KioskPage() {
                   : prev,
               );
               setSessionStats((prev) => ({ ...prev, rejected: prev.rejected + 1 }));
-              playFeedbackSound("KTP_MISMATCH");
               playFeedbackHaptic("KTP_MISMATCH");
               toast.error(msg, "KTP tidak cocok");
             } else if (requireKtp && passed) {
               // LOLOS: berikan feedback sukses yang tadi ditunda di submit().
               setSessionStats((prev) => ({ ...prev, valid: prev.valid + 1 }));
-              playFeedbackSound("VALID_FLIGHT");
               playFeedbackHaptic("VALID_FLIGHT");
               if (result.status === "manual_pass") {
                 toast.info("KTP diverifikasi manual oleh operator.", "KTP Manual");
@@ -903,6 +1180,70 @@ export default function KioskPage() {
         }}
       />
     </div>
+  );
+}
+
+/* ─────────────── Ticker info berjalan (footer) ─────────────── */
+
+const TICKER_ITEMS = [
+  "Siapkan boarding pass & KTP/Paspor sebelum menuju pos pemeriksaan",
+  "Dilarang membawa benda tajam, cairan >100 ml, dan barang berbahaya ke kabin",
+  "Hadapkan wajah ke kamera saat proses validasi berlangsung",
+  "Pastikan nama di boarding pass sesuai dengan identitas penumpang",
+  "Ikuti arahan petugas AVSEC di setiap titik pemeriksaan keamanan",
+];
+
+/**
+ * Running-text kalem untuk mengisi bawah layar kiosk: pengingat keamanan &
+ * instruksi. Track digandakan 2x lalu digeser -50% (animate-marquee) supaya
+ * loop mulus. Bukan "warning" merah berkedip — gaya brand yang tenang.
+ * motion-reduce → diam (hormati prefers-reduced-motion).
+ */
+function KioskTicker() {
+  const Row = () => (
+    <div className="flex shrink-0 items-center pr-2" aria-hidden>
+      {TICKER_ITEMS.map((t, i) => (
+        <span key={i} className="flex items-center whitespace-nowrap">
+          {/* pemisah diamond antar item */}
+          <span className="mx-5 inline-block h-1.5 w-1.5 rotate-45 rounded-[2px] bg-cyan-400/70" />
+          <span className="flex items-center gap-2 text-[13px] font-semibold text-slate-600 dark:text-slate-200">
+            <ShieldCheck className="h-3.5 w-3.5 shrink-0 text-cyan-500" />
+            {t}
+          </span>
+        </span>
+      ))}
+    </div>
+  );
+  return (
+    <footer className="relative z-20 shrink-0 overflow-hidden border-t border-slate-200/70 bg-gradient-to-r from-slate-50 via-white to-slate-50 dark:border-white/10 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950">
+      {/* garis aksen gradient beranimasi di atas */}
+      <div className="h-0.5 w-full animate-gradient-shift bg-[length:200%_100%] bg-[linear-gradient(90deg,#06b6d4,#3b82f6,#22d3ee,#06b6d4)]" />
+      <div className="flex items-stretch">
+        {/* Label tetap di kiri — chip gradient + dot live + glow */}
+        <div className="relative z-10 flex shrink-0 items-center gap-2.5 bg-gradient-to-r from-cyan-500 to-blue-600 py-2.5 pl-4 pr-5 text-white shadow-[0_0_24px_rgba(6,182,212,0.35)]">
+          <span className="relative flex h-2 w-2 items-center justify-center">
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-white/80" />
+            <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-white" />
+          </span>
+          <Megaphone className="h-4 w-4" />
+          <span className="text-[11px] font-extrabold uppercase tracking-[0.15em]">
+            Info Bandara
+          </span>
+          {/* ekor miring biar nyambung mulus ke track */}
+          <span className="pointer-events-none absolute -right-3 top-0 h-full w-3 skew-x-[-12deg] bg-blue-600" />
+        </div>
+        {/* Marquee */}
+        <div className="relative flex-1 overflow-hidden py-2.5">
+          <div className="flex w-max animate-marquee motion-reduce:animate-none">
+            <Row />
+            <Row />
+          </div>
+          {/* fade tepi kiri/kanan biar teks muncul/hilang halus */}
+          <div className="pointer-events-none absolute inset-y-0 left-0 w-12 bg-gradient-to-r from-white to-transparent dark:from-slate-900" />
+          <div className="pointer-events-none absolute inset-y-0 right-0 w-12 bg-gradient-to-l from-slate-50 to-transparent dark:from-slate-950" />
+        </div>
+      </div>
+    </footer>
   );
 }
 
@@ -1062,7 +1403,39 @@ function PrivacyBanner() {
 
 /* ─────────────── Scan ready card with audio waveform ─────────────── */
 
-function ScanReadyCard() {
+function ScanReadyCard({
+  ktpFirst = false,
+  pendingName = null,
+}: {
+  ktpFirst?: boolean;
+  pendingName?: string | null;
+}) {
+  // 3 keadaan: (a) KTP-first menunggu KTP, (b) KTP terbaca menunggu boarding pass,
+  // (c) normal menunggu boarding pass.
+  const identityReady = ktpFirst && !!pendingName;
+  const waitingKtp = ktpFirst && !pendingName;
+
+  const icon = identityReady ? (
+    <CheckCircle2 className="h-7 w-7" />
+  ) : waitingKtp ? (
+    <IdCard className="h-7 w-7" />
+  ) : (
+    <Scan className="h-7 w-7" />
+  );
+  const chip = identityReady
+    ? "from-emerald-400 to-teal-600 shadow-emerald-500/40"
+    : "from-cyan-400 to-blue-600 shadow-cyan-500/40";
+  const title = identityReady
+    ? pendingName
+    : waitingKtp
+      ? "ARAHKAN KTP"
+      : "MENUNGGU SCAN…";
+  const subtitle = identityReady
+    ? "Identitas terbaca — sekarang scan boarding pass penumpang."
+    : waitingKtp
+      ? "Tunjukkan KTP ke kamera untuk membaca identitas penumpang."
+      : "Arahkan scanner USB ke boarding pass untuk memulai validasi.";
+
   return (
     <div className="relative overflow-hidden rounded-3xl bg-white/80 px-6 py-7 ring-1 ring-slate-200 backdrop-blur-md dark:bg-[#0c1a36] dark:ring-cyan-400/15">
       <div
@@ -1071,17 +1444,30 @@ function ScanReadyCard() {
       />
       <div className="relative flex flex-col items-center gap-5">
         <Waveform />
-        <span className="relative flex h-20 w-20 items-center justify-center rounded-2xl bg-gradient-to-br from-cyan-400 to-blue-600 text-white shadow-xl shadow-cyan-500/40">
-          <Scan className="h-7 w-7" />
+        <span
+          className={cn(
+            "relative flex h-20 w-20 items-center justify-center rounded-2xl bg-gradient-to-br text-white shadow-xl",
+            chip,
+          )}
+        >
+          {icon}
           <span
             aria-hidden
-            className="absolute inset-0 rounded-2xl bg-cyan-300/40 animate-ping"
+            className={cn(
+              "absolute inset-0 rounded-2xl animate-ping",
+              identityReady ? "bg-emerald-300/40" : "bg-cyan-300/40",
+            )}
           />
         </span>
         <div className="text-center">
-          <p className="text-xl font-black tracking-tight">MENUNGGU SCAN…</p>
+          {identityReady && (
+            <p className="mb-0.5 text-[10px] font-black uppercase tracking-[0.2em] text-emerald-600 dark:text-emerald-300">
+              Identitas KTP
+            </p>
+          )}
+          <p className="text-xl font-black tracking-tight">{title}</p>
           <p className="mt-1.5 max-w-sm text-[12px] leading-snug text-slate-500 dark:text-white/55">
-            Arahkan scanner USB ke boarding pass untuk memulai validasi.
+            {subtitle}
           </p>
         </div>
       </div>
@@ -1201,9 +1587,9 @@ function ActiveFlightCards({
           {cards.length}
         </span>
       </div>
-      <div className="min-h-0 flex-1 space-y-2 overflow-y-auto px-3 pb-3">
+      <div className="grid min-h-0 flex-1 grid-cols-3 content-start gap-2 overflow-y-auto px-3 pb-3">
         {cards.length === 0 && (
-          <div className="px-3 py-8 text-center text-xs text-slate-400 dark:text-white/40">
+          <div className="col-span-3 px-3 py-8 text-center text-xs text-slate-400 dark:text-white/40">
             Belum ada flight yang sedang boarding.
           </div>
         )}
@@ -1236,79 +1622,62 @@ function FlightBoardingCard({
 }) {
   const { flight, effectiveStatus, boarded } = data;
   const expected = flight.expectedPax ?? null;
-  const percent =
-    expected && expected > 0
-      ? Math.min(100, Math.round((boarded / expected) * 100))
-      : null;
+  const airlineName = getAirlineMeta(flight.airlineCode).name;
 
-  const statusPill =
-    effectiveStatus === "ACTIVE"
-      ? "bg-amber-500/15 text-amber-700 ring-amber-300 dark:text-amber-300 dark:ring-amber-500/40"
-      : "bg-emerald-500/15 text-emerald-700 ring-emerald-300 dark:text-emerald-300 dark:ring-emerald-500/40";
-
-  const barColor =
+  // Aksen status di garis atas kartu (tanpa teks — biar tetap ringkas).
+  const accent =
     effectiveStatus === "ACTIVE"
       ? "from-amber-400 to-orange-500"
       : "from-emerald-400 to-teal-500";
 
   return (
     <div
+      title={`${flight.flightNumber} · ${airlineName} · ${flight.originAirport}→${flight.destinationAirport}`}
       className={cn(
-        "relative overflow-hidden rounded-2xl bg-white px-3.5 py-2.5 ring-1 ring-slate-200 transition dark:bg-[#0e1f44] dark:ring-cyan-400/15",
+        "relative flex flex-col items-center gap-1 overflow-hidden rounded-2xl bg-white px-2 pb-2.5 pt-3 text-center ring-1 ring-slate-200 transition dark:bg-[#0e1f44] dark:ring-cyan-400/15",
         highlight &&
           "ring-2 ring-cyan-400 shadow-[0_0_24px_-4px_rgba(34,211,238,0.45)] dark:ring-cyan-300",
       )}
     >
-      {/* Header row: airline + flight + status */}
-      <div className="flex items-center gap-2.5">
-        <AirlineLogo code={flight.airlineCode} size="sm" mode="rich" />
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-1.5">
-            <p className="text-[15px] font-black tracking-tight tabular-nums">
-              {flight.flightNumber}
-            </p>
-            <span
-              className={cn(
-                "shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wider ring-1",
-                statusPill,
-              )}
-            >
-              {effectiveStatus === "ACTIVE" ? "Final Call" : "Open"}
+      {/* garis aksen status di atas */}
+      <span
+        className={cn("absolute inset-x-0 top-0 h-1 bg-gradient-to-r", accent)}
+      />
+
+      {/* Maskapai (logo) */}
+      <AirlineLogo code={flight.airlineCode} size="md" mode="rich" />
+
+      {/* Kode penerbangan */}
+      <p className="text-[15px] font-black leading-none tracking-tight tabular-nums text-slate-800 dark:text-white">
+        {flight.flightNumber}
+      </p>
+
+      {/* Nama maskapai */}
+      <p className="w-full truncate text-[9.5px] font-semibold text-slate-500 dark:text-white/55">
+        {airlineName}
+      </p>
+
+      {/* Rute */}
+      <p className="flex w-full items-center justify-center gap-1 text-[10px] font-bold tabular-nums text-slate-600 dark:text-white/70">
+        <span>{flight.originAirport}</span>
+        <ArrowRight className="h-2.5 w-2.5 text-cyan-500" />
+        <span>{flight.destinationAirport}</span>
+      </p>
+
+      {/* PAX */}
+      <div className="mt-0.5 inline-flex items-baseline gap-1 rounded-lg bg-slate-900/5 px-2 py-1 dark:bg-white/10">
+        <span className="text-[13px] font-black tabular-nums text-slate-800 dark:text-white">
+          {boarded}
+          {expected !== null && (
+            <span className="text-[10px] font-bold text-slate-400 dark:text-white/40">
+              /{expected}
             </span>
-          </div>
-          <p className="truncate text-[10.5px] text-slate-500 dark:text-white/55">
-            {flight.originAirport} → {flight.destinationAirport} · Gate{" "}
-            {flight.gateOrCheckpoint} · {flight.departureTime}
-          </p>
-        </div>
-        <div className="text-right">
-          <p className="text-[15px] font-black tabular-nums text-slate-800 dark:text-white">
-            {boarded}
-            {expected !== null && (
-              <span className="text-[11px] font-bold text-slate-400 dark:text-white/40">
-                /{expected}
-              </span>
-            )}
-          </p>
-          <p className="text-[9px] font-bold uppercase tracking-wider text-slate-400 dark:text-white/40">
-            pax
-          </p>
-        </div>
+          )}
+        </span>
+        <span className="text-[8px] font-bold uppercase tracking-wider text-slate-400 dark:text-white/40">
+          pax
+        </span>
       </div>
-
-      {/* Progress bar */}
-      {percent !== null && (
-        <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-100 dark:bg-white/5">
-          <div
-            className={cn(
-              "h-full rounded-full bg-gradient-to-r transition-all",
-              barColor,
-            )}
-            style={{ width: `${percent}%` }}
-          />
-        </div>
-      )}
-
     </div>
   );
 }
@@ -1316,41 +1685,100 @@ function FlightBoardingCard({
 /* ─────────────── Header chips ─────────────── */
 
 function ScannerStatusBadge({ mode }: { mode: "idle" | "scanner" | "manual" }) {
-  if (mode === "scanner") {
-    return (
-      <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-100 px-2.5 py-1 text-[11px] font-bold text-emerald-700 ring-1 ring-emerald-300 dark:bg-emerald-500/15 dark:text-emerald-300 dark:ring-emerald-500/30">
-        <Usb className="h-3 w-3" />
-        Scanner USB
-      </span>
-    );
-  }
-  if (mode === "manual") {
-    return (
-      <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-100 px-2.5 py-1 text-[11px] font-bold text-amber-700 ring-1 ring-amber-300 dark:bg-amber-500/15 dark:text-amber-300 dark:ring-amber-500/30">
-        <Keyboard className="h-3 w-3" />
-        Input manual
-      </span>
-    );
-  }
+  const cfg = {
+    scanner: {
+      icon: Usb,
+      label: "Scanner USB",
+      chip: "from-emerald-400 to-emerald-600 shadow-emerald-500/30",
+      dot: "bg-emerald-500",
+      text: "text-emerald-600 dark:text-emerald-300",
+    },
+    manual: {
+      icon: Keyboard,
+      label: "Input Manual",
+      chip: "from-amber-400 to-amber-500 shadow-amber-500/30",
+      dot: "bg-amber-500",
+      text: "text-amber-600 dark:text-amber-300",
+    },
+    idle: {
+      icon: ScanLine,
+      label: "Menunggu Input",
+      chip: "from-slate-400 to-slate-500 shadow-slate-500/20",
+      dot: "bg-slate-400",
+      text: "text-slate-600 dark:text-white/70",
+    },
+  }[mode];
+  const Icon = cfg.icon;
   return (
-    <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-900/5 px-2.5 py-1 text-[11px] font-semibold text-slate-600 ring-1 ring-slate-200 dark:bg-white/10 dark:text-white/70 dark:ring-white/15">
-      <ScanLine className="h-3 w-3" />
-      Menunggu input
-    </span>
+    <div className="flex items-center gap-2.5 rounded-2xl border border-slate-200/80 bg-white/80 px-3 py-1.5 shadow-sm backdrop-blur dark:border-white/10 dark:bg-white/10">
+      <span
+        className={cn(
+          "flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br text-white shadow-md",
+          cfg.chip,
+        )}
+      >
+        <Icon className="h-4 w-4" />
+      </span>
+      <div className="leading-none">
+        <div className="text-[9px] font-bold uppercase tracking-wider text-slate-400 dark:text-white/50">
+          Mode Input
+        </div>
+        <div className={cn("mt-1 flex items-center gap-1.5 text-[13px] font-extrabold", cfg.text)}>
+          <span className="relative flex h-1.5 w-1.5">
+            <span className={cn("absolute inline-flex h-full w-full animate-ping rounded-full opacity-70", cfg.dot)} />
+            <span className={cn("relative inline-flex h-1.5 w-1.5 rounded-full", cfg.dot)} />
+          </span>
+          {cfg.label}
+        </div>
+      </div>
+    </div>
   );
 }
 
 function ClockChip({ now }: { now: Date }) {
-  const time = now.toLocaleTimeString("id-ID", {
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
+  const hh = String(now.getHours()).padStart(2, "0");
+  const mm = String(now.getMinutes()).padStart(2, "0");
+  const ss = String(now.getSeconds()).padStart(2, "0");
+  const dateStr = now.toLocaleDateString("id-ID", {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+    year: "numeric",
   });
   return (
-    <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-900/5 px-2.5 py-1 font-mono text-[11px] font-semibold text-slate-700 tabular-nums ring-1 ring-slate-200 dark:bg-white/10 dark:text-white dark:ring-white/15">
-      <Clock className="h-3 w-3" />
-      {time}
-    </span>
+    <div className="flex items-center gap-2.5 rounded-2xl border border-slate-200/80 bg-white/80 px-3 py-1.5 shadow-sm backdrop-blur dark:border-white/10 dark:bg-white/10">
+      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-cyan-400 to-blue-600 text-white shadow-md shadow-cyan-500/30">
+        <Clock className="h-4 w-4" />
+      </span>
+      <div className="leading-none">
+        <div className="flex items-baseline gap-1 font-mono tabular-nums">
+          {/* suppressHydrationWarning: jam berbasis waktu → wajar beda server/client */}
+          <span
+            suppressHydrationWarning
+            className="text-xl font-black tracking-tight text-slate-800 dark:text-white"
+          >
+            {hh}
+            <span className="mx-px animate-pulse text-cyan-500 dark:text-cyan-300">:</span>
+            {mm}
+          </span>
+          <span
+            suppressHydrationWarning
+            className="rounded-md bg-cyan-500/10 px-1 py-0.5 text-[11px] font-bold text-cyan-600 dark:bg-cyan-400/15 dark:text-cyan-300"
+          >
+            {ss}
+          </span>
+          <span className="ml-0.5 text-[9px] font-bold tracking-wide text-slate-400 dark:text-white/50">
+            WIB
+          </span>
+        </div>
+        <div
+          suppressHydrationWarning
+          className="mt-1 text-[9.5px] font-semibold uppercase tracking-wider text-slate-400 dark:text-white/50"
+        >
+          {dateStr}
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -1359,12 +1787,20 @@ function KioskMenu({
   soundOn,
   onToggleSound,
   onToggleTheme,
+  onToggleKtp,
+  onToggleKtpFirst,
   onExit,
+  ktpOn,
+  ktpFirstOn,
 }: {
   isDark: boolean;
   soundOn: boolean;
+  ktpOn: boolean;
+  ktpFirstOn: boolean;
   onToggleSound: () => void;
   onToggleTheme: () => void;
+  onToggleKtp: () => void;
+  onToggleKtpFirst: () => void;
   onExit: () => void;
 }) {
   const [open, setOpen] = React.useState(false);
@@ -1388,13 +1824,13 @@ function KioskMenu({
         aria-haspopup="menu"
         aria-expanded={open}
         className={cn(
-          "inline-flex h-8 w-8 items-center justify-center rounded-full ring-1 transition",
+          "inline-flex h-11 w-11 items-center justify-center rounded-2xl border shadow-sm backdrop-blur transition",
           open
-            ? "bg-slate-900/10 text-slate-800 ring-slate-300 dark:bg-white/15 dark:text-white dark:ring-white/20"
-            : "bg-slate-900/5 text-slate-600 ring-slate-200 hover:bg-slate-900/10 dark:bg-white/10 dark:text-white/70 dark:ring-white/15 dark:hover:bg-white/15",
+            ? "border-cyan-300 bg-cyan-500/10 text-cyan-600 dark:border-cyan-400/30 dark:bg-cyan-400/15 dark:text-cyan-300"
+            : "border-slate-200/80 bg-white/80 text-slate-500 hover:bg-white hover:text-slate-700 dark:border-white/10 dark:bg-white/10 dark:text-white/70 dark:hover:bg-white/15",
         )}
       >
-        <Settings className={cn("h-3.5 w-3.5 transition-transform", open && "rotate-45")} />
+        <Settings className={cn("h-5 w-5 transition-transform", open && "rotate-45")} />
       </button>
 
       {open && (
@@ -1411,6 +1847,16 @@ function KioskMenu({
             icon={isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
             label={isDark ? "Mode terang" : "Mode gelap"}
             onClick={onToggleTheme}
+          />
+          <MenuItem
+            icon={<IdCard className="h-4 w-4" />}
+            label={ktpOn ? "Verifikasi KTP: Aktif" : "Verifikasi KTP: Mati"}
+            onClick={onToggleKtp}
+          />
+          <MenuItem
+            icon={<ScanLine className="h-4 w-4" />}
+            label={ktpFirstOn ? "Scan KTP dulu: Aktif" : "Scan KTP dulu: Mati"}
+            onClick={onToggleKtpFirst}
           />
           <div className="my-1 h-px bg-slate-200/70 dark:bg-white/10" />
           <MenuItem
@@ -1536,34 +1982,6 @@ function SikerenSyncChip({
   );
 }
 
-function SessionStatsChip({
-  stats,
-}: {
-  stats: { valid: number; duplicate: number; rejected: number };
-}) {
-  const total = stats.valid + stats.duplicate + stats.rejected;
-  return (
-    <div
-      title={`Total: ${total} · Valid ${stats.valid} · Duplicate ${stats.duplicate} · Ditolak ${stats.rejected}`}
-      className="inline-flex items-center gap-1.5 rounded-full bg-slate-900/5 px-2.5 py-1 text-[11px] font-bold ring-1 ring-slate-200 dark:bg-white/10 dark:ring-white/15"
-    >
-      <span className="inline-flex items-center gap-1 text-emerald-600 dark:text-emerald-300">
-        <CheckCircle2 className="h-3 w-3" />
-        <span className="tabular-nums">{stats.valid}</span>
-      </span>
-      <span className="text-slate-300 dark:text-white/20">·</span>
-      <span className="inline-flex items-center gap-1 text-amber-600 dark:text-amber-300">
-        <AlertTriangle className="h-3 w-3" />
-        <span className="tabular-nums">{stats.duplicate}</span>
-      </span>
-      <span className="text-slate-300 dark:text-white/20">·</span>
-      <span className="inline-flex items-center gap-1 text-rose-600 dark:text-rose-300">
-        <XCircle className="h-3 w-3" />
-        <span className="tabular-nums">{stats.rejected}</span>
-      </span>
-    </div>
-  );
-}
 
 function ActionRow({
   onReset,
@@ -1669,6 +2087,38 @@ function ModalCloseFooter({
 
 const MONTHS = ["JAN","FEB","MAR","APR","MAY","JUN","JUL","AUG","SEP","OCT","NOV","DEC"];
 
+/** Badge skor kecocokan nama KTP vs boarding pass (muncul di modal hasil scan). */
+function KtpMatchBadge({ v }: { v: KtpVerification }) {
+  const pct = v.similarity != null ? Math.round(v.similarity * 100) : null;
+  const ok = v.status === "matched" || v.status === "manual_pass";
+  return (
+    <div
+      className={cn(
+        "flex items-center gap-2 rounded-xl px-3 py-2 text-xs ring-1",
+        ok
+          ? "bg-emerald-50 text-emerald-700 ring-emerald-200 dark:bg-emerald-500/15 dark:text-emerald-300 dark:ring-emerald-500/30"
+          : "bg-rose-50 text-rose-700 ring-rose-200 dark:bg-rose-500/15 dark:text-rose-300 dark:ring-rose-500/30",
+      )}
+    >
+      <IdCard className="h-4 w-4 shrink-0" />
+      <span className="shrink-0 font-semibold">Identitas KTP:</span>
+      <span className="truncate font-bold">{v.ocrName ?? "tidak terbaca"}</span>
+      {pct != null && (
+        <span className="ml-auto flex shrink-0 items-center gap-1.5">
+          <span className="rounded-md bg-white/70 px-1.5 py-0.5 font-black tabular-nums dark:bg-white/10">
+            {pct}%
+          </span>
+          {ok ? (
+            <CheckCircle2 className="h-4 w-4" />
+          ) : (
+            <XCircle className="h-4 w-4" />
+          )}
+        </span>
+      )}
+    </div>
+  );
+}
+
 function BoardingPassModalBody({ last }: { last: LastResult }) {
   const { flight, parsed, faceUrl, passengerName } = last;
   if (!flight || !parsed) return null;
@@ -1705,8 +2155,12 @@ function BoardingPassModalBody({ last }: { last: LastResult }) {
     : meta.gradient;
 
   return (
-    <div className="relative overflow-hidden rounded-2xl bg-white shadow-xl ring-1 ring-slate-200/80">
-      <div className={cn("h-1.5 w-full bg-gradient-to-r", accentGradient)} />
+    <div className="space-y-3">
+      {last.event.ktpVerification && (
+        <KtpMatchBadge v={last.event.ktpVerification} />
+      )}
+      <div className="relative overflow-hidden rounded-2xl bg-white shadow-xl ring-1 ring-slate-200/80">
+        <div className={cn("h-1.5 w-full bg-gradient-to-r", accentGradient)} />
 
       <div className="grid grid-cols-1 md:grid-cols-[1fr_auto_220px]">
         {/* MAIN */}
@@ -1926,11 +2380,12 @@ function BoardingPassModalBody({ last }: { last: LastResult }) {
       <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 bg-slate-50/60 px-4 py-2 text-[10px] font-semibold uppercase tracking-widest text-slate-500">
         <span className="inline-flex items-center gap-1.5">
           <ShieldCheck className="h-3 w-3 text-emerald-500" />
-          AFVS · Verified · {new Date(last.event.scannedAt).toLocaleTimeString("id-ID")}
+          SIPANDAI · Verified · {new Date(last.event.scannedAt).toLocaleTimeString("id-ID")}
         </span>
         <span>
           {flight.originAirport} → {flight.destinationAirport} · {flight.departureDate}
         </span>
+      </div>
       </div>
     </div>
   );
@@ -2075,6 +2530,11 @@ function ResultModalBody({
             </div>
           )}
         </div>
+        {last.event.ktpVerification && (
+          <div className="mt-3">
+            <KtpMatchBadge v={last.event.ktpVerification} />
+          </div>
+        )}
         <p className="mt-4 text-[10px] text-slate-400 dark:text-ink-subtle">
           {new Date(last.event.scannedAt).toLocaleString("id-ID")}
         </p>

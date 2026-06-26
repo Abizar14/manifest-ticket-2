@@ -412,7 +412,7 @@ export function PassengerDetailModal({
 
         {/* Footer */}
         <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 bg-slate-50/60 px-5 py-2.5 text-[10px] font-semibold uppercase tracking-widest text-slate-500">
-          <span>AFVS · Verified · {passenger.scanCount}× scan</span>
+          <span>SIPANDAI · Verified · {passenger.scanCount}× scan</span>
           <span>
             {flight.originAirport} → {flight.destinationAirport} ·{" "}
             {flight.departureDate}

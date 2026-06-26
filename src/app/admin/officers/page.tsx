@@ -5,10 +5,12 @@ import Link from "next/link";
 import {
   Activity,
   Building2,
+  Camera,
   Check,
   ChevronDown,
   Copy,
   Eye,
+  ImagePlus,
   KeyRound,
   Loader2,
   MapPin,
@@ -34,10 +36,13 @@ import {
   ApiUser,
   apiCreateOperator,
   apiDeleteOperator,
+  apiDeleteOperatorPhoto,
   apiListOperators,
+  apiSetOperatorPhoto,
   apiSetOperatorPin,
   apiUpdateOperator,
   getApiUser,
+  getOperatorPhotoObjectUrl,
   isAuthed,
   subscribeAuth,
 } from "@/lib/api/client";
@@ -63,6 +68,7 @@ type FormState = {
   role: string;
   station: string;
   pin: string;
+  hasPhoto: boolean;
 };
 
 const EMPTY_FORM: FormState = {
@@ -72,7 +78,11 @@ const EMPTY_FORM: FormState = {
   role: "operator",
   station: "SCP2",
   pin: "",
+  hasPhoto: false,
 };
+
+/** Foto petugas yang dipilih di form, untuk di-upload setelah simpan. */
+type PhotoChange = { file: File | null; clear: boolean };
 
 /**
  * PIN gampang ditebak (angka sama / berurutan). Cermin dari guard backend —
@@ -186,10 +196,24 @@ export default function AdminOfficersPage() {
       role: o.role,
       station: o.station ?? "",
       pin: "",
+      hasPhoto: o.hasPhoto,
     });
   };
 
-  const handleSave = async () => {
+  // Simpan foto setelah operator tersimpan (upload baru / hapus). Toast non-blok
+  // bila gagal — data teks petugas sudah aman tersimpan.
+  const applyPhoto = async (id: string, photo?: PhotoChange) => {
+    if (!photo) return;
+    if (photo.file) {
+      const res = await apiSetOperatorPhoto(id, photo.file);
+      if (!res.ok) toast.error(res.error ?? "Foto gagal di-upload.", "Foto");
+    } else if (photo.clear) {
+      const res = await apiDeleteOperatorPhoto(id);
+      if (!res.ok) toast.error(res.error ?? "Foto gagal dihapus.", "Foto");
+    }
+  };
+
+  const handleSave = async (photo?: PhotoChange) => {
     if (!form) return;
     if (form.name.trim().length < 2) {
       toast.warning("Nama minimal 2 karakter.");
@@ -211,6 +235,7 @@ export default function AdminOfficersPage() {
         role: form.role,
         station: form.station || null,
       });
+      if (res.ok) await applyPhoto(form.id, photo);
       setSaving(false);
       if (res.ok) {
         toast.success("Petugas diperbarui.");
@@ -227,6 +252,7 @@ export default function AdminOfficersPage() {
         station: form.station || undefined,
         pin: form.pin || undefined,
       });
+      if (res.ok && res.data) await applyPhoto(res.data.operator.id, photo);
       setSaving(false);
       if (res.ok && res.data) {
         toast.success(`Petugas ${res.data.operator.name} dibuat.`);
@@ -408,7 +434,7 @@ export default function AdminOfficersPage() {
                   className="w-full rounded-xl border border-blue-100 bg-surface py-2.5 pl-10 pr-3 text-sm text-ink outline-none ring-blue-200 transition focus:border-blue-300 focus:ring-2 dark:border-hairline"
                 />
               </div>
-              <div className="flex flex-wrap items-center gap-2">
+              <div className="grid grid-cols-1 gap-2 sm:flex sm:flex-wrap sm:items-center">
                 <FilterSelect
                   icon={<Activity className="h-3.5 w-3.5" />}
                   value={statusFilter}
@@ -754,6 +780,7 @@ const AVATAR_BY_EMAIL: Record<string, string> = {
   "avsec5@afvs.local": "petugas5", // Eko (L)
   "admin@afvs.local": "petugas1",
   "operator@afvs.local": "petugas5",
+  "ara.7816@afvs.local": "petugas4", // ara (P, hijab)
 };
 const AVATAR_POOL = ["petugas1", "petugas2", "petugas3", "petugas4", "petugas5"];
 
@@ -767,40 +794,136 @@ function avatarSrc(email: string): string {
 }
 
 /**
- * Avatar petugas: foto bundar dalam frame gradient + cincin gradient berputar
- * (animasi) di belakang, dengan dot status. Foto `object-cover` mengisi
- * lingkaran (robust untuk berbagai framing). Foto dari `public/petugas/` (lihat
- * avatarSrc); bila gagal dimuat → fallback inisial nama, layout tidak rusak.
+ * Avatar petugas 2.5D pop-out: foto (PNG transparan) lebih tinggi dari lingkaran
+ * → kepala/pundak "keluar" di atas frame. Badan di-clip ke dalam lingkaran
+ * gradient, kepala jadi layer terpisah di atasnya. Cincin gradient berputar di
+ * belakang + dot status. Foto dari `public/petugas/`; gagal dimuat → inisial.
  */
 function StaffAvatar({
   name,
   email,
   active,
   size = "card",
+  operatorId,
+  hasPhoto = false,
+  photoVersion,
 }: {
   name: string;
   email: string;
   active: boolean;
   size?: "card" | "lg";
+  operatorId?: string;
+  hasPhoto?: boolean;
+  photoVersion?: string; // ubah → refetch (mis. updatedAt setelah ganti foto)
 }) {
   const [imgError, setImgError] = useState(false);
+  // Foto upload (auth-gated) diambil sebagai object URL. Null = belum/ tidak ada.
+  const [uploadedUrl, setUploadedUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!operatorId || !hasPhoto) {
+      setUploadedUrl(null);
+      return;
+    }
+    let cancelled = false;
+    let url: string | null = null;
+    getOperatorPhotoObjectUrl(operatorId).then((u) => {
+      if (cancelled) {
+        if (u) URL.revokeObjectURL(u);
+        return;
+      }
+      url = u;
+      setUploadedUrl(u);
+    });
+    return () => {
+      cancelled = true;
+      if (url) URL.revokeObjectURL(url);
+    };
+  }, [operatorId, hasPhoto, photoVersion]);
+
   const src = avatarSrc(email);
   const big = size === "lg";
-  const CIRCLE = big ? 104 : 76;
+  const PHOTO_H = big ? 168 : 116; // tinggi foto (> CIRCLE → kepala menyembul)
+  const CIRCLE = big ? 112 : 78; // diameter lingkaran
   const dot = big ? 18 : 15;
+
+  // Foto upload = potret berlatar → tampilkan sebagai LINGKARAN object-cover yang
+  // rapi (tidak meluber/tabrakan). Pop-out di bawah hanya untuk PNG kurasi
+  // transparan (kepala bisa menyembul bersih tanpa blok latar).
+  if (uploadedUrl) {
+    return (
+      <div className="relative shrink-0" style={{ width: CIRCLE, height: PHOTO_H }}>
+        <div
+          className="pointer-events-none absolute inset-x-0 bottom-0 animate-glow-breath rounded-full bg-blue-500/25 blur-lg"
+          style={{ height: CIRCLE }}
+        />
+        <div
+          className="pointer-events-none absolute animate-spin-ring rounded-full [background:conic-gradient(from_0deg,#38bdf8,#3b82f6,#a855f7,#22d3ee,#38bdf8)]"
+          style={{
+            width: CIRCLE + 10,
+            height: CIRCLE + 10,
+            bottom: -5,
+            left: "50%",
+            marginLeft: -(CIRCLE + 10) / 2,
+          }}
+        />
+        <div
+          className="pointer-events-none absolute left-1/2 -translate-x-1/2 rounded-full bg-surface"
+          style={{ width: CIRCLE + 4, height: CIRCLE + 4, bottom: -2 }}
+        />
+        <div
+          className="absolute bottom-0 left-1/2 -translate-x-1/2 overflow-hidden rounded-full shadow-lg shadow-blue-500/30"
+          style={{ width: CIRCLE, height: CIRCLE }}
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={uploadedUrl}
+            alt={name}
+            className="h-full w-full object-cover"
+            style={{ width: CIRCLE, height: CIRCLE }}
+          />
+        </div>
+        <span
+          className={cn(
+            "absolute z-20 rounded-full ring-2 ring-white dark:ring-surface-elev",
+            active ? "bg-emerald-500 animate-dot-pulse" : "bg-rose-400",
+          )}
+          style={{ width: dot, height: dot, bottom: 2, right: 2 }}
+        />
+      </div>
+    );
+  }
 
   return (
     <div
-      className="group relative shrink-0"
-      style={{ width: CIRCLE + 10, height: CIRCLE + 10 }}
+      className="relative shrink-0"
+      style={{ width: CIRCLE, height: PHOTO_H }}
     >
-      {/* glow */}
-      <div className="pointer-events-none absolute inset-1 rounded-full bg-blue-500/20 blur-md" />
-      {/* cincin gradient BERPUTAR */}
-      <div className="pointer-events-none absolute inset-0 animate-spin-ring rounded-full [background:conic-gradient(from_0deg,#38bdf8,#3b82f6,#a855f7,#22d3ee,#38bdf8)]" />
-      {/* foto bundar (object-cover) + pemisah putih tipis via ring */}
+      {/* glow di belakang frame */}
       <div
-        className="absolute left-1/2 top-1/2 flex -translate-x-1/2 -translate-y-1/2 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br from-blue-500 via-blue-400 to-cyan-400 shadow-md ring-2 ring-white transition-transform duration-300 group-hover:scale-105 dark:ring-surface-elev"
+        className="pointer-events-none absolute inset-x-0 bottom-0 animate-glow-breath rounded-full bg-blue-500/25 blur-lg"
+        style={{ height: CIRCLE }}
+      />
+      {/* cincin gradient BERPUTAR. Center via margin (BUKAN -translate-x-1/2)
+          karena animasi rotate akan menimpa transform & menggeser cincin. */}
+      <div
+        className="pointer-events-none absolute animate-spin-ring rounded-full [background:conic-gradient(from_0deg,#38bdf8,#3b82f6,#a855f7,#22d3ee,#38bdf8)]"
+        style={{
+          width: CIRCLE + 10,
+          height: CIRCLE + 10,
+          bottom: -5,
+          left: "50%",
+          marginLeft: -(CIRCLE + 10) / 2,
+        }}
+      />
+      {/* pemisah tipis putih */}
+      <div
+        className="pointer-events-none absolute left-1/2 -translate-x-1/2 rounded-full bg-surface"
+        style={{ width: CIRCLE + 4, height: CIRCLE + 4, bottom: -2 }}
+      />
+      {/* frame lingkaran + BADAN (di-clip lengkung lingkaran) */}
+      <div
+        className="absolute bottom-0 left-1/2 flex -translate-x-1/2 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br from-blue-500 via-blue-400 to-cyan-400 shadow-lg shadow-blue-500/30"
         style={{ width: CIRCLE, height: CIRCLE }}
       >
         {imgError ? (
@@ -814,19 +937,32 @@ function StaffAvatar({
           // eslint-disable-next-line @next/next/no-img-element
           <img
             src={src}
-            alt={name}
+            alt=""
+            aria-hidden
             onError={() => setImgError(true)}
-            className="h-full w-full object-cover object-top"
+            style={{ height: PHOTO_H }}
+            className="absolute bottom-0 left-1/2 w-auto max-w-none -translate-x-1/2 object-contain object-bottom"
           />
         )}
       </div>
+      {/* KEPALA pop-out — foto sama, hanya bagian di atas lingkaran */}
+      {!imgError && (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={src}
+          alt={name}
+          onError={() => setImgError(true)}
+          style={{ height: PHOTO_H, clipPath: `inset(0 0 ${CIRCLE - 6}px 0)` }}
+          className="pointer-events-none absolute bottom-0 left-1/2 w-auto max-w-none -translate-x-1/2 object-contain object-bottom"
+        />
+      )}
       {/* dot status */}
       <span
         className={cn(
           "absolute z-20 rounded-full ring-2 ring-white dark:ring-surface-elev",
-          active ? "bg-emerald-500" : "bg-rose-400",
+          active ? "bg-emerald-500 animate-dot-pulse" : "bg-rose-400",
         )}
-        style={{ width: dot, height: dot, bottom: big ? 4 : 2, right: big ? 4 : 2 }}
+        style={{ width: dot, height: dot, bottom: 2, right: 2 }}
       />
     </div>
   );
@@ -887,14 +1023,14 @@ function FilterSelect({
   options: { value: string; label: string }[];
 }) {
   return (
-    <div className="relative">
+    <div className="relative w-full sm:w-auto">
       <span className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-ink-subtle">
         {icon}
       </span>
       <select
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="appearance-none rounded-xl border border-blue-100 bg-surface py-2.5 pl-8 pr-8 text-xs font-semibold text-ink outline-none ring-blue-200 transition focus:border-blue-300 focus:ring-2 dark:border-hairline"
+        className="w-full appearance-none rounded-xl border border-blue-100 bg-surface py-2.5 pl-8 pr-7 text-xs font-semibold text-ink outline-none ring-blue-200 transition focus:border-blue-300 focus:ring-2 dark:border-hairline sm:w-auto"
       >
         {options.map((o) => (
           <option key={o.value} value={o.value}>
@@ -954,7 +1090,7 @@ function ActionBtn({
       onClick={onClick}
       title={label}
       className={cn(
-        "inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] font-semibold ring-1 transition",
+        "inline-flex w-full items-center justify-center gap-1.5 rounded-lg px-2.5 py-2 text-xs font-semibold ring-1 transition sm:w-auto sm:py-1.5 sm:text-[11px]",
         tone === "danger"
           ? "text-rose-600 ring-rose-100 hover:bg-rose-50 hover:ring-rose-200 dark:ring-rose-500/25 dark:hover:bg-rose-500/10"
           : "text-ink-muted ring-blue-100 hover:bg-blue-50 hover:text-blue-700 dark:ring-hairline dark:hover:bg-surface-2",
@@ -985,28 +1121,64 @@ function OfficerCard({
     ? STATION_TONE[op.station] ??
       "bg-amber-100 text-amber-700 ring-amber-200 dark:bg-amber-500/15 dark:text-amber-300"
     : "";
+  const roleBadge = (
+    <span
+      className={cn(
+        "inline-flex items-center rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide ring-1",
+        ROLE_TONE[op.role] ?? ROLE_TONE.operator,
+      )}
+    >
+      {op.role}
+    </span>
+  );
   return (
     <article
       className={cn(
+        // Card-nya DIAM (tidak dianimasikan). Animasi entrance ada di FOTO petugas
+        // (lihat wrapper StaffAvatar di bawah), bukan di kotak card ini.
         "group relative overflow-hidden rounded-2xl border border-blue-100/70 bg-gradient-to-br from-white to-sky-50/40 p-4 shadow-card ring-1 ring-white/50 transition-all duration-300 hover:-translate-y-1 hover:border-blue-300 hover:shadow-lift dark:border-hairline dark:from-surface dark:to-surface/70 dark:ring-hairline",
         !op.active && "opacity-75",
       )}
     >
       {/* dekorasi pojok */}
-      <div className="pointer-events-none absolute -right-10 -top-10 h-28 w-28 rounded-full bg-blue-200/20 blur-2xl transition group-hover:bg-blue-300/30" />
+      <div className="pointer-events-none absolute -right-12 -top-12 h-28 w-28 rounded-full bg-blue-200/20 blur-2xl transition group-hover:bg-blue-300/30" />
 
-      <div className="relative flex gap-4">
-        <StaffAvatar name={op.name} email={op.email} active={op.active} />
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-1.5">
-            <span
-              className={cn(
-                "inline-flex items-center rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide ring-1",
-                ROLE_TONE[op.role] ?? ROLE_TONE.operator,
-              )}
-            >
-              {op.role}
-            </span>
+      {/* tombol hapus di pojok kanan atas (lepas dari alur aksi) */}
+      <button
+        type="button"
+        onClick={onDelete}
+        title="Hapus"
+        aria-label="Hapus"
+        className="absolute right-2.5 top-2.5 z-10 rounded-lg p-1.5 text-rose-400 ring-1 ring-rose-100 transition hover:bg-rose-50 hover:text-rose-600 dark:ring-rose-500/25 dark:hover:bg-rose-500/10"
+      >
+        <Trash2 className="h-3.5 w-3.5" />
+      </button>
+
+      {/* header: terpusat di mobile, horizontal di sm+ */}
+      <div className="relative flex flex-col items-center gap-3 pr-6 text-center sm:flex-row sm:items-start sm:gap-4 sm:pr-7 sm:text-left">
+        {/* Animasi ada di FOTO petugas (bukan card). Wrapper luar = entrance lineup
+            sekali (fade + slide-up + scale 0.9→1, bawa ring/glow ikut muncul).
+            Wrapper dalam = idle float, mulai setelah entrance (delay = durasi 1.2s).
+            Semua avatar timing identik → muncul serentak, tanpa stagger/delay-index. */}
+        <div className="shrink-0 md:animate-lineup-in">
+          <div className="md:animate-avatar-float md:[animation-delay:1.2s]">
+            <StaffAvatar
+              name={op.name}
+              email={op.email}
+              active={op.active}
+              operatorId={op.id}
+              hasPhoto={op.hasPhoto}
+              photoVersion={op.updatedAt}
+            />
+          </div>
+        </div>
+        <div className="min-w-0 w-full flex-1">
+          <h3 className="truncate text-base font-extrabold tracking-tight text-ink">
+            {op.name}
+          </h3>
+          <p className="truncate text-xs text-ink-muted">{op.email}</p>
+          <div className="mt-2 flex flex-wrap items-center justify-center gap-1.5 sm:justify-start">
+            {roleBadge}
             {op.station && (
               <span
                 className={cn(
@@ -1020,7 +1192,7 @@ function OfficerCard({
             )}
             <span
               className={cn(
-                "ml-auto inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide ring-1",
+                "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide ring-1",
                 op.active
                   ? "bg-emerald-50 text-emerald-600 ring-emerald-200 dark:bg-emerald-500/15 dark:text-emerald-300"
                   : "bg-rose-50 text-rose-600 ring-rose-200 dark:bg-rose-500/15 dark:text-rose-300",
@@ -1034,22 +1206,18 @@ function OfficerCard({
               />
               {op.active ? "Aktif" : "Nonaktif"}
             </span>
+            {op.hasPin && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[9px] font-bold uppercase text-emerald-600 ring-1 ring-emerald-200 dark:bg-emerald-500/15 dark:text-emerald-300">
+                <KeyRound className="h-3 w-3" />
+                PIN
+              </span>
+            )}
           </div>
-          <h3 className="mt-2 truncate text-base font-extrabold tracking-tight text-ink">
-            {op.name}
-          </h3>
-          <p className="truncate text-xs text-ink-muted">{op.email}</p>
-          {op.hasPin && (
-            <span className="mt-2 inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[9px] font-bold uppercase text-emerald-600 ring-1 ring-emerald-200 dark:bg-emerald-500/15 dark:text-emerald-300">
-              <KeyRound className="h-3 w-3" />
-              PIN aktif
-            </span>
-          )}
         </div>
       </div>
 
-      {/* aksi */}
-      <div className="relative mt-4 flex flex-wrap items-center gap-1.5 border-t border-blue-50 pt-3 dark:border-hairline">
+      {/* aksi: grid 2 kolom di mobile, baris di sm+ */}
+      <div className="relative mt-4 grid grid-cols-2 gap-2 border-t border-blue-50 pt-3 dark:border-hairline sm:flex sm:flex-wrap sm:gap-1.5">
         <ActionBtn icon={<Eye className="h-3.5 w-3.5" />} label="Detail" onClick={onDetail} />
         <ActionBtn icon={<Pencil className="h-3.5 w-3.5" />} label="Edit" onClick={onEdit} />
         <ActionBtn icon={<KeyRound className="h-3.5 w-3.5" />} label="Reset PIN" onClick={onSetPin} />
@@ -1059,15 +1227,6 @@ function OfficerCard({
           onClick={onToggleActive}
           tone={op.active ? "danger" : "default"}
         />
-        <button
-          type="button"
-          onClick={onDelete}
-          title="Hapus"
-          aria-label="Hapus"
-          className="ml-auto rounded-lg p-1.5 text-rose-500 ring-1 ring-rose-100 transition hover:bg-rose-50 hover:ring-rose-200 dark:ring-rose-500/25 dark:hover:bg-rose-500/10"
-        >
-          <Trash2 className="h-3.5 w-3.5" />
-        </button>
       </div>
     </article>
   );
@@ -1122,6 +1281,9 @@ function OfficerDetail({
               email={op.email}
               active={op.active}
               size="lg"
+              operatorId={op.id}
+              hasPhoto={op.hasPhoto}
+              photoVersion={op.updatedAt}
             />
           </div>
           <h3 className="relative z-10 mt-2 animate-fade-up text-xl font-extrabold tracking-tight text-ink">
@@ -1277,10 +1439,73 @@ function OfficerForm({
   form: FormState;
   setForm: (f: FormState) => void;
   saving: boolean;
-  onSave: () => void;
+  onSave: (photo?: PhotoChange) => void;
   onClose: () => void;
 }) {
   const isEdit = Boolean(form.id);
+
+  // Foto: file baru yang dipilih (belum di-upload) + preview, foto lama (edit),
+  // dan penanda "hapus foto lama". Upload terjadi saat tombol Simpan ditekan.
+  const [photoFile, setPhotoFile] = useState<File | null>(null);
+  const [photoPreview, setPhotoPreview] = useState<string | null>(null);
+  const [currentUrl, setCurrentUrl] = useState<string | null>(null);
+  const [clearExisting, setClearExisting] = useState(false);
+
+  // Ambil foto lama saat edit petugas yang sudah punya foto.
+  useEffect(() => {
+    if (!form.id || !form.hasPhoto) return;
+    let cancelled = false;
+    let url: string | null = null;
+    getOperatorPhotoObjectUrl(form.id).then((u) => {
+      if (cancelled) {
+        if (u) URL.revokeObjectURL(u);
+        return;
+      }
+      url = u;
+      setCurrentUrl(u);
+    });
+    return () => {
+      cancelled = true;
+      if (url) URL.revokeObjectURL(url);
+    };
+  }, [form.id, form.hasPhoto]);
+
+  // Revoke preview file saat ganti / unmount agar tak bocor memori.
+  useEffect(() => {
+    return () => {
+      if (photoPreview) URL.revokeObjectURL(photoPreview);
+    };
+  }, [photoPreview]);
+
+  const onPickPhoto = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!/^image\/(jpeg|png|webp)$/.test(file.type)) {
+      alert("Format foto harus JPEG, PNG, atau WebP.");
+      return;
+    }
+    if (file.size > 2_097_152) {
+      alert("Ukuran foto maksimal 2 MB.");
+      return;
+    }
+    if (photoPreview) URL.revokeObjectURL(photoPreview);
+    setPhotoFile(file);
+    setPhotoPreview(URL.createObjectURL(file));
+    setClearExisting(false);
+  };
+
+  const removePhoto = () => {
+    if (photoPreview) URL.revokeObjectURL(photoPreview);
+    setPhotoFile(null);
+    setPhotoPreview(null);
+    setClearExisting(Boolean(form.id && form.hasPhoto)); // tandai hapus hanya bila ada foto lama
+  };
+
+  // Yang ditampilkan: pilihan baru > foto lama (bila tak ditandai hapus).
+  const shownPhoto = photoPreview ?? (clearExisting ? null : currentUrl);
+  const handleSubmit = () =>
+    onSave({ file: photoFile, clear: clearExisting && !photoFile });
+
   return (
     <div
       className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/40 p-0 backdrop-blur-sm sm:items-center sm:p-4 print:hidden"
@@ -1310,6 +1535,51 @@ function OfficerForm({
         </div>
 
         <div className="space-y-3 px-5 py-4">
+          {/* Foto petugas */}
+          <div className="flex items-center gap-4 rounded-2xl bg-surface-2/60 p-3 ring-1 ring-hairline">
+            <div className="relative h-20 w-20 shrink-0 overflow-hidden rounded-2xl bg-gradient-to-br from-blue-500 via-blue-400 to-cyan-400 ring-2 ring-white shadow-md dark:ring-surface-elev">
+              {shownPhoto ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={shownPhoto}
+                  alt="Pratinjau foto petugas"
+                  className="h-full w-full object-cover"
+                />
+              ) : (
+                <span className="flex h-full w-full items-center justify-center text-white">
+                  <Camera className="h-7 w-7 opacity-90" />
+                </span>
+              )}
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-xs font-semibold text-ink">Foto Petugas</p>
+              <p className="mt-0.5 text-[11px] text-ink-muted">
+                JPEG/PNG/WebP, maks 2 MB. Disajikan aman (auth) dari server.
+              </p>
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-1.5 text-[11px] font-bold text-white transition hover:bg-blue-700">
+                  <ImagePlus className="h-3.5 w-3.5" />
+                  {shownPhoto ? "Ganti foto" : "Pilih foto"}
+                  <input
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp"
+                    onChange={onPickPhoto}
+                    className="hidden"
+                  />
+                </label>
+                {shownPhoto && (
+                  <button
+                    type="button"
+                    onClick={removePhoto}
+                    className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] font-semibold text-rose-600 ring-1 ring-rose-100 transition hover:bg-rose-50 dark:ring-rose-500/25 dark:hover:bg-rose-500/10"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                    Hapus
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
           <Field label="Nama">
             <input
               type="text"
@@ -1390,7 +1660,7 @@ function OfficerForm({
           </button>
           <button
             type="button"
-            onClick={onSave}
+            onClick={handleSubmit}
             disabled={saving}
             className="inline-flex items-center gap-1.5 rounded-xl bg-blue-600 px-4 py-2 text-sm font-bold text-white shadow-sm transition hover:bg-blue-700 disabled:opacity-60"
           >

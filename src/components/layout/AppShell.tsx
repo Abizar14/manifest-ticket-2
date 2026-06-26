@@ -300,7 +300,7 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
               "flex items-center gap-2.5 transition",
               collapsed && "justify-center",
             )}
-            title="AFVS"
+            title="SIPANDAI"
           >
             <div className="relative flex h-10 w-10 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-600 to-cyan-500 text-white shadow-lift">
               <ShieldCheck className="h-5 w-5" />
@@ -309,9 +309,9 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
             {!collapsed && (
               <div className="leading-tight">
                 <p className="text-sm font-bold tracking-tight text-slate-800">
-                  AFVS
+                  SIPANDAI
                 </p>
-                <p className="text-[11px] text-slate-500">Flight Validation</p>
+                <p className="text-[11px] text-slate-500">Validasi Boarding Pass</p>
               </div>
             )}
           </Link>
@@ -693,5 +693,5 @@ function currentTitle(pathname: string, t: (k: string) => string) {
   if (pathname.startsWith("/analytics")) return t("nav.analytics");
   if (pathname.startsWith("/insights")) return t("nav.insights");
   if (pathname.startsWith("/settings")) return t("nav.settings");
-  return "AFVS";
+  return "SIPANDAI";
 }
