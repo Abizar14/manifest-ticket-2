@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import type { ComponentType } from "react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertOctagon,
   AlertTriangle,
@@ -26,6 +26,23 @@ import { cn, todayDateString } from "@/lib/utils";
 import { useToast } from "@/components/ui/Toast";
 
 const DISMISSED_KEY = "afvs.insightBubble.dismissed";
+const CORNER_KEY = "afvs.insightBubble.corner";
+
+type Corner = "br" | "bl" | "tr" | "tl";
+
+// Kelas posisi per sudut. Ditulis literal supaya Tailwind JIT ikut men-generate.
+const CORNER_CLASS: Record<Corner, string> = {
+  br: "bottom-[calc(env(safe-area-inset-bottom)+5.75rem)] right-4 lg:bottom-5",
+  bl: "bottom-[calc(env(safe-area-inset-bottom)+5.75rem)] left-4 lg:bottom-5",
+  tr: "top-[calc(env(safe-area-inset-top)+4.5rem)] right-4",
+  tl: "top-[calc(env(safe-area-inset-top)+4.5rem)] left-4",
+};
+
+function readCorner(): Corner {
+  if (typeof window === "undefined") return "br";
+  const v = window.localStorage.getItem(CORNER_KEY);
+  return v === "bl" || v === "tr" || v === "tl" || v === "br" ? v : "br";
+}
 
 const SEVERITY_META: Record<
   InsightSeverity,
@@ -109,6 +126,24 @@ export function InsightBubble() {
   const [dismissed, setDismissed] = useState<string[]>([]);
   const [lastToastId, setLastToastId] = useState<string | null>(null);
   const [allowAutoToast, setAllowAutoToast] = useState(false);
+
+  // Drag + snap-ke-sudut + ingat posisi.
+  const rootRef = useRef<HTMLDivElement>(null);
+  const [corner, setCorner] = useState<Corner>("br");
+  const [drag, setDrag] = useState<{ left: number; top: number } | null>(null);
+  const dragRef = useRef<{
+    id: number;
+    dx: number;
+    dy: number;
+    sx: number;
+    sy: number;
+    moved: boolean;
+  } | null>(null);
+  const suppressClick = useRef(false);
+
+  useEffect(() => {
+    setCorner(readCorner());
+  }, []);
 
   useEffect(() => {
     setDismissed(readDismissed());
@@ -195,15 +230,96 @@ export function InsightBubble() {
     saveDismissed(ids);
   };
 
+  const onPointerDown = (e: React.PointerEvent<HTMLButtonElement>) => {
+    if (e.button !== undefined && e.button !== 0) return;
+    const rect = rootRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    dragRef.current = {
+      id: e.pointerId,
+      dx: e.clientX - rect.left,
+      dy: e.clientY - rect.top,
+      sx: e.clientX,
+      sy: e.clientY,
+      moved: false,
+    };
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId);
+    } catch {
+      /* abaikan */
+    }
+  };
+
+  const onPointerMove = (e: React.PointerEvent<HTMLButtonElement>) => {
+    const st = dragRef.current;
+    if (!st || st.id !== e.pointerId) return;
+    if (!st.moved && Math.hypot(e.clientX - st.sx, e.clientY - st.sy) < 6) return;
+    if (!st.moved) {
+      st.moved = true;
+      setOpen(false); // tutup panel selama digeser
+    }
+    const w = rootRef.current?.offsetWidth ?? 56;
+    const h = rootRef.current?.offsetHeight ?? 56;
+    const left = Math.min(
+      Math.max(8, e.clientX - st.dx),
+      window.innerWidth - w - 8,
+    );
+    const top = Math.min(
+      Math.max(8, e.clientY - st.dy),
+      window.innerHeight - h - 8,
+    );
+    setDrag({ left, top });
+  };
+
+  const onPointerUp = (e: React.PointerEvent<HTMLButtonElement>) => {
+    const st = dragRef.current;
+    dragRef.current = null;
+    try {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    } catch {
+      /* abaikan */
+    }
+    if (!st || !st.moved) return; // bukan geser → biar onClick yang menangani tap
+    suppressClick.current = true; // cegah toggle setelah drag
+    const rect = rootRef.current?.getBoundingClientRect();
+    const cx = rect ? rect.left + rect.width / 2 : window.innerWidth;
+    const cy = rect ? rect.top + rect.height / 2 : window.innerHeight;
+    const next = `${cy < window.innerHeight / 2 ? "t" : "b"}${
+      cx < window.innerWidth / 2 ? "l" : "r"
+    }` as Corner;
+    setCorner(next);
+    try {
+      window.localStorage.setItem(CORNER_KEY, next);
+    } catch {
+      /* abaikan */
+    }
+    setDrag(null);
+  };
+
   if (!topInsight) return null;
 
   const topMeta = SEVERITY_META[topInsight.severity];
   const TopIcon = topMeta.icon;
+  const flexDir = corner === "tr" || corner === "tl" ? "flex-col-reverse" : "flex-col";
+  const align = corner === "bl" || corner === "tl" ? "items-start" : "items-end";
 
   return (
-    <div className="fixed bottom-[calc(env(safe-area-inset-bottom)+5.75rem)] right-4 z-[55] print:hidden lg:bottom-5">
+    <div
+      ref={rootRef}
+      className={cn(
+        "fixed z-[55] flex gap-3 print:hidden",
+        flexDir,
+        align,
+        !drag && CORNER_CLASS[corner],
+        drag && "cursor-grabbing select-none",
+      )}
+      style={
+        drag
+          ? { left: drag.left, top: drag.top, right: "auto", bottom: "auto" }
+          : undefined
+      }
+    >
       {open && (
-        <div className="mb-3 w-[min(390px,calc(100vw-2rem))] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_24px_70px_-30px_rgba(15,23,42,0.45)] ring-1 ring-black/5 backdrop-blur dark:border-hairline dark:bg-surface">
+        <div className="w-[min(390px,calc(100vw-2rem))] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_24px_70px_-30px_rgba(15,23,42,0.45)] ring-1 ring-black/5 backdrop-blur dark:border-hairline dark:bg-surface">
           <div className="flex items-start justify-between gap-3 border-b border-slate-100 bg-gradient-to-r from-slate-50 to-sky-50 px-4 py-3 dark:border-hairline dark:bg-none">
             <div className="flex items-center gap-3">
               <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-slate-900 text-white shadow-sm">
@@ -339,12 +455,19 @@ export function InsightBubble() {
 
       <button
         type="button"
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
         onClick={() => {
+          if (suppressClick.current) {
+            suppressClick.current = false;
+            return; // baru saja digeser, jangan toggle
+          }
           setOpen((v) => !v);
           setVersion((v) => v + 1);
         }}
         className={cn(
-          "group relative flex h-14 items-center gap-3 rounded-2xl px-3.5 text-left shadow-[0_18px_40px_-16px_rgba(15,23,42,0.55)] ring-1 transition hover:-translate-y-0.5",
+          "group relative flex h-14 touch-none cursor-grab items-center gap-3 rounded-2xl px-3.5 text-left shadow-[0_18px_40px_-16px_rgba(15,23,42,0.55)] ring-1 transition hover:-translate-y-0.5 active:cursor-grabbing",
           unreadCount > 0
             ? "bg-slate-950 text-white ring-slate-800"
             : "bg-white text-slate-800 ring-slate-200 dark:bg-surface dark:text-ink dark:ring-hairline",

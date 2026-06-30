@@ -1,4 +1,4 @@
-// AFVS service worker — minimal offline-ready shell.
+ // AFVS service worker — minimal offline-ready shell.
 // Strategy:
 //   - precache the offline fallback page on install
 //   - navigation requests: network-first, fall back to cached fallback

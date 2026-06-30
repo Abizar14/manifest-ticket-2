@@ -8,7 +8,9 @@
       "Bash(taskkill //F //IM node.exe //T)",
       "Bash(npx next *)",
       "Bash(grep -E \"Failed to collect|Error occurred|Error:|/dashboard|/admin\" /tmp/b.log | head -10)",
-      "Read(//d/tmp/**)"
+      "Read(//d/tmp/**)",
+      "PowerShell(npm run test 2>&1)",
+      "PowerShell($ProgressPreference='SilentlyContinue'; try { $l=Invoke-WebRequest -UseBasicParsing -Uri http://localhost:3001/login -TimeoutSec 40; Write-Output \\(\"LOGIN HTTP \"+$l.StatusCode+\" bytes=\"+$l.Content.Length\\) } catch { Write-Output \\(\"LOGIN err \"+$_.Exception.Message\\) }; try { $d=Invoke-WebRequest -UseBasicParsing -Uri http://localhost:3001/dashboard -TimeoutSec 40; Write-Output \\(\"DASH HTTP \"+$d.StatusCode\\) } catch { Write-Output \\(\"DASH err \"+$_.Exception.Message\\) })"
     ]
   }
 }
