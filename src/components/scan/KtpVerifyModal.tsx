@@ -67,6 +67,8 @@ function statusLabel(status: KtpVerificationStatus): string {
       return "OCR GAGAL";
     case "skipped":
       return "DILEWATI";
+    case "exempted":
+      return "TANPA KTP (ANAK)";
   }
 }
 

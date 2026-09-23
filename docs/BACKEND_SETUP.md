@@ -7,14 +7,15 @@ Backend NestJS sudah **ter-install, ter-migrate, dan ter-seed** di folder [backe
 | Item                          | Status     | Detail                                                                              |
 | ----------------------------- | ---------- | ----------------------------------------------------------------------------------- |
 | Dependency NestJS + Prisma    | ✅ install | `npm install` (528 packages) — Node 20 LTS                                          |
-| Database                      | ✅ PostgreSQL | Laragon Postgres @ `127.0.0.1:5432`, DB `afvs` (`DATABASE_URL` di `.env`). SQLite `dev.db` lama sudah tidak dipakai. |
-| Migration                     | ✅ applied | `prisma/migrations/20260621033821_init/` (Postgres)                                 |
+| Database                      | ✅ MySQL   | Laragon MySQL @ `127.0.0.1:3306`, DB `afvs` (`DATABASE_URL="mysql://…@127.0.0.1:3306/afvs"` di `.env`). |
+| Schema DB                     | ✅ applied | Di-apply via `prisma db push` (BUKAN migration history — folder `prisma/migrations/` stale/Postgres, jangan dipakai) |
 | Seed admin + operator         | ✅ seeded  | `admin@afvs.local` (admin) & `operator@afvs.local` (operator, station `CGK-T3`)     |
 | JWT auth                      | ✅ aktif   | Bearer token 12 jam (`/api/auth/login`)                                             |
 | RBAC                          | ✅ aktif   | Role `operator` / `supervisor` / `admin` via `@Roles()`                             |
 | Endpoint flights              | ✅ uji     | GET/POST/PATCH/DELETE — tested via curl                                             |
 | Endpoint scan-events          | ✅ uji     | POST idempotent by `eventId` (multipart) + GET list + GET detail                    |
 | Endpoint face-photos          | ✅ aktif   | Stream JPEG `/api/face-photos/:eventId` (auth-gated)                                |
+11| Manifest penumpang            | ✅ aktif   | Model `FlightPassenger`, di-upsert saat push scan VALID; `GET /flights/:id/passengers` + rebuild |
 | Swagger docs                  | ✅ aktif   | `http://localhost:3001/docs` (interaktif, klik "Try it out")                        |
 | Helmet + CORS + Throttler     | ✅ aktif   | Rate limit 120 req/menit, CORS ke `http://localhost:3000`                           |
 | Build artifact                | ✅ siap    | `backend/dist/src/main.js` (`npm run start:prod`)                                   |
@@ -52,6 +53,9 @@ Backend NestJS sudah **ter-install, ter-migrate, dan ter-seed** di folder [backe
 | POST   | `/api/flights/sync`           | Bearer   | Snapshot jadwal harian (upsert massal idempotent by `station+flightNumber+std`) — dipakai saat tarik FIDS |
 | PATCH  | `/api/flights/:id`            | sup/ad   | Update `status`/`std`                       |
 | DELETE | `/api/flights/:id`            | admin    | Hapus flight                                |
+| GET    | `/api/flights/:id/passengers` | Bearer   | Manifest penumpang flight (agregat scan VALID; scoping per-station F-05) |
+| POST   | `/api/flights/manifests/rebuild` | admin | Backfill/rebuild manifest dari ScanEvent historis (idempotent; query `date` opsional) |
+| GET    | `/api/flights/manifests/by-airline` | Bearer | Rekap pax per maskapai (`date` atau `from`+`to`; `detail=1` sertakan rincian penerbangan; scoping F-05) |
 | GET    | `/api/operators`              | admin    | List petugas (filter `station/role/q`)      |
 | POST   | `/api/operators`              | admin    | Tambah petugas → return `{operator, pin}`   |
 | PATCH  | `/api/operators/:id`          | admin    | Update nama/email/role/station/active       |
@@ -166,28 +170,32 @@ Frontend kini tersambung ke backend lewat halaman **`/connect`** (menu "Koneksi 
 
 ## Operasional
 
-### Database: PostgreSQL (Laragon)
+### Database: MySQL (Laragon)
 
 `backend/.env`:
 ```
-DATABASE_URL="postgresql://postgres@127.0.0.1:5432/afvs?schema=public"
+DATABASE_URL="mysql://root:PASSWORD@127.0.0.1:3306/afvs"
 ```
-(kalau user `postgres` Laragon-mu ada password: `postgresql://postgres:PASSWORD@127.0.0.1:5432/afvs?schema=public`)
+(dev Laragon default: user `root`. **Produksi: WAJIB user khusus berhak minimal, BUKAN root** — lihat `.env.production.example`.)
 
-Pastikan Laragon → **Start All** (Postgres listen `:5432`). `prisma migrate dev` akan otomatis membuat database `afvs` bila belum ada.
+Pastikan Laragon → **Start All** (MySQL listen `:3306`). Buat database `afvs` sekali (mis. via HeidiSQL/Adminer atau `CREATE DATABASE afvs;`), lalu apply skema:
+```bash
+cd backend
+npx prisma db push        # apply schema.prisma ke MySQL (buat/ubah tabel)
+npx prisma generate       # generate Prisma Client
+npx ts-node prisma/seed.ts  # seed admin/operator (opsional di dev)
+```
+> Catatan: pakai **`prisma db push`**, BUKAN `prisma migrate` — folder `prisma/migrations/` masih Postgres & stale, `migrate dev` akan error P3019.
 
-### Reset DB (Postgres)
+### Reset DB (MySQL)
 
 ```bash
 cd backend
-# Pastikan tidak ada `npm run start:dev` yang berjalan (mengunci Prisma engine).
-npx prisma migrate reset      # drop + re-create + re-apply migration + auto-seed*
-# atau manual:
-npx prisma migrate dev --name init
+# Pastikan tidak ada `npm run start:dev` berjalan (mengunci Prisma engine .dll di Windows).
+npx prisma db push --force-reset   # DROP semua tabel + re-apply schema (HATI-HATI: hapus data)
 npx prisma generate
-npx ts-node prisma/seed.ts
+npx ts-node prisma/seed.ts         # seed ulang admin/operator
 ```
-> *`migrate reset` menjalankan seed otomatis kalau `prisma.seed` di-set di package.json; kalau tidak, jalankan seed manual.
 
 ### Tambah operator baru
 
@@ -206,13 +214,18 @@ Halaman admin untuk mengelola petugas AVSEC tanpa menyentuh DB:
 
 Semua endpoint `/operators` butuh role **admin** (JWT dari login admin di `/connect`).
 
-### Pindah balik ke SQLite (dev cepat tanpa Laragon)
+### Pindah ke SQLite (dev cepat tanpa Laragon) — opsional
 
-Set `provider = "sqlite"` di `schema.prisma`, `DATABASE_URL="file:./dev.db"`, hapus `prisma/migrations/` (Postgres-specific), lalu `migrate dev` + seed.
+Set `provider = "sqlite"` di `schema.prisma`, `DATABASE_URL="file:./dev.db"`, lalu `npx prisma db push` + seed. (Hanya untuk dev lokal; produksi tetap MySQL.)
 
-### Deploy ke Proxmox VM Ubuntu
+### Deploy ke server (Ubuntu VM / on-prem)
 
-Lihat [nestjs-deploy.md](./nestjs-deploy.md) — full step Node 20 + Postgres + PM2 + Nginx + Certbot + backup harian.
+Lihat [nestjs-deploy.md](./nestjs-deploy.md) — full step Node 20 + **MySQL** + PM2 + Nginx + Certbot (HTTPS) + backup harian.
+
+**Dokumen produksi terkait:**
+- [GO-LIVE-CHECKLIST.md](./GO-LIVE-CHECKLIST.md) — daftar periksa lengkap sebelum & saat go-live (HTTPS, secret, validasi station dengan scan asli, dll).
+- [BACKUP-DB.md](./BACKUP-DB.md) — skrip backup DB + uploads (foto) & uji restore.
+- [MONITORING.md](./MONITORING.md) — uptime `/api/health` + agregasi log (PM2/Sentry).
 
 ## Troubleshooting
 

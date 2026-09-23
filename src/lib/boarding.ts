@@ -1,10 +1,21 @@
 import { BoardingProgress, Flight, ScanEvent } from "./types";
+import { manifestDedupKey } from "./manifest";
+
+/**
+ * Kunci dedup penumpang dari sebuah scan event: tiket→PNR (sama dengan manifest
+ * & backend). Fallback ke seat+ticket+pnr bila keduanya kosong agar tetap unik.
+ */
+function paxKey(e: ScanEvent): string {
+  return (
+    manifestDedupKey(e.parsedTicketNumber, e.parsedPnr) ??
+    `${e.parsedSeatNumber ?? ""}-${e.parsedTicketNumber ?? ""}-${e.parsedPnr ?? ""}`
+  );
+}
 
 /**
  * Hitung jumlah penumpang boarded untuk satu flight.
- * Boarded = unique (pnr+seat+ticket) yang punya minimal 1 scan VALID_FLIGHT
- * dengan flightId yang cocok. Pakai dedup yang sama dengan halaman detail
- * supaya konsisten.
+ * Boarded = unique (tiket→PNR) yang punya minimal 1 scan VALID_FLIGHT dengan
+ * flightId yang cocok. Pakai dedup yang sama dengan manifest supaya konsisten.
  */
 export function getBoardedCount(
   flightId: string,
@@ -14,8 +25,7 @@ export function getBoardedCount(
   for (const e of events) {
     if (e.resultStatus !== "VALID_FLIGHT") continue;
     if (e.flightId !== flightId) continue;
-    const key = `${e.parsedPnr ?? ""}-${e.parsedSeatNumber ?? ""}-${e.parsedTicketNumber ?? ""}`;
-    keys.add(key);
+    keys.add(paxKey(e));
   }
   return keys.size;
 }
@@ -30,7 +40,7 @@ export function buildBoardedCounts(events: ScanEvent[]): Map<string, number> {
   for (const e of events) {
     if (e.resultStatus !== "VALID_FLIGHT") continue;
     if (!e.flightId) continue;
-    const key = `${e.parsedPnr ?? ""}-${e.parsedSeatNumber ?? ""}-${e.parsedTicketNumber ?? ""}`;
+    const key = paxKey(e);
     let set = sets.get(e.flightId);
     if (!set) {
       set = new Set<string>();

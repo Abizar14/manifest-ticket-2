@@ -7,10 +7,12 @@ import {
   Patch,
   Post,
   Query,
+  Req,
   UseGuards,
 } from "@nestjs/common";
 import { ApiBearerAuth, ApiTags } from "@nestjs/swagger";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
+import { JwtPayload } from "../auth/auth.service";
 import { RolesGuard } from "../auth/roles.guard";
 import { Roles } from "../common/roles.decorator";
 import {
@@ -31,6 +33,33 @@ export class FlightsController {
   @Get()
   list(@Query() q: ListFlightsQuery) {
     return this.svc.list(q);
+  }
+
+  // Rekap penumpang per maskapai (agregat manifest). `date` atau `from`+`to`.
+  // Path statis DIDAHULUKAN sebelum ":id/passengers" agar tak tertangkap :id.
+  @Get("manifests/by-airline")
+  manifestByAirline(
+    @Req() req: { user: JwtPayload },
+    @Query() q: { date?: string; from?: string; to?: string; detail?: string },
+  ) {
+    return this.svc.manifestByAirline(q, req.user);
+  }
+
+  // Manifest penumpang sebuah flight (diisi dari scan VALID). Semua petugas
+  // terautentikasi; scoping per-station/role diterapkan di service (F-05).
+  @Get(":id/passengers")
+  passengers(
+    @Req() req: { user: JwtPayload },
+    @Param("id") id: string,
+  ) {
+    return this.svc.listPassengers(id, req.user);
+  }
+
+  // Backfill/rebuild manifest dari ScanEvent historis (idempotent). Admin only.
+  @Post("manifests/rebuild")
+  @Roles("admin")
+  rebuildManifests(@Query("date") date?: string) {
+    return this.svc.rebuildManifests(date);
   }
 
   @Post()

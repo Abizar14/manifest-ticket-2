@@ -1,8 +1,9 @@
 "use client";
 
-import { Flight, ScanEvent, SessionUser, User } from "./types";
+import { Flight, PassengerRecord, ScanEvent, SessionUser, User } from "./types";
 import { DUMMY_USERS, buildSeedFlights } from "./mockData";
 import { buildFlightsFromCustomSeed } from "./seedSnapshot";
+import { manifestDedupKey } from "./manifest";
 
 const KEYS = {
   users: "afvs.users",
@@ -14,6 +15,7 @@ const KEYS = {
   audit: "afvs.flightAuditEvents",
   settings: "afvs.settings",
   archiveAt: "afvs.lastArchiveAt",
+  manifests: "afvs.manifests",
 } as const;
 
 function isBrowser() {
@@ -146,6 +148,77 @@ export function updateFlight(id: string, patch: Partial<Flight>) {
 
 export function deleteFlight(id: string) {
   saveFlights(getFlights().filter((f) => f.id !== id));
+}
+
+/* Manifest penumpang per-flight (afvs.manifests) — dataset kanonik lokal yang
+   diisi saat scan VALID (offline-first). Bentuk: { [flightId]: PassengerRecord[] }.
+   Kunci dedup tiket→PNR sama dengan backend (lihat ./manifest). */
+type ManifestStore = Record<string, PassengerRecord[]>;
+
+function getManifestStore(): ManifestStore {
+  return read<ManifestStore>(KEYS.manifests, {});
+}
+
+export function getFlightManifest(flightId: string): PassengerRecord[] {
+  return getManifestStore()[flightId] ?? [];
+}
+
+/**
+ * Catat satu penumpang (dari scan VALID) ke manifest flight. Dedup tiket→PNR:
+ * penumpang yang sama → increment scanCount + majukan lastScannedAt. Idempotensi
+ * scan sudah dijaga di layer scan (rawBarcode+flightId+hari) sehingga aman.
+ */
+export function upsertManifestPax(
+  flightId: string,
+  pax: {
+    passengerName: string | null;
+    pnr: string | null;
+    ticketNumber: string | null;
+    seatNumber: string | null;
+    scannedAt: string;
+    flightNumber: string;
+  },
+) {
+  const dedupKey = manifestDedupKey(pax.ticketNumber, pax.pnr);
+  if (!dedupKey) return; // tak ada tiket/PNR → tak bisa didedup
+
+  const store = getManifestStore();
+  const list = store[flightId] ? [...store[flightId]] : [];
+  const idx = list.findIndex(
+    (p) => manifestDedupKey(p.ticketNumber, p.pnr) === dedupKey,
+  );
+
+  if (idx === -1) {
+    list.push({
+      passengerName: pax.passengerName,
+      pnr: pax.pnr ?? "—",
+      ticketNumber: pax.ticketNumber ?? "—",
+      seatNumber: pax.seatNumber ?? "—",
+      flightId,
+      flightNumber: pax.flightNumber,
+      firstScannedAt: pax.scannedAt,
+      lastScannedAt: pax.scannedAt,
+      scanCount: 1,
+    });
+  } else {
+    const cur = list[idx];
+    list[idx] = {
+      ...cur,
+      scanCount: cur.scanCount + 1,
+      lastScannedAt:
+        pax.scannedAt > cur.lastScannedAt ? pax.scannedAt : cur.lastScannedAt,
+      firstScannedAt:
+        pax.scannedAt < cur.firstScannedAt ? pax.scannedAt : cur.firstScannedAt,
+      // perkaya field yang kosong tanpa menimpa yang sudah ada
+      passengerName: cur.passengerName ?? pax.passengerName,
+      seatNumber:
+        cur.seatNumber && cur.seatNumber !== "—"
+          ? cur.seatNumber
+          : pax.seatNumber ?? cur.seatNumber,
+    };
+  }
+
+  write(KEYS.manifests, { ...store, [flightId]: list });
 }
 
 /* Scan Events */

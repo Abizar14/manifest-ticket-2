@@ -38,6 +38,8 @@ export interface AppSettings {
   /** Mode kiosk "KTP dulu": kamera memindai KTP lebih dulu, lalu boarding pass
    *  dicocokkan ke nama KTP. Tanpa capture wajah. */
   ktpScanFirst: boolean;
+  /** Izinkan jalur "Tanpa KTP" di mode KTP-first — 1 tap + audit. */
+  allowNoKtpExemption: boolean;
 }
 
 const KEY = "afvs.settings";
@@ -93,6 +95,7 @@ const DEFAULTS: AppSettings = {
   ktpSavePhoto: false,
   ktpRequireForValid: false,
   ktpScanFirst: false,
+  allowNoKtpExemption: true,
 };
 
 function isBrowser() {

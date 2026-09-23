@@ -52,7 +52,9 @@ import {
 } from "@/lib/storage";
 import { canManageFlights } from "@/lib/auth";
 import { cn, formatDateTime } from "@/lib/utils";
+import { manifestDedupKey } from "@/lib/manifest";
 import { getBoardingProgress } from "@/lib/boarding";
+import { apiFlightPassengers, apiListAllFlights, isAuthed } from "@/lib/api/client";
 import { getAuditForFlight, recordAudit } from "@/lib/audit";
 import { getSettings, subscribeSettings } from "@/lib/settings";
 import { getEffectiveFlightStatus } from "@/lib/flightStatus";
@@ -87,6 +89,9 @@ export default function FlightDetailPage() {
   const [now, setNow] = useState(() => new Date());
   const [activePassenger, setActivePassenger] =
     useState<PassengerRecord | null>(null);
+  // Hitungan manifest dari backend (sumber kebenaran lintas-device). null = belum
+  // /tidak tersedia (offline / belum login / flight tak ketemu di server).
+  const [serverPax, setServerPax] = useState<number | null>(null);
 
   useEffect(() => {
     if (!id) return;
@@ -130,7 +135,10 @@ export default function FlightDetailPage() {
     for (const e of events) {
       if (e.resultStatus !== "VALID_FLIGHT") continue;
       if (e.flightId !== flight.id) continue;
-      const key = `${e.parsedPnr ?? ""}-${e.parsedSeatNumber ?? ""}-${e.parsedTicketNumber ?? ""}`;
+      // Dedup tiket→PNR (sama dengan manifest & backend) supaya hitungan konsisten.
+      const key =
+        manifestDedupKey(e.parsedTicketNumber, e.parsedPnr) ??
+        `${e.parsedSeatNumber ?? ""}-${e.parsedTicketNumber ?? ""}-${e.parsedPnr ?? ""}`;
       const existing = map.get(key);
       if (existing) {
         existing.lastScannedAt = e.scannedAt;
@@ -153,6 +161,35 @@ export default function FlightDetailPage() {
       a.seatNumber.localeCompare(b.seatNumber, undefined, { numeric: true }),
     );
   }, [events, flight]);
+
+  // Cross-check ke manifest server (best-effort). Flight lokal & backend punya id
+  // berbeda, jadi resolve dulu flight backend by flightNumber + tanggal, lalu
+  // ambil jumlah pax-nya. Gagal/offline → serverPax tetap null (badge disembunyikan).
+  useEffect(() => {
+    if (!flight || !settings.apiSyncEnabled || !isAuthed()) {
+      setServerPax(null);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const list = await apiListAllFlights({ date: flight.departureDate });
+        if (!list.ok || !list.data) return;
+        const match = list.data.items.find(
+          (f) =>
+            f.flightNumber.toUpperCase() === flight.flightNumber.toUpperCase(),
+        );
+        if (!match) return;
+        const res = await apiFlightPassengers(match.id);
+        if (!cancelled && res.ok && res.data) setServerPax(res.data.count);
+      } catch {
+        /* biarkan null — cross-check bersifat opsional */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [flight, settings.apiSyncEnabled]);
 
   if (!flight) {
     return (
@@ -454,7 +491,11 @@ export default function FlightDetailPage() {
         {/* Passengers list */}
         <ListSection
           header={`Penumpang (${passengers.length})`}
-          caption="Diisi otomatis dari boarding pass yang sudah scan valid."
+          caption={
+            serverPax !== null
+              ? `Diisi otomatis dari boarding pass yang scan valid. Server: ${serverPax} pax.`
+              : "Diisi otomatis dari boarding pass yang sudah scan valid."
+          }
         >
           {passengers.length === 0 ? (
             <div className="px-4 py-6 text-center text-[13px] text-ink-muted">
@@ -819,6 +860,10 @@ export default function FlightDetailPage() {
                 <span className="ml-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700 ring-1 ring-emerald-200">
                   {passengers.length}
                 </span>
+                <ManifestSourceBadge
+                  local={passengers.length}
+                  server={serverPax}
+                />
               </span>
             </CardTitle>
             <span className="text-xs text-slate-500 print-hide">
@@ -990,6 +1035,39 @@ const ACTION_LABEL: Record<string, string> = {
   REOPEN_BOARDING: "Boarding dibuka kembali",
   CANCEL_FLIGHT: "Penerbangan dibatalkan",
 };
+
+/**
+ * Badge kecil yang menandakan manifest juga tercatat di server (backend), plus
+ * cross-check jumlah lokal vs server. Null = server tak tersedia (offline / belum
+ * login / flight tak ketemu) → tidak dirender.
+ */
+function ManifestSourceBadge({
+  local,
+  server,
+}: {
+  local: number;
+  server: number | null;
+}) {
+  if (server === null) return null;
+  const synced = server === local;
+  return (
+    <span
+      title={
+        synced
+          ? "Manifest juga tersimpan di server (jumlah cocok)."
+          : `Server mencatat ${server} pax, perangkat ini ${local}. Selisih bisa karena scan dari pos/perangkat lain atau antrian sync.`
+      }
+      className={cn(
+        "ml-1 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold ring-1",
+        synced
+          ? "bg-sky-50 text-sky-700 ring-sky-200"
+          : "bg-amber-50 text-amber-700 ring-amber-200",
+      )}
+    >
+      Server {server}
+    </span>
+  );
+}
 
 function HeroCell({ label, value }: { label: string; value: string }) {
   return (

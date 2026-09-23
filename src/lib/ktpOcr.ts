@@ -99,17 +99,54 @@ const KTP_HEADER_KEYWORDS = [
   "PEDAGANG",
 ];
 
-function isHeaderOrLabel(line: string): boolean {
+function isHeaderOrLabel(
+  line: string,
+  keywords: string[] = KTP_HEADER_KEYWORDS,
+): boolean {
   const upper = line.toUpperCase();
   // semua kata di baris harus jadi header keyword? terlalu strict.
   // Cukup: baris hanya berisi >= 1 keyword & total <= 3 kata → label/header.
   const tokens = upper.split(/\s+/).filter(Boolean);
   if (tokens.length === 0) return true;
-  const hits = tokens.filter((t) => KTP_HEADER_KEYWORDS.includes(t)).length;
+  const hits = tokens.filter((t) => keywords.includes(t)).length;
   if (hits === tokens.length) return true; // semua kata = header
   if (tokens.length <= 3 && hits >= 1) return true; // label pendek
   return false;
 }
+
+/**
+ * Bersihkan kandidat nama: buang non-huruf, label field ("NAMA"), dan token
+ * sampah 1-2 huruf di ujung. Dipakai lintas jenis dokumen (KTP/SIM/ID).
+ */
+export function cleanName(raw: string): string {
+  let s = raw
+    .replace(/[^A-Za-z.\s'-]/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toUpperCase();
+  s = s.replace(/^(NAMA|NAME|NIK)\b[\s:.'-]*/g, "").trim();
+  const tokens = s.split(" ").filter(Boolean);
+  const longCount = tokens.filter((t) => t.length >= 3).length;
+  if (longCount >= 2) {
+    while (tokens.length > 2 && tokens[tokens.length - 1].length <= 2) tokens.pop();
+    while (tokens.length > 2 && tokens[0].length <= 2) tokens.shift();
+  }
+  return tokens.join(" ");
+}
+
+/** Ekstrak nama dari baris berlabel "Nama : X" (OCR-tolerant). Null bila tak ada. */
+export function extractNameByLabel(lines: string[]): string | null {
+  for (const line of lines) {
+    const m = line.match(/^\s*n[a-z]{2,3}\s*[:\-]\s*(.+)$/i);
+    if (m) {
+      const name = cleanName(m[1]);
+      if (name.length >= 3 && !isHeaderOrLabel(name)) return name;
+    }
+  }
+  return null;
+}
+
+export { isHeaderOrLabel };
 
 /**
  * Parser nama dari raw OCR text KTP.

@@ -18,6 +18,7 @@ import {
   Users,
   Database,
   BarChart3,
+  Building2,
   BrainCircuit,
   CalendarClock,
   Settings as SettingsIcon,
@@ -111,6 +112,12 @@ const NAV_SECTIONS: NavSection[] = [
         href: "/analytics",
         labelKey: "nav.analytics",
         icon: BarChart3,
+        roles: ["admin", "supervisor"],
+      },
+      {
+        href: "/rekap-maskapai",
+        labelKey: "nav.rekapMaskapai",
+        icon: Building2,
         roles: ["admin", "supervisor"],
       },
       {

@@ -32,6 +32,7 @@ import {
   Settings,
   Megaphone,
   IdCard,
+  UserX,
 } from "lucide-react";
 import Image from "next/image";
 import { cn } from "@/lib/utils";
@@ -88,8 +89,9 @@ import type {
   SessionUser,
 } from "@/lib/types";
 
-// KTP-first: parameter pemindaian KTP di kamera utama (samakan dgn KtpVerifyModal).
-const KTP_NAME_CROP = { x: 0.08, y: 0.1, w: 0.68, h: 0.46 };
+// KTP-first: parameter pemindaian KTP di kamera utama. Kotak ini SEKALIGUS
+// panduan visual & region yang di-OCR (WYSIWYG) — dibuat lebih ke tengah frame.
+const KTP_NAME_CROP = { x: 0.16, y: 0.27, w: 0.68, h: 0.36 };
 const KTP_CAPTURE_ASPECT = 1280 / 800;
 const KTP_SHARP_THRESHOLD = 90; // > 90 = tajam
 const KTP_PENDING_TTL_MS = 45_000; // identitas KTP kedaluwarsa bila tak ada scan
@@ -378,6 +380,15 @@ export default function KioskPage() {
   // Barcode demo terakhir — dipakai untuk mengulang pass yang sama (uji duplikat).
   const lastDemoRawRef = React.useRef<string | null>(null);
 
+  // Jalur "Tanpa KTP": scan berikutnya dilewati pencocokan KTP-nya.
+  // Ref dipakai di handler submit (hindari stale closure), state untuk highlight UI.
+  const exemptNextRef = React.useRef(false);
+  const [exemptNext, setExemptNextState] = React.useState(false);
+  const setExemptNext = React.useCallback((v: boolean) => {
+    exemptNextRef.current = v;
+    setExemptNextState(v);
+  }, []);
+
   const isDark = settings.theme === "dark";
 
   React.useEffect(() => {
@@ -635,8 +646,23 @@ export default function KioskPage() {
         let finalStatus = outcome.status;
         let finalMessage = outcome.message;
 
+        // Jalur "Tanpa KTP" — one-shot, dikonsumsi saat scan ini.
+        const isExempt = exemptNextRef.current;
+        if (isExempt) setExemptNext(false);
         if (outcome.status === "VALID_FLIGHT") {
-          if (pending && expectedName) {
+          if (isExempt) {
+            // Lewati pencocokan KTP — petugas (scannedBy) mengonfirmasi identitas
+            // secara visual/dokumen pendukung. Tandai exempted (tercatat untuk audit).
+            const ktpRes: KtpVerification = {
+              status: "exempted",
+              ocrName: null,
+              capturedAt: new Date().toISOString(),
+              exemptReason: "other",
+            };
+            updateScanEvent(event.id, { ktpVerification: ktpRes });
+            event.ktpVerification = ktpRes;
+            // finalStatus tetap VALID_FLIGHT.
+          } else if (pending && expectedName) {
             const sim = similarity(pending.name, expectedName);
             const matched = sim >= settings.ktpAutoPassThreshold;
             const ktpRes: KtpVerification = {
@@ -686,7 +712,11 @@ export default function KioskPage() {
         if (finalStatus === "VALID_FLIGHT") {
           toast.success(
             `${outcome.flight?.flightNumber ?? "Flight"} · ${
-              pending ? "identitas terverifikasi" : "tanpa KTP"
+              isExempt
+                ? "tanpa KTP"
+                : pending
+                  ? "identitas terverifikasi"
+                  : "tanpa KTP"
             }`,
             "Valid",
           );
@@ -1038,6 +1068,9 @@ export default function KioskPage() {
             faceState={faceState}
             faceDetectorSupported={faceDetectorSupported}
             gateActive={settings.requireFaceForScan}
+            ktpFirst={settings.ktpScanFirst}
+            ktpCaptured={!!pendingKtp}
+            ktpName={pendingKtp?.name ?? null}
           />
 
           <PrivacyBanner />
@@ -1053,6 +1086,9 @@ export default function KioskPage() {
             onReset={handleReset}
             onDemo={handleDemoScan}
             demoLoading={demoLoading}
+            showExempt={settings.ktpScanFirst && settings.allowNoKtpExemption}
+            exemptActive={exemptNext}
+            onToggleExempt={() => setExemptNext(!exemptNextRef.current)}
           />
           <ActiveFlightCards
             flights={todayFlights}
@@ -1257,6 +1293,9 @@ function BiometricCamera({
   faceState,
   faceDetectorSupported,
   gateActive,
+  ktpFirst = false,
+  ktpCaptured = false,
+  ktpName = null,
 }: {
   captureEnabled: boolean;
   cameraRef: React.RefObject<FaceCaptureHandle>;
@@ -1265,16 +1304,13 @@ function BiometricCamera({
   faceState: FaceState;
   faceDetectorSupported: boolean;
   gateActive: boolean;
+  /** Mode KTP-first aktif → tampilkan kotak panduan area NAMA di kamera utama. */
+  ktpFirst?: boolean;
+  /** KTP sudah terbaca (pendingKtp ada) → tampilkan konfirmasi, sembunyikan kotak. */
+  ktpCaptured?: boolean;
+  ktpName?: string | null;
 }) {
   const hud = FACE_HUD[faceState];
-  const ringColor =
-    faceState === "ok"
-      ? "border-emerald-400/70"
-      : faceState === "no_face"
-      ? "border-rose-400/70"
-      : faceState === "multiple" || faceState === "too_far" || faceState === "off_center"
-      ? "border-amber-400/70"
-      : "border-cyan-300/70";
   return (
     <div className="relative overflow-hidden rounded-3xl bg-white/70 ring-1 ring-slate-200 dark:bg-[#0c1a36] dark:ring-cyan-400/15">
       {/* Camera viewport */}
@@ -1304,12 +1340,6 @@ function BiometricCamera({
         <span className="pointer-events-none absolute bottom-4 left-4 h-10 w-10 rounded-bl-xl border-b-2 border-l-2 border-cyan-400/80" />
         <span className="pointer-events-none absolute bottom-4 right-4 h-10 w-10 rounded-br-xl border-b-2 border-r-2 border-cyan-400/80" />
 
-        {/* Face status ring — mengikuti state deteksi wajah */}
-        {captureEnabled && (
-          <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-            <span className={cn("absolute h-[44%] w-[44%] rounded-[42%] border-2 transition-colors", ringColor)} />
-          </div>
-        )}
 
         {/* WEBCAM LIVE pill */}
         <div className="absolute left-4 top-4 ml-12 inline-flex items-center gap-1.5 rounded-full bg-slate-900/70 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-white shadow ring-1 ring-white/10 backdrop-blur">
@@ -1374,6 +1404,49 @@ function BiometricCamera({
               </p>
             </div>
             <span className="h-px w-6 bg-gradient-to-l from-transparent to-emerald-400/70" />
+          </div>
+        )}
+
+        {/* ===== Panduan KTP (mode KTP-first): kotak area NAMA ===== */}
+        {captureEnabled && ktpFirst && !ktpCaptured && (
+          <>
+            {/* Kotak baca NAMA — posisinya klop dengan KTP_NAME_CROP yang di-OCR. */}
+            <div
+              className="pointer-events-none absolute rounded-lg border-[3px] border-emerald-400 shadow-[0_0_0_9999px_rgba(2,6,23,0.35)]"
+              style={{
+                left: `${KTP_NAME_CROP.x * 100}%`,
+                top: `${KTP_NAME_CROP.y * 100}%`,
+                width: `${KTP_NAME_CROP.w * 100}%`,
+                height: `${KTP_NAME_CROP.h * 100}%`,
+              }}
+            >
+              <span className="absolute -left-[3px] -top-[3px] h-5 w-5 rounded-tl-lg border-l-[3px] border-t-[3px] border-emerald-300" />
+              <span className="absolute -right-[3px] -top-[3px] h-5 w-5 rounded-tr-lg border-r-[3px] border-t-[3px] border-emerald-300" />
+              <span className="absolute -bottom-[3px] -left-[3px] h-5 w-5 rounded-bl-lg border-b-[3px] border-l-[3px] border-emerald-300" />
+              <span className="absolute -bottom-[3px] -right-[3px] h-5 w-5 rounded-br-lg border-b-[3px] border-r-[3px] border-emerald-300" />
+              <span className="absolute -top-3 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full bg-emerald-400 px-2.5 py-0.5 text-[10px] font-black uppercase tracking-wider text-emerald-950 shadow">
+                Arahkan NAMA KTP ke sini
+              </span>
+            </div>
+            {/* Banner atas */}
+            <div className="pointer-events-none absolute inset-x-0 top-3 flex justify-center">
+              <div className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/25 px-3 py-1 text-[10.5px] font-black uppercase tracking-wider text-emerald-100 ring-1 ring-emerald-400/60 backdrop-blur">
+                <span className="h-1.5 w-1.5 rounded-full bg-current animate-ping" />
+                Tunjukkan KTP — dekatkan sampai nama jelas
+              </div>
+            </div>
+          </>
+        )}
+
+        {/* KTP sudah terbaca → konfirmasi nama */}
+        {captureEnabled && ktpFirst && ktpCaptured && (
+          <div className="pointer-events-none absolute inset-x-0 top-3 flex justify-center">
+            <div className="inline-flex max-w-[90%] items-center gap-1.5 rounded-full bg-emerald-500/90 px-3 py-1 text-[11px] font-black uppercase tracking-wider text-white ring-1 ring-emerald-300/60 shadow backdrop-blur">
+              <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
+              <span className="truncate">
+                Nama terbaca{ktpName ? `: ${ktpName}` : ""} — scan boarding pass
+              </span>
+            </div>
           </div>
         )}
 
@@ -1987,31 +2060,58 @@ function ActionRow({
   onReset,
   onDemo,
   demoLoading,
+  showExempt,
+  exemptActive,
+  onToggleExempt,
 }: {
   onReset: () => void;
   onDemo: () => void;
   demoLoading: boolean;
+  showExempt?: boolean;
+  exemptActive?: boolean;
+  onToggleExempt?: () => void;
 }) {
   return (
-    <div className="flex items-center gap-2 rounded-2xl bg-white/70 px-3 py-2 ring-1 ring-slate-200 backdrop-blur dark:bg-[#0c1a36] dark:ring-cyan-400/15">
-      <button
-        type="button"
-        onClick={onDemo}
-        disabled={demoLoading}
-        className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-gradient-to-br from-cyan-500 to-blue-600 px-3 py-2 text-[11px] font-bold uppercase tracking-wider text-white shadow-md shadow-cyan-500/20 transition hover:shadow-cyan-500/40 disabled:cursor-not-allowed disabled:opacity-60"
-      >
-        <Sparkles className="h-3.5 w-3.5" />
-        {demoLoading ? "Memproses…" : "Demo Scan"}
-      </button>
-      <button
-        type="button"
-        onClick={onReset}
-        className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-slate-900/5 px-3 py-2 text-[11px] font-bold uppercase tracking-wider text-slate-700 ring-1 ring-slate-200 transition hover:bg-slate-900/10 dark:bg-white/10 dark:text-white dark:ring-white/15 dark:hover:bg-white/15"
-        title="Reset stats & tampilan"
-      >
-        <RotateCcw className="h-3.5 w-3.5" />
-        Reset
-      </button>
+    <div className="flex flex-col gap-2">
+      {showExempt && (
+        <button
+          type="button"
+          onClick={onToggleExempt}
+          aria-pressed={exemptActive}
+          title="Penumpang tanpa KTP — scan berikutnya dilewati pencocokan KTP & dicatat"
+          className={cn(
+            "inline-flex items-center justify-center gap-2 rounded-2xl px-3 py-2.5 text-[11px] font-bold uppercase tracking-wider ring-1 transition",
+            exemptActive
+              ? "bg-gradient-to-br from-amber-400 to-orange-500 text-white shadow-md shadow-amber-500/30 ring-amber-300 animate-pulse"
+              : "bg-amber-500/10 text-amber-700 ring-amber-300/50 hover:bg-amber-500/20 dark:text-amber-300 dark:ring-amber-400/20",
+          )}
+        >
+          <UserX className="h-4 w-4" />
+          {exemptActive
+            ? "Tanpa KTP AKTIF — scan boarding pass"
+            : "Tanpa KTP"}
+        </button>
+      )}
+      <div className="flex items-center gap-2 rounded-2xl bg-white/70 px-3 py-2 ring-1 ring-slate-200 backdrop-blur dark:bg-[#0c1a36] dark:ring-cyan-400/15">
+        <button
+          type="button"
+          onClick={onDemo}
+          disabled={demoLoading}
+          className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-gradient-to-br from-cyan-500 to-blue-600 px-3 py-2 text-[11px] font-bold uppercase tracking-wider text-white shadow-md shadow-cyan-500/20 transition hover:shadow-cyan-500/40 disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          <Sparkles className="h-3.5 w-3.5" />
+          {demoLoading ? "Memproses…" : "Demo Scan"}
+        </button>
+        <button
+          type="button"
+          onClick={onReset}
+          className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-slate-900/5 px-3 py-2 text-[11px] font-bold uppercase tracking-wider text-slate-700 ring-1 ring-slate-200 transition hover:bg-slate-900/10 dark:bg-white/10 dark:text-white dark:ring-white/15 dark:hover:bg-white/15"
+          title="Reset stats & tampilan"
+        >
+          <RotateCcw className="h-3.5 w-3.5" />
+          Reset
+        </button>
+      </div>
     </div>
   );
 }
@@ -2089,6 +2189,18 @@ const MONTHS = ["JAN","FEB","MAR","APR","MAY","JUN","JUL","AUG","SEP","OCT","NOV
 
 /** Badge skor kecocokan nama KTP vs boarding pass (muncul di modal hasil scan). */
 function KtpMatchBadge({ v }: { v: KtpVerification }) {
+  // Penumpang tanpa KTP — tampilkan badge khusus, bukan match/mismatch.
+  if (v.status === "exempted") {
+    return (
+      <div className="flex items-center gap-2 rounded-xl bg-amber-50 px-3 py-2 text-xs text-amber-800 ring-1 ring-amber-200 dark:bg-amber-500/15 dark:text-amber-300 dark:ring-amber-500/30">
+        <UserX className="h-4 w-4 shrink-0" />
+        <span className="shrink-0 font-semibold">Tanpa KTP</span>
+        <span className="ml-auto shrink-0 rounded-md bg-white/70 px-1.5 py-0.5 font-black uppercase tracking-wider dark:bg-white/10">
+          dikonfirmasi petugas
+        </span>
+      </div>
+    );
+  }
   const pct = v.similarity != null ? Math.round(v.similarity * 100) : null;
   const ok = v.status === "matched" || v.status === "manual_pass";
   return (

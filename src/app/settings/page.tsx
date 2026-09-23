@@ -35,6 +35,7 @@ import {
   Wifi,
   WifiOff,
   IdCard,
+  UserX,
 } from "lucide-react";
 import { facePhotoStore } from "@/lib/facePhotoStore";
 import type { ThemeMode } from "@/lib/theme";
@@ -1026,6 +1027,13 @@ export default function SettingsPage() {
                       description="Kalau aktif, scan otomatis DITOLAK (status KTP tidak cocok) bila nama KTP tidak cocok dengan boarding pass. Operator tidak bisa override."
                       checked={settings.ktpRequireForValid}
                       onChange={(v) => update({ ktpRequireForValid: v })}
+                    />
+                    <ToggleRow
+                      icon={<UserX className="h-4 w-4" />}
+                      title='Izinkan jalur "Tanpa KTP"'
+                      description="Tampilkan tombol di kiosk (mode KTP-first) untuk melewati pencocokan KTP bagi penumpang tanpa KTP. Petugas mengonfirmasi identitas secara visual/dokumen pendukung; setiap pengecualian tercatat (audit)."
+                      checked={settings.allowNoKtpExemption}
+                      onChange={(v) => update({ allowNoKtpExemption: v })}
                     />
                   </div>
                 </div>

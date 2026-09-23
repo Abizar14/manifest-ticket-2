@@ -49,10 +49,38 @@ model Flight {
   updatedAt      DateTime     @updatedAt
 
   scanEvents     ScanEvent[]
+  passengers     FlightPassenger[]
 
   @@unique([station, flightNumber, std])
   @@index([station, std])
   @@index([status])
+}
+
+// Manifest penumpang per penerbangan — diisi otomatis dari scan VALID_FLIGHT
+// (lihat docs/RANCANGAN-MANIFEST-PAX.md). 1 penumpang = 1 baris per flight, kunci
+// dedup = normalize(ticketNumber) || normalize(pnr). Bukan validasi scan; murni
+// pencatatan/rekap agar tiap flight punya hitungan + detail pax sendiri.
+model FlightPassenger {
+  id             String   @id @default(cuid())
+  flightId       String
+  flight         Flight   @relation(fields: [flightId], references: [id], onDelete: Cascade)
+
+  dedupKey       String   // normalize(ticket) || normalize(pnr)
+  pnr            String?
+  ticketNumber   String?
+  seat           String?
+  passengerName  String?
+
+  firstScannedAt DateTime
+  lastScannedAt  DateTime
+  scanCount      Int      @default(1)
+  boarded        Boolean  @default(true)
+
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([flightId, dedupKey])
+  @@index([flightId])
 }
 
 model ScanEvent {

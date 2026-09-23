@@ -14,6 +14,8 @@ import {
   EyeOff,
   KeyRound,
   UserRoundCheck,
+  Delete,
+  CornerDownLeft,
 } from "lucide-react";
 import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
@@ -51,8 +53,9 @@ export default function LoginPage() {
     }
   }, [router]);
 
-  const submit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const submit = async (e?: React.FormEvent) => {
+    e?.preventDefault();
+    if (loading) return;
     setError(null);
     setLoading(true);
 
@@ -143,6 +146,16 @@ export default function LoginPage() {
     setAuthMode("pin");
   };
 
+  const PIN_MAX = 6;
+  const pressDigit = (d: string) => {
+    setError(null);
+    setPin((p) => (p.length >= PIN_MAX ? p : p + d));
+  };
+  const pressBackspace = () => {
+    setError(null);
+    setPin((p) => p.slice(0, -1));
+  };
+
   return (
     <div className="relative flex min-h-screen w-full items-stretch overflow-hidden bg-slate-950">
       {/* ============ animated background (full-screen) ============ */}
@@ -222,7 +235,7 @@ export default function LoginPage() {
       </div>
 
       {/* ============ right form (and full-width on mobile) ============ */}
-      <div className="relative z-10 flex flex-1 items-center justify-center px-4 py-8 sm:px-8">
+      <div className="relative z-10 flex flex-1 items-center justify-center overflow-y-auto px-4 py-8 sm:px-8 [@media(max-height:760px)]:py-4">
         <div className="w-full max-w-md">
           {/* Mobile-only hero badge */}
           <div className="mb-6 flex flex-col items-center text-center text-white lg:hidden">
@@ -304,26 +317,70 @@ export default function LoginPage() {
                     <label className="text-[11px] font-semibold uppercase tracking-wider text-white/70">
                       PIN Petugas
                     </label>
-                    <div className="relative mt-1.5">
-                      <KeyRound className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-cyan-200/80" />
-                      <Input
-                        type="password"
-                        inputMode="numeric"
-                        pattern="[0-9]*"
-                        maxLength={6}
-                        value={pin}
-                        onChange={(e) =>
-                          setPin(e.target.value.replace(/\D/g, "").slice(0, 6))
-                        }
-                        placeholder="1234"
-                        required
-                        autoFocus
-                        className="h-16 border-white/20 bg-white/10 pl-12 text-center font-mono text-3xl font-black tracking-[0.35em] text-white placeholder:text-white/25 focus:border-cyan-300 focus:ring-cyan-300/30"
-                      />
+
+                    {/* PIN dots indicator */}
+                    <div className="mt-3 flex items-center justify-center gap-3">
+                      {Array.from({ length: PIN_MAX }).map((_, i) => {
+                        const filled = i < pin.length;
+                        return (
+                          <span
+                            key={i}
+                            className={`h-3.5 w-3.5 rounded-full transition-all duration-150 ${
+                              filled
+                                ? "scale-110 bg-cyan-300 shadow-[0_0_10px_rgba(103,232,249,0.7)]"
+                                : "bg-white/15 ring-1 ring-white/20"
+                            }`}
+                          />
+                        );
+                      })}
                     </div>
-                    <p className="mt-2 text-xs text-white/55">
-                      Masuk cepat untuk petugas security saat rolling. Tidak
-                      ada batas waktu otomatis.
+
+                    {/* Numeric keypad */}
+                    <div className="mt-4 grid grid-cols-3 gap-2.5 [@media(max-height:760px)]:mt-2 [@media(max-height:760px)]:gap-2">
+                      {["1", "2", "3", "4", "5", "6", "7", "8", "9"].map((d) => (
+                        <button
+                          key={d}
+                          type="button"
+                          onClick={() => pressDigit(d)}
+                          className="flex h-14 items-center justify-center rounded-2xl border border-white/15 bg-white/[0.06] text-2xl font-bold text-white backdrop-blur transition active:scale-95 hover:border-cyan-300/40 hover:bg-white/[0.12] active:bg-cyan-300/20 [@media(max-height:760px)]:h-12 [@media(max-height:760px)]:text-xl"
+                        >
+                          {d}
+                        </button>
+                      ))}
+
+                      {/* Enter / submit */}
+                      <button
+                        type="submit"
+                        disabled={loading || pin.length < 4}
+                        className="flex h-14 items-center justify-center rounded-2xl border border-emerald-300/40 bg-emerald-500/20 text-emerald-100 backdrop-blur transition active:scale-95 hover:bg-emerald-400/30 disabled:cursor-not-allowed disabled:opacity-40 [@media(max-height:760px)]:h-12"
+                        aria-label="Masuk"
+                      >
+                        <CornerDownLeft className="h-6 w-6" />
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => pressDigit("0")}
+                        className="flex h-14 items-center justify-center rounded-2xl border border-white/15 bg-white/[0.06] text-2xl font-bold text-white backdrop-blur transition active:scale-95 hover:border-cyan-300/40 hover:bg-white/[0.12] active:bg-cyan-300/20"
+                      >
+                        0
+                      </button>
+
+                      {/* Backspace */}
+                      <button
+                        type="button"
+                        onClick={pressBackspace}
+                        disabled={pin.length === 0}
+                        className="flex h-14 items-center justify-center rounded-2xl border border-white/15 bg-white/[0.06] text-white backdrop-blur transition active:scale-95 hover:border-rose-300/40 hover:bg-rose-500/20 disabled:cursor-not-allowed disabled:opacity-40 [@media(max-height:760px)]:h-12"
+                        aria-label="Hapus"
+                      >
+                        <Delete className="h-6 w-6" />
+                      </button>
+                    </div>
+
+                    <p className="mt-3 text-center text-xs text-white/55">
+                      Login cukup dengan PIN Anda (4–6 digit). Tidak ada batas
+                      waktu otomatis.
                     </p>
                   </div>
 

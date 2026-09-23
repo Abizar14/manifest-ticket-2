@@ -98,7 +98,8 @@ export type KtpVerificationStatus =
   | "manual_pass"
   | "manual_reject"
   | "skipped"
-  | "ocr_failed";
+  | "ocr_failed"
+  | "exempted"; // penumpang tanpa KTP — dikonfirmasi petugas
 
 export interface KtpVerification {
   status: KtpVerificationStatus;
@@ -107,6 +108,8 @@ export interface KtpVerification {
   similarity?: number;
   capturedAt: string;
   photoId?: string | null;
+  /** Alasan pengecualian (hanya saat status "exempted"). */
+  exemptReason?: "child" | "infant" | "other";
 }
 
 export interface ParsedBarcode {

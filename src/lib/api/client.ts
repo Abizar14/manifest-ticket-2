@@ -435,6 +435,118 @@ export async function apiListAllScans(params: {
   return { ok: true, status: 200, data: { items: all, page: 1, perPage: all.length, total } };
 }
 
+// ─────────────────────────── Manifest penumpang per-flight ───────────────
+
+export interface ApiFlightPassenger {
+  id: string;
+  flightId: string;
+  dedupKey: string;
+  pnr: string | null;
+  ticketNumber: string | null;
+  seat: string | null;
+  passengerName: string | null;
+  firstScannedAt: string; // ISO
+  lastScannedAt: string; // ISO
+  scanCount: number;
+  boarded: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * Manifest penumpang sebuah flight dari backend (agregat scan VALID, sumber
+ * kebenaran lintas-device). Scoping per-station/role diterapkan server (F-05).
+ */
+export async function apiFlightPassengers(
+  flightId: string,
+): Promise<ApiResult<{ items: ApiFlightPassenger[]; count: number }>> {
+  const path = `/flights/${flightId}/passengers`;
+  return dedupGet(path, async () => {
+    try {
+      const res = await authedFetch(path);
+      const body = await readJson(res);
+      if (!res.ok)
+        return { ok: false, status: res.status, error: httpError(res.status, body) };
+      return {
+        ok: true,
+        status: res.status,
+        data: body as { items: ApiFlightPassenger[]; count: number },
+      };
+    } catch (e) {
+      return { ok: false, error: errMsg(e) };
+    }
+  });
+}
+
+export interface ApiAirlineRollup {
+  airlineCode: string;
+  passengers: number;
+  flights: number;
+  flightsDetail: Array<{
+    flightId: string;
+    flightNumber: string;
+    std: string;
+    passengers: number;
+  }>;
+}
+
+export interface ApiByAirlineReport {
+  range: { from: string; to: string };
+  totals: { passengers: number; flights: number; airlines: number };
+  airlines: ApiAirlineRollup[];
+}
+
+/**
+ * Rekap penumpang per maskapai dari backend. `date` (1 hari) atau `from`+`to`.
+ * `detail` = sertakan rincian penerbangan per maskapai.
+ */
+export async function apiManifestByAirline(params: {
+  date?: string;
+  from?: string;
+  to?: string;
+  detail?: boolean;
+}): Promise<ApiResult<ApiByAirlineReport>> {
+  const qs = new URLSearchParams();
+  if (params.date) qs.set("date", params.date);
+  if (params.from) qs.set("from", params.from);
+  if (params.to) qs.set("to", params.to);
+  if (params.detail) qs.set("detail", "1");
+  const path = `/flights/manifests/by-airline?${qs.toString()}`;
+  return dedupGet(path, async () => {
+    try {
+      const res = await authedFetch(path);
+      const body = await readJson(res);
+      if (!res.ok)
+        return { ok: false, status: res.status, error: httpError(res.status, body) };
+      return { ok: true, status: res.status, data: body as ApiByAirlineReport };
+    } catch (e) {
+      return { ok: false, error: errMsg(e) };
+    }
+  });
+}
+
+/** Backfill/rebuild manifest dari ScanEvent historis (admin). Tanggal opsional. */
+export async function apiRebuildManifests(
+  date?: string,
+): Promise<ApiResult<{ ok: boolean; flights: number; passengers: number }>> {
+  try {
+    const qs = date ? `?date=${encodeURIComponent(date)}` : "";
+    const res = await authedFetch(`/flights/manifests/rebuild${qs}`, {
+      method: "POST",
+    });
+    const body = await readJson(res);
+    if (!res.ok)
+      return { ok: false, status: res.status, error: httpError(res.status, body) };
+    return {
+      ok: true,
+      status: res.status,
+      data: body as { ok: boolean; flights: number; passengers: number },
+    };
+  } catch (e) {
+    return { ok: false, error: errMsg(e) };
+  }
+}
+
 // ─────────────────────────── Operators (admin) ───────────────────────────
 
 export interface ApiOperator {

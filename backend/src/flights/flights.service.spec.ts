@@ -2,8 +2,11 @@ import { FlightsService } from "./flights.service";
 
 function makePrisma() {
   return {
-    flight: { upsert: jest.fn().mockResolvedValue({}) },
-    $transaction: jest.fn().mockResolvedValue([]),
+    flight: {
+      findFirst: jest.fn().mockResolvedValue(null), // default: belum ada → create
+      create: jest.fn().mockResolvedValue({}),
+      update: jest.fn().mockResolvedValue({}),
+    },
   };
 }
 
@@ -27,31 +30,47 @@ describe("FlightsService.bulkUpsert (snapshot FIDS)", () => {
     svc = new FlightsService(prisma as never);
   });
 
-  it("dedup input berdasarkan station+flightNumber+std (idempotent)", async () => {
-    const dto = { flights: [flight(), flight(), flight({ flightNumber: "JT2" })] };
-    const res = await svc.bulkUpsert(dto as never);
-    expect(res).toEqual({ ok: true, synced: 2 });
-    expect(prisma.flight.upsert).toHaveBeenCalledTimes(2);
-    expect(prisma.$transaction).toHaveBeenCalledTimes(1);
-  });
-
-  it("array kosong → synced 0, tanpa upsert", async () => {
-    const res = await svc.bulkUpsert({ flights: [] } as never);
-    expect(res).toEqual({ ok: true, synced: 0 });
-    expect(prisma.flight.upsert).not.toHaveBeenCalled();
-  });
-
-  it("upsert memakai kunci komposit station_flightNumber_std + std jadi Date", async () => {
-    await svc.bulkUpsert({ flights: [flight()] } as never);
-    const arg = prisma.flight.upsert.mock.calls[0][0] as {
-      where: { station_flightNumber_std: { station: string; flightNumber: string; std: unknown } };
-      create: { std: unknown };
+  it("dedup input berdasarkan station+flightNumber+TANGGAL (idempotent)", async () => {
+    // 2 entri GA1 tgl sama (jam beda) harus jadi 1; JT2 terpisah → total 2.
+    const dto = {
+      flights: [
+        flight(),
+        flight({ std: "2026-06-25T09:30:00.000Z" }), // jam beda, tgl sama → di-dedup
+        flight({ flightNumber: "JT2" }),
+      ],
     };
-    expect(arg.where.station_flightNumber_std).toMatchObject({
-      station: "AAP",
-      flightNumber: "GA1",
-    });
-    expect(arg.where.station_flightNumber_std.std).toBeInstanceOf(Date);
-    expect(arg.create.std).toBeInstanceOf(Date);
+    const res = await svc.bulkUpsert(dto as never);
+    expect(res).toMatchObject({ ok: true, synced: 2, created: 2, updated: 0 });
+    expect(prisma.flight.create).toHaveBeenCalledTimes(2);
+  });
+
+  it("array kosong → synced 0, tanpa create/update", async () => {
+    const res = await svc.bulkUpsert({ flights: [] } as never);
+    expect(res).toMatchObject({ ok: true, synced: 0 });
+    expect(prisma.flight.create).not.toHaveBeenCalled();
+    expect(prisma.flight.update).not.toHaveBeenCalled();
+  });
+
+  it("cocok by (station, flightNumber, rentang tanggal) — bila ada → UPDATE baris sama (bukan baris baru)", async () => {
+    prisma.flight.findFirst.mockResolvedValueOnce({ id: "flt_existing" });
+    const res = await svc.bulkUpsert({
+      flights: [flight({ std: "2026-06-25T08:47:00.000Z", status: "CLOSED" })],
+    } as never);
+    expect(res).toMatchObject({ ok: true, synced: 1, created: 0, updated: 1 });
+    expect(prisma.flight.create).not.toHaveBeenCalled();
+    // update dipanggil pada id yang ditemukan, std jadi Date, status ikut diperbarui
+    const arg = prisma.flight.update.mock.calls[0][0] as {
+      where: { id: string };
+      data: { std: unknown; status: string };
+    };
+    expect(arg.where.id).toBe("flt_existing");
+    expect(arg.data.std).toBeInstanceOf(Date);
+    expect(arg.data.status).toBe("CLOSED");
+    // cocok per-hari: findFirst pakai rentang std gte/lte, bukan jam persis
+    const where = prisma.flight.findFirst.mock.calls[0][0].where;
+    expect(where.station).toBe("AAP");
+    expect(where.flightNumber).toBe("GA1");
+    expect(where.std).toHaveProperty("gte");
+    expect(where.std).toHaveProperty("lte");
   });
 });

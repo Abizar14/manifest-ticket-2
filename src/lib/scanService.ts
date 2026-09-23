@@ -11,6 +11,7 @@ import {
   getFlights,
   getScanEvents,
   updateScanEvent,
+  upsertManifestPax,
 } from "./storage";
 import { todayDateString, uid } from "./utils";
 import { getSettings } from "./settings";
@@ -188,6 +189,28 @@ export function processScan(
     scannedAt: new Date().toISOString(),
   };
   addScanEvent(event);
+
+  // Manifest penumpang per-flight (lokal, offline-first): catat hanya scan VALID.
+  // Backend juga meng-upsert manifest saat push (idempotent) — ini menjaga
+  // hitungan tersedia walau offline. Lihat docs/RANCANGAN-MANIFEST-PAX.md.
+  if (
+    outcome.status === "VALID_FLIGHT" &&
+    outcome.flight &&
+    outcome.parsed
+  ) {
+    try {
+      upsertManifestPax(outcome.flight.id, {
+        passengerName: outcome.parsed.passengerName ?? null,
+        pnr: outcome.parsed.pnr ?? null,
+        ticketNumber: outcome.parsed.ticketNumber ?? null,
+        seatNumber: outcome.parsed.seatNumber ?? null,
+        scannedAt: event.scannedAt,
+        flightNumber: outcome.flight.flightNumber,
+      });
+    } catch {
+      /* manifest lokal tidak boleh mengganggu hasil scan */
+    }
+  }
 
   // Sikeren integration: enqueue only on VALID outcome (billable scan).
   if (

@@ -207,6 +207,7 @@ Integrasi **opsional** ke backend NestJS + PostgreSQL (lihat [BACKEND_SETUP.md](
 - **Snapshot jadwal FIDS** — saat tarik FIDS di `/jadwal`, jadwal hari itu di-push ke `POST /flights/sync` (upsert idempotent by `station+flightNumber+std`) sehingga tersimpan permanen di DB sebagai riwayat per tanggal, bukan cuma di `localStorage`. Best-effort: bila offline/belum login, jadwal tetap aman di lokal.
 - **Monitor antrian** — status pending/gagal + tombol flush/retry.
 - **Dashboard server** (`/admin/scans`, admin/supervisor) — lihat scan **gabungan 2 pos** (SCP 2 + Lounge Bluesky) langsung dari server, lengkap foto wajah & statistik per pos.
+- **Manifest penumpang per-flight** — setiap scan **VALID** otomatis tercatat sebagai penumpang penerbangan itu, **dua tempat**: lokal (`afvs.manifests`, offline-first) & backend (tabel `FlightPassenger`, di-upsert saat `POST /scan-events`). 1 penumpang = 1 baris, kunci dedup **tiket→PNR** (sama di lokal & server). Halaman detail flight menampilkan daftar + hitungan pax; bila sync aktif, muncul badge **"Server N"** (cross-check jumlah lokal vs backend). Baca via `GET /flights/:id/passengers`; backfill dari scan historis via `POST /flights/manifests/rebuild` (admin). Lihat [RANCANGAN-MANIFEST-PAX.md](RANCANGAN-MANIFEST-PAX.md).
 - Di-gate oleh setting `apiSyncEnabled`; base URL dari env `NEXT_PUBLIC_AFVS_API_BASE`.
 
 ### 4.14 Kelola Petugas AVSEC (`/admin/officers`)
@@ -217,6 +218,12 @@ Manajemen petugas lewat UI (admin only) — menggantikan kebutuhan edit `seed.ts
 - **Audit-safe** — petugas yang sudah punya riwayat scan tidak bisa di-hard-delete (diarahkan untuk dinonaktifkan saja); admin juga tidak bisa menghapus akunnya sendiri.
 - **Foto petugas** — upload/ganti/hapus foto dari form Tambah/Edit (JPEG/PNG/WebP, maks 2 MB). File disimpan di `UPLOAD_DIR/operators` dan disajikan **auth-gated** (`GET /operators/:id/photo`), bukan path publik. Avatar di grid/detail otomatis pakai foto upload (lingkaran `object-cover`); bila belum ada foto, fallback ke avatar kurasi/inisial.
 - Endpoint: `GET/POST/PATCH/DELETE /operators` + `POST /operators/:id/pin` + `POST/GET/DELETE /operators/:id/photo` (semua role `admin`).
+
+### 4.15 Rekap PAX per Maskapai (`/rekap-maskapai`)
+Rekap jumlah penumpang **boarded** (scan VALID) dikelompokkan **per maskapai** (Garuda, Batik, Lion, dst.), dengan pemilih periode **Hari ini · Kemarin · Rentang** (custom `dari`–`sampai`). Hanya **penerbangan keberangkatan** (origin = bandara home `AAP`; kedatangan tidak dihitung). Jam ditampilkan sebagai **jam papan** langsung dari `std` (naif-Z, tanpa konversi timezone).
+- **Kartu per maskapai** (logo + warna brand dari registry `airlines.ts`, bar proporsi, angka pax) diurut pax terbanyak; **drill-down** klik kartu → daftar penerbangan maskapai itu → klik → halaman detail flight (manifest pax).
+- **Sumber data**: server bila sync aktif (`GET /flights/manifests/by-airline`, agregat `FlightPassenger`), fallback **agregasi lokal** dari `afvs.manifests`/scan events saat offline. Badge menandai sumber (Server/Lokal).
+- Tanpa tabel DB baru — murni agregasi manifest per-flight (lihat [RANCANGAN-PAX-PER-MASKAPAI.md](RANCANGAN-PAX-PER-MASKAPAI.md)). Helper agregasi murni `lib/reports/byAirline.ts` (di-unit-test). Menu untuk admin/supervisor.
 
 ---
 
@@ -258,6 +265,7 @@ src/
 │   ├── onboarding/
 │   ├── passengers/
 │   ├── radar/                # Monitoring pesawat live (Leaflet + OpenSky)
+│   ├── rekap-maskapai/       # Rekap PAX per maskapai (harian/rentang, drill-down)
 │   ├── connect/             # Koneksi & sinkronisasi backend
 │   ├── admin/
 │   │   ├── scans/           # Dashboard scan server (gabungan 2 pos)
@@ -291,6 +299,8 @@ src/
     ├── facePhotoStore.ts     # IndexedDB wrapper untuk foto
     ├── flightStatus.ts       # State machine flight
     ├── flightSweeper.ts      # Auto-close past flights
+    ├── manifest.ts           # Kunci dedup pax tiket→PNR (cermin backend/common/manifest.ts)
+    ├── reports/byAirline.ts  # Agregasi rekap PAX per maskapai (murni, di-unit-test)
     ├── i18n.ts + useT.ts     # Translation
     ├── mockData.ts           # Seed flights
     ├── scanService.ts        # Core logic scan + face capture

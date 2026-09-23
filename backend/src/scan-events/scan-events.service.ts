@@ -2,6 +2,7 @@ import { Injectable, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
 import { JwtPayload } from "../auth/auth.service";
 import { ListScansQuery, PushScanDto } from "./dto";
+import { manifestDedupKey } from "../common/manifest";
 
 // F-05: supervisor/admin boleh lintas-station; operator hanya station-nya.
 function isPrivileged(role: string): boolean {
@@ -26,7 +27,11 @@ export class ScanEventsService {
     });
     if (existing) return existing;
 
-    // Resolve flight relation by flightNumber + station + date (best-effort)
+    // Resolve flight relation by flightNumber + tanggal (best-effort).
+    // Prioritaskan station yang cocok; kalau tak ada, fallback tanpa station —
+    // karena flight disimpan level bandara (mis. AAP) sedangkan scan bisa
+    // ber-station pos (SCP2/BLUESKY) atau UNKNOWN (scan admin). Di bandara
+    // tunggal, flightNumber+tanggal sudah unik.
     let flightId: string | null = null;
     if (dto.flightNumber) {
       const date = new Date(dto.scannedAt);
@@ -34,18 +39,22 @@ export class ScanEventsService {
       dayStart.setUTCHours(0, 0, 0, 0);
       const dayEnd = new Date(date);
       dayEnd.setUTCHours(23, 59, 59, 999);
-      const flight = await this.prisma.flight.findFirst({
-        where: {
-          station: dto.station,
-          flightNumber: dto.flightNumber,
-          std: { gte: dayStart, lte: dayEnd },
-        },
+      const std = { gte: dayStart, lte: dayEnd };
+      const byStation = await this.prisma.flight.findFirst({
+        where: { station: dto.station, flightNumber: dto.flightNumber, std },
         select: { id: true },
       });
+      const flight =
+        byStation ??
+        (await this.prisma.flight.findFirst({
+          where: { flightNumber: dto.flightNumber, std },
+          select: { id: true },
+        }));
       flightId = flight?.id ?? null;
     }
 
-    return this.prisma.scanEvent.create({
+    const scannedAt = new Date(dto.scannedAt);
+    const created = await this.prisma.scanEvent.create({
       data: {
         eventId: dto.eventId,
         rawBarcode: dto.rawBarcode,
@@ -56,7 +65,7 @@ export class ScanEventsService {
         passengerName: dto.passengerName ?? null,
         resultStatus: dto.resultStatus,
         message: dto.message ?? null,
-        scannedAt: new Date(dto.scannedAt),
+        scannedAt,
         station: dto.station,
         facePhotoPath,
         ktpStatus: dto.ktpStatus ?? null,
@@ -65,6 +74,83 @@ export class ScanEventsService {
         ktpCapturedAt: dto.ktpCapturedAt ? new Date(dto.ktpCapturedAt) : null,
         flightId,
         operatorId,
+      },
+    });
+
+    // Manifest penumpang: hanya scan VALID_FLIGHT & flight yang ter-resolve.
+    // Idempoten — eventId duplikat sudah di-skip di atas, jadi tak double-count.
+    // Gagal di sini tak boleh membatalkan pencatatan scan (best-effort).
+    if (dto.resultStatus === "VALID_FLIGHT" && flightId) {
+      try {
+        await this.upsertManifestPassenger(flightId, {
+          pnr: dto.pnr ?? null,
+          ticketNumber: dto.ticketNumber ?? null,
+          seat: dto.seat ?? null,
+          passengerName: dto.passengerName ?? null,
+          scannedAt,
+        });
+      } catch {
+        /* manifest tidak boleh mengganggu push scan */
+      }
+    }
+
+    return created;
+  }
+
+  /**
+   * Upsert satu penumpang ke manifest flight. Kunci dedup = tiket→PNR
+   * (lihat common/manifest.ts). Scan berikutnya untuk penumpang yang sama →
+   * increment scanCount + majukan lastScannedAt, dan isi nama/seat bila
+   * sebelumnya kosong.
+   */
+  private async upsertManifestPassenger(
+    flightId: string,
+    p: {
+      pnr: string | null;
+      ticketNumber: string | null;
+      seat: string | null;
+      passengerName: string | null;
+      scannedAt: Date;
+    },
+  ) {
+    const dedupKey = manifestDedupKey(p.ticketNumber, p.pnr);
+    if (!dedupKey) return; // tak ada tiket/PNR → tak bisa didedup
+
+    const existing = await this.prisma.flightPassenger.findUnique({
+      where: { flightId_dedupKey: { flightId, dedupKey } },
+      select: { id: true, lastScannedAt: true, passengerName: true, seat: true },
+    });
+
+    if (!existing) {
+      await this.prisma.flightPassenger.create({
+        data: {
+          flightId,
+          dedupKey,
+          pnr: p.pnr,
+          ticketNumber: p.ticketNumber,
+          seat: p.seat,
+          passengerName: p.passengerName,
+          firstScannedAt: p.scannedAt,
+          lastScannedAt: p.scannedAt,
+          scanCount: 1,
+          boarded: true,
+        },
+      });
+      return;
+    }
+
+    await this.prisma.flightPassenger.update({
+      where: { flightId_dedupKey: { flightId, dedupKey } },
+      data: {
+        scanCount: { increment: 1 },
+        boarded: true,
+        // Majukan lastScannedAt hanya bila scan ini lebih baru (aman utk push out-of-order).
+        ...(p.scannedAt > existing.lastScannedAt
+          ? { lastScannedAt: p.scannedAt }
+          : {}),
+        // Perkaya field yang sebelumnya kosong tanpa menimpa data yang sudah ada.
+        ...(existing.passengerName ? {} : { passengerName: p.passengerName }),
+        ...(existing.seat ? {} : { seat: p.seat }),
       },
     });
   }
