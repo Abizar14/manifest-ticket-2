@@ -40,6 +40,8 @@ export interface AppSettings {
   ktpScanFirst: boolean;
   /** Izinkan jalur "Tanpa KTP" di mode KTP-first — 1 tap + audit. */
   allowNoKtpExemption: boolean;
+  /** Jenis dokumen identitas yang dibaca di KTP-first: "ktp" | "sim" | "id". */
+  idDocType: "ktp" | "sim" | "id";
 }
 
 const KEY = "afvs.settings";
@@ -96,6 +98,7 @@ const DEFAULTS: AppSettings = {
   ktpRequireForValid: false,
   ktpScanFirst: false,
   allowNoKtpExemption: true,
+  idDocType: "ktp",
 };
 
 function isBrowser() {

@@ -25,6 +25,11 @@ import {
 } from "@/lib/boarding";
 import { AirlineLogo } from "@/components/ui/AirlineLogo";
 import { getSettings, subscribeSettings } from "@/lib/settings";
+import {
+  apiManifestByAirline,
+  apiListAllScans,
+  isAuthed,
+} from "@/lib/api/client";
 import { getEffectiveFlightStatus } from "@/lib/flightStatus";
 import { LargeTitle } from "@/components/mobile/LargeTitle";
 import { ListSection } from "@/components/mobile/GroupedList";
@@ -88,19 +93,89 @@ export default function DashboardPage() {
   // P-07: index boarded-count dibangun sekali, dipakai per-flight O(1).
   const boardedCounts = useMemo(() => buildBoardedCounts(events), [events]);
 
-  const validCount = eventsToday.filter(
+  // Data SERVER (agar angka mencakup scan dari SEMUA pos, bukan cuma perangkat
+  // ini). Fallback ke lokal bila offline / belum login.
+  const [serverCounts, setServerCounts] = useState<Map<string, number>>(
+    () => new Map(),
+  );
+  const [serverStats, setServerStats] = useState<{
+    total: number;
+    valid: number;
+    dup: number;
+    rejected: number;
+  } | null>(null);
+  useEffect(() => {
+    if (!settings.apiSyncEnabled || !isAuthed()) {
+      setServerCounts(new Map());
+      setServerStats(null);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const rep = await apiManifestByAirline({ date: today, detail: true });
+        if (!cancelled && rep.ok && rep.data) {
+          const m = new Map<string, number>();
+          for (const a of rep.data.airlines)
+            for (const fd of a.flightsDetail)
+              m.set(
+                `${fd.flightNumber.toUpperCase()}|${fd.std.slice(0, 10)}`,
+                fd.passengers,
+              );
+          setServerCounts(m);
+        }
+      } catch {
+        /* fallback lokal */
+      }
+      try {
+        const sc = await apiListAllScans({ date: today });
+        if (!cancelled && sc.ok && sc.data) {
+          const it = sc.data.items;
+          const valid = it.filter((e) => e.resultStatus === "VALID_FLIGHT").length;
+          const dup = it.filter((e) => e.resultStatus === "DUPLICATE_SCAN").length;
+          setServerStats({
+            total: it.length,
+            valid,
+            dup,
+            rejected: it.length - valid - dup,
+          });
+        }
+      } catch {
+        /* fallback lokal */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [today, settings.apiSyncEnabled, flights.length]);
+
+  const boardedOf = (f: Flight) =>
+    serverCounts.get(`${f.flightNumber.toUpperCase()}|${f.departureDate}`) ??
+    boardedCounts.get(f.id) ??
+    0;
+
+  const localValid = eventsToday.filter(
     (e) => e.resultStatus === "VALID_FLIGHT",
   ).length;
-  const dupCount = eventsToday.filter(
+  const localDup = eventsToday.filter(
     (e) => e.resultStatus === "DUPLICATE_SCAN",
   ).length;
-  const rejectedCount = eventsToday.length - validCount - dupCount;
+  // Statistik efektif: server (lintas-pos) > lokal.
+  const stats = serverStats ?? {
+    total: eventsToday.length,
+    valid: localValid,
+    dup: localDup,
+    rejected: eventsToday.length - localValid - localDup,
+  };
+  const validCount = stats.valid;
+  const dupCount = stats.dup;
+  const rejectedCount = stats.rejected;
 
   const flightsCnt = useCountUp(flightsToday.length);
-  const scanCnt = useCountUp(eventsToday.length);
-  const validCnt = useCountUp(validCount);
-  const dupCnt = useCountUp(dupCount);
-  const rejectedCnt = useCountUp(rejectedCount);
+  const scanCnt = useCountUp(stats.total);
+  const validCnt = useCountUp(stats.valid);
+  const dupCnt = useCountUp(stats.dup);
+  const rejectedCnt = useCountUp(stats.rejected);
 
   const sortedFlightsToday = useMemo(
     () =>
@@ -211,7 +286,7 @@ export default function DashboardPage() {
                   flight={f}
                   effectiveStatus={eff.status}
                   effectiveAuto={eff.status !== f.status}
-                  progress={boardingProgressFromCount(f, boardedCounts.get(f.id) ?? 0)}
+                  progress={boardingProgressFromCount(f, boardedOf(f))}
                 />
               );
             })
@@ -348,7 +423,7 @@ export default function DashboardPage() {
                     .map((f, idx) => {
                       const eff = getEffectiveFlightStatus(f, now, settings);
                       const differs = eff.status !== f.status;
-                      const progress = boardingProgressFromCount(f, boardedCounts.get(f.id) ?? 0);
+                      const progress = boardingProgressFromCount(f, boardedOf(f));
                       return (
                         <li
                           key={f.id}

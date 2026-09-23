@@ -18,8 +18,8 @@ export function parseBarcode(raw: string): ParsedBarcode | null {
   if (bcbp) return bcbp;
 
   const parts = trimmed.split("|");
-  if (parts.length === 4 || parts.length === 5) {
-    const [flightNumber, pnr, ticketNumber, seatNumber, passengerName] =
+  if (parts.length >= 4 && parts.length <= 6) {
+    const [flightNumber, pnr, ticketNumber, seatNumber, passengerName, dateRaw] =
       parts.map((p) => p.trim());
     if (flightNumber && pnr && ticketNumber && seatNumber) {
       return {
@@ -29,11 +29,31 @@ export function parseBarcode(raw: string): ParsedBarcode | null {
         seatNumber,
         passengerName:
           passengerName && passengerName.length > 0 ? passengerName : null,
+        // Field ke-6 (opsional) = tanggal keberangkatan YYYY-MM-DD.
+        flightDate: /^\d{4}-\d{2}-\d{2}$/.test(dateRaw ?? "") ? dateRaw : null,
       };
     }
   }
 
   return null;
+}
+
+/** Julian day-of-year (1..366) → YYYY-MM-DD, memakai tahun terdekat dengan hari
+ *  ini (menangani pergantian tahun Des↔Jan). null bila tak valid. */
+function julianToDate(doy: number): string | null {
+  if (!Number.isFinite(doy) || doy < 1 || doy > 366) return null;
+  const now = new Date();
+  const y = now.getFullYear();
+  const todayDoy = Math.floor(
+    (Date.UTC(y, now.getMonth(), now.getDate()) - Date.UTC(y, 0, 1)) / 86400000,
+  );
+  // Pilih tahun agar tanggal jatuh paling dekat ke hari ini (rollover akhir tahun).
+  let year = y;
+  if (doy - todayDoy > 182) year = y - 1;
+  else if (todayDoy - doy > 182) year = y + 1;
+  const d = new Date(year, 0, doy);
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 }
 
 function formatBcbpName(raw: string): string | null {
@@ -76,6 +96,7 @@ export function parseIataBcbp(raw: string): ParsedBarcode | null {
   const seatRaw = raw.substring(48, 52).trim();
   const seat = seatRaw.replace(/^0+/, "") || seatRaw;
   const seq = raw.substring(52, 57).trim().replace(/^0+/, "") || "0";
+  const doy = parseInt(raw.substring(44, 47).trim(), 10);
 
   if (!airline || !flightNum) return null;
 
@@ -85,5 +106,6 @@ export function parseIataBcbp(raw: string): ParsedBarcode | null {
     ticketNumber: seq || "—",
     seatNumber: seat || "—",
     passengerName: formatBcbpName(nameRaw),
+    flightDate: julianToDate(doy),
   };
 }

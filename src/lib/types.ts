@@ -118,6 +118,9 @@ export interface ParsedBarcode {
   ticketNumber: string;
   seatNumber: string;
   passengerName: string | null;
+  /** Tanggal keberangkatan dari barcode (YYYY-MM-DD) bila tersedia: field ke-6
+   *  format pipe, atau Julian date BCBP. null = barcode tak memuat tanggal. */
+  flightDate?: string | null;
 }
 
 export interface PassengerRecord {

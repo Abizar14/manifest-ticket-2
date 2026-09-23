@@ -53,7 +53,7 @@ import {
 import { canManageFlights } from "@/lib/auth";
 import { cn, formatDateTime } from "@/lib/utils";
 import { manifestDedupKey } from "@/lib/manifest";
-import { getBoardingProgress } from "@/lib/boarding";
+import { getBoardingProgress, boardingProgressFromCount } from "@/lib/boarding";
 import { apiFlightPassengers, apiListAllFlights, isAuthed } from "@/lib/api/client";
 import { getAuditForFlight, recordAudit } from "@/lib/audit";
 import { getSettings, subscribeSettings } from "@/lib/settings";
@@ -92,6 +92,11 @@ export default function FlightDetailPage() {
   // Hitungan manifest dari backend (sumber kebenaran lintas-device). null = belum
   // /tidak tersedia (offline / belum login / flight tak ketemu di server).
   const [serverPax, setServerPax] = useState<number | null>(null);
+  // Daftar pax dari backend (agar scan petugas di perangkat LAIN tetap muncul di
+  // sini). null = pakai daftar lokal (derivasi dari scan perangkat ini).
+  const [serverPassengers, setServerPassengers] = useState<
+    PassengerRecord[] | null
+  >(null);
 
   useEffect(() => {
     if (!id) return;
@@ -124,12 +129,7 @@ export default function FlightDetailPage() {
     setAuditEvents(getAuditForFlight(flightId));
   };
 
-  const progress: BoardingProgress | null = useMemo(
-    () => (flight ? getBoardingProgress(flight, events) : null),
-    [flight, events],
-  );
-
-  const passengers: PassengerRecord[] = useMemo(() => {
+  const localPassengers: PassengerRecord[] = useMemo(() => {
     if (!flight) return [];
     const map = new Map<string, PassengerRecord>();
     for (const e of events) {
@@ -162,28 +162,63 @@ export default function FlightDetailPage() {
     );
   }, [events, flight]);
 
+  // Sumber manifest yang ditampilkan: server (kalau tersedia) > lokal. Server
+  // memuat scan dari SEMUA pos/perangkat, jadi scan petugas di device lain ikut
+  // tampil di sini — bukan cuma scan perangkat ini.
+  const passengers = serverPassengers ?? localPassengers;
+
+  const progress: BoardingProgress | null = flight
+    ? serverPassengers
+      ? boardingProgressFromCount(flight, passengers.length)
+      : getBoardingProgress(flight, events)
+    : null;
+
   // Cross-check ke manifest server (best-effort). Flight lokal & backend punya id
   // berbeda, jadi resolve dulu flight backend by flightNumber + tanggal, lalu
   // ambil jumlah pax-nya. Gagal/offline → serverPax tetap null (badge disembunyikan).
   useEffect(() => {
     if (!flight || !settings.apiSyncEnabled || !isAuthed()) {
       setServerPax(null);
+      setServerPassengers(null);
       return;
     }
+    const flightRef = flight;
     let cancelled = false;
     (async () => {
       try {
-        const list = await apiListAllFlights({ date: flight.departureDate });
+        const list = await apiListAllFlights({ date: flightRef.departureDate });
         if (!list.ok || !list.data) return;
         const match = list.data.items.find(
           (f) =>
-            f.flightNumber.toUpperCase() === flight.flightNumber.toUpperCase(),
+            f.flightNumber.toUpperCase() ===
+            flightRef.flightNumber.toUpperCase(),
         );
         if (!match) return;
         const res = await apiFlightPassengers(match.id);
-        if (!cancelled && res.ok && res.data) setServerPax(res.data.count);
+        if (cancelled || !res.ok || !res.data) return;
+        setServerPax(res.data.count);
+        // Petakan pax server → PassengerRecord agar tampil di daftar & seat map.
+        setServerPassengers(
+          res.data.items
+            .map((fp) => ({
+              passengerName: fp.passengerName,
+              pnr: fp.pnr ?? "—",
+              ticketNumber: fp.ticketNumber ?? "—",
+              seatNumber: fp.seat ?? "—",
+              flightId: flightRef.id,
+              flightNumber: flightRef.flightNumber,
+              firstScannedAt: fp.firstScannedAt,
+              lastScannedAt: fp.lastScannedAt,
+              scanCount: fp.scanCount,
+            }))
+            .sort((a, b) =>
+              a.seatNumber.localeCompare(b.seatNumber, undefined, {
+                numeric: true,
+              }),
+            ),
+        );
       } catch {
-        /* biarkan null — cross-check bersifat opsional */
+        /* biarkan null — fallback ke daftar lokal */
       }
     })();
     return () => {

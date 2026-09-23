@@ -50,6 +50,7 @@ import {
   getSession,
   purgeScanEventsArchive,
   resetAll,
+  saveScanEvents,
 } from "@/lib/storage";
 import {
   AppSettings,
@@ -258,18 +259,41 @@ export default function SettingsPage() {
     toast.success("Semua foto wajah dihapus.");
   };
 
+  // Reset ber-lingkup: hanya scan/statistik. Jadwal, setting, & sesi TETAP.
+  const onResetScans = async () => {
+    const res = await confirm({
+      title: "Reset statistik & riwayat scan?",
+      description:
+        "Menghapus SEMUA scan event + arsipnya (statistik boarding kembali 0). " +
+        "Jadwal penerbangan, pengaturan, dan sesi login TIDAK dihapus. " +
+        "Cocok untuk mulai shift/hari baru.",
+      tone: "warning",
+      confirmLabel: "Reset Scan",
+      cancelLabel: "Batal",
+    });
+    if (!res.confirmed) return;
+    saveScanEvents([]);
+    purgeScanEventsArchive();
+    toast.success("Scan & statistik direset. Memuat ulang…");
+    setTimeout(() => window.location.reload(), 600);
+  };
+
   const onReset = async () => {
     const res = await confirm({
-      title: "Reset semua data?",
-      description: t("settings.data.resetConfirm"),
+      title: "Hapus SEMUA data lokal?",
+      description:
+        "⚠️ Menghapus SEMUA data lokal di perangkat ini: jadwal penerbangan, " +
+        "scan, pengaturan, dan sesi login (auto-logout). Data di server TIDAK " +
+        "terpengaruh — setelah reset, jadwal bisa ditarik ulang dari server " +
+        "via /connect (Tarik jadwal) atau /jadwal (FIDS). Lanjutkan?",
       tone: "danger",
       destructive: true,
-      confirmLabel: "Reset Data",
+      confirmLabel: "Hapus Semua",
       cancelLabel: "Batal",
     });
     if (!res.confirmed) return;
     resetAll();
-    toast.success("Data direset ke seed awal. Memuat ulang…");
+    toast.success("Semua data lokal dihapus. Memuat ulang…");
     setTimeout(() => window.location.reload(), 600);
   };
 
@@ -686,14 +710,28 @@ export default function SettingsPage() {
             </ListSection>
 
             <ListSection
-              header="Berbahaya"
-              caption="Aksi ini akan menghapus semua data lokal dan logout sesi. Pastikan kamu sudah backup."
+              header="Reset"
+              caption="Mulai shift/hari baru tanpa menghapus jadwal & pengaturan."
             >
               <ListRow
                 icon={<RefreshCw className="h-4 w-4" />}
+                tone="warning"
+                title="Reset statistik & scan"
+                subtitle="Hapus scan, jadwal & setting tetap"
+                onClick={onResetScans}
+                showChevron
+              />
+            </ListSection>
+
+            <ListSection
+              header="Berbahaya"
+              caption="Menghapus SEMUA data lokal (jadwal, scan, setting) & logout. Data server aman — tarik ulang via /connect atau /jadwal."
+            >
+              <ListRow
+                icon={<Trash2 className="h-4 w-4" />}
                 tone="danger"
-                title={t("settings.data.reset")}
-                subtitle="Kembalikan ke seed awal"
+                title="Hapus semua data lokal"
+                subtitle="Kosongkan perangkat ini"
                 onClick={onReset}
                 showChevron
               />
@@ -1079,13 +1117,24 @@ export default function SettingsPage() {
                   />
                   <DataRow
                     icon={<RefreshCw className="h-4 w-4" />}
-                    title={t("settings.data.reset")}
-                    description="Hapus semua data lokal dan kembalikan ke seed awal. Sesi login akan logout."
+                    title="Reset statistik & scan"
+                    description="Hapus semua scan + arsip (statistik ke 0). Jadwal, pengaturan & sesi TETAP. Untuk mulai shift/hari baru."
+                    action={
+                      <Button size="sm" variant="outline" onClick={onResetScans}>
+                        <RefreshCw className="h-3.5 w-3.5 text-amber-600" />
+                        Reset Scan
+                      </Button>
+                    }
+                  />
+                  <DataRow
+                    icon={<Trash2 className="h-4 w-4" />}
+                    title="Hapus semua data lokal"
+                    description="Hapus SEMUA data lokal (jadwal, scan, setting) & logout. Data server AMAN — tarik ulang jadwal via /connect atau /jadwal setelahnya."
                     danger
                     action={
                       <Button size="sm" variant="danger" onClick={onReset}>
-                        <RefreshCw className="h-3.5 w-3.5" />
-                        Reset
+                        <Trash2 className="h-3.5 w-3.5" />
+                        Hapus Semua
                       </Button>
                     }
                   />

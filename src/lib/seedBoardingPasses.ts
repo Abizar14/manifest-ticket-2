@@ -5,7 +5,7 @@
 
 import { Flight } from "./types";
 import { addFlight, getFlights, updateFlight } from "./storage";
-import { todayDateString, uid } from "./utils";
+import { todayDateString, tomorrowDateString, uid } from "./utils";
 
 export interface SeedBoardingPass {
   id: string;
@@ -640,9 +640,17 @@ export const SEED_BOARDING_PASSES: SeedBoardingPass[] = [
   },
 ];
 
+/** Tanggal efektif boarding pass: pakai departureDate bila ada, else dari dateRef. */
+function resolveBpDate(bp: SeedBoardingPass): string {
+  if (bp.departureDate) return bp.departureDate;
+  return bp.dateRef === "tomorrow" ? tomorrowDateString() : todayDateString();
+}
+
 export function buildPayload(bp: SeedBoardingPass): string {
   const safeName = bp.passengerName.replace(/\|/g, " ").toUpperCase();
-  return `${bp.flightNumber}|${bp.pnr}|${bp.ticket}|${bp.seat}|${safeName}`;
+  // Field ke-6 = tanggal keberangkatan → validator bisa menolak boarding pass
+  // yang tanggalnya sudah lewat (bukan hari ini).
+  return `${bp.flightNumber}|${bp.pnr}|${bp.ticket}|${bp.seat}|${safeName}|${resolveBpDate(bp)}`;
 }
 
 /**

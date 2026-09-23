@@ -10,6 +10,7 @@ describe("parseBarcode — format pipe (MVP)", () => {
       ticketNumber: "990001",
       seatNumber: "12A",
       passengerName: null,
+      flightDate: null,
     });
   });
 
@@ -17,6 +18,13 @@ describe("parseBarcode — format pipe (MVP)", () => {
     const r = parseBarcode("GA123|AB12CD|990001|12A|BUDI SANTOSO");
     expect(r?.passengerName).toBe("BUDI SANTOSO");
     expect(r?.flightNumber).toBe("GA123");
+    expect(r?.flightDate).toBeNull(); // tanpa field ke-6 → tanggal null
+  });
+
+  it("parse 6 field (dengan tanggal) → flightDate terisi", () => {
+    const r = parseBarcode("GA123|AB12CD|990001|12A|BUDI SANTOSO|2026-07-06");
+    expect(r?.flightDate).toBe("2026-07-06");
+    expect(r?.passengerName).toBe("BUDI SANTOSO");
   });
 
   it("trim spasi di tiap field", () => {

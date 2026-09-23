@@ -35,7 +35,8 @@ import {
   UserX,
 } from "lucide-react";
 import Image from "next/image";
-import { cn } from "@/lib/utils";
+import { cn, todayDateString } from "@/lib/utils";
+import { pullFidsKeberangkatan } from "@/lib/jadwal/flightSync";
 import {
   FaceCaptureCamera,
   type FaceCaptureHandle,
@@ -78,7 +79,8 @@ import {
   type AppSettings,
 } from "@/lib/settings";
 import { setTheme } from "@/lib/theme";
-import { recognizeKtp, initKtpOcr } from "@/lib/ktpOcr";
+import { initKtpOcr } from "@/lib/ktpOcr";
+import { getIdDoc, recognizeIdName, ID_DOC_LIST, type IdDocType } from "@/lib/idDocs";
 import { similarity } from "@/lib/nameMatch";
 import type {
   Flight,
@@ -92,7 +94,10 @@ import type {
 // KTP-first: parameter pemindaian KTP di kamera utama. Kotak ini SEKALIGUS
 // panduan visual & region yang di-OCR (WYSIWYG) — dibuat lebih ke tengah frame.
 const KTP_NAME_CROP = { x: 0.16, y: 0.27, w: 0.68, h: 0.36 };
-const KTP_CAPTURE_ASPECT = 1280 / 800;
+// WYSIWYG: samakan rasio capture dengan display kamera (aspect-[4/3]) supaya
+// kotak panduan yang dilihat operator = persis area yang di-OCR. Kalau beda
+// (mis. 16:10) nama bisa keluar dari region OCR (terutama ID card portrait).
+const KTP_CAPTURE_ASPECT = 4 / 3;
 const KTP_SHARP_THRESHOLD = 90; // > 90 = tajam
 const KTP_PENDING_TTL_MS = 45_000; // identitas KTP kedaluwarsa bila tak ada scan
 
@@ -449,6 +454,24 @@ export default function KioskPage() {
     };
   }, []);
 
+  // Auto-sync FIDS → jadwal flight tiap 3 menit (silent). Kiosk fullscreen tak
+  // pakai AppShell (yang punya auto-sync), jadi effect ini menjaga jadwal kerja
+  // tetap ikut FIDS tanpa operator harus menarik manual. Gate: setting
+  // fidsAutoSync + online. Pull menulis ke localStorage → refresh 5s memungutnya.
+  React.useEffect(() => {
+    const run = () => {
+      if (!getSettings().fidsAutoSync) return;
+      if (typeof navigator !== "undefined" && navigator.onLine === false) return;
+      pullFidsKeberangkatan(todayDateString()).catch(() => {});
+    };
+    const first = window.setTimeout(run, 5000); // jeda setelah first paint
+    const id = window.setInterval(run, 180_000); // 3 menit
+    return () => {
+      window.clearTimeout(first);
+      window.clearInterval(id);
+    };
+  }, []);
+
   // KTP-first: warm-up OCR engine saat mode dinyalakan (hindari lag baca pertama).
   React.useEffect(() => {
     if (settings.ktpScanFirst) initKtpOcr().catch(() => {});
@@ -461,6 +484,7 @@ export default function KioskPage() {
     if (!settings.faceCaptureEnabled) return; // butuh kamera hidup
     if (pendingKtp) return; // sudah ada identitas → tunggu boarding pass
     if (modalOpen || ktpFlow) return; // jangan ganggu saat modal hasil terbuka
+    const doc = getIdDoc(settings.idDocType); // crop + parser sesuai jenis dokumen
     let cancelled = false;
     const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
     const run = async () => {
@@ -476,7 +500,7 @@ export default function KioskPage() {
         }
         const sharp = () =>
           cam.measureSharpness?.({
-            region: KTP_NAME_CROP,
+            region: doc.crop,
             aspect: KTP_CAPTURE_ASPECT,
           }) ?? 0;
         if (sharp() < KTP_SHARP_THRESHOLD) {
@@ -487,8 +511,8 @@ export default function KioskPage() {
         if (cancelled) return;
         if (sharp() < KTP_SHARP_THRESHOLD) continue;
         const blob = await cam.captureFrame({
-          width: 1280,
-          height: 800,
+          width: 1200,
+          height: 900, // 4:3 — samakan dgn display (WYSIWYG dgn kotak panduan)
           quality: 0.95,
           burst: 1,
         });
@@ -499,7 +523,7 @@ export default function KioskPage() {
         }
         let res: { rawText: string; name: string | null };
         try {
-          res = await recognizeKtp(blob, { cropRect: KTP_NAME_CROP });
+          res = await recognizeIdName(blob, doc);
         } catch {
           res = { rawText: "", name: null };
         }
@@ -521,7 +545,7 @@ export default function KioskPage() {
     return () => {
       cancelled = true;
     };
-  }, [settings.ktpScanFirst, settings.faceCaptureEnabled, pendingKtp, modalOpen, ktpFlow]);
+  }, [settings.ktpScanFirst, settings.faceCaptureEnabled, settings.idDocType, pendingKtp, modalOpen, ktpFlow]);
 
   // KTP-first: identitas pending kedaluwarsa setelah TTL bila tak ada scan.
   React.useEffect(() => {
@@ -962,6 +986,7 @@ export default function KioskPage() {
 
   const lastMeta = last ? STATUS_META[last.event.resultStatus] : null;
   const captureEnabledUi = settings.faceCaptureEnabled;
+  const activeDoc = getIdDoc(settings.idDocType); // KTP/SIM/ID → crop + parser
 
   // Sebelum mounted: render shell kosong (sama di server & client) → no mismatch.
   if (!mounted) {
@@ -1071,7 +1096,38 @@ export default function KioskPage() {
             ktpFirst={settings.ktpScanFirst}
             ktpCaptured={!!pendingKtp}
             ktpName={pendingKtp?.name ?? null}
+            ktpCrop={activeDoc.crop}
+            docHint={activeDoc.hint}
           />
+
+          {/* Selector jenis dokumen (KTP-first) — mengubah kotak & parser OCR */}
+          {settings.ktpScanFirst && settings.faceCaptureEnabled && !pendingKtp && (
+            <div className="flex items-center gap-2 rounded-2xl bg-white/70 px-3 py-2 ring-1 ring-slate-200 backdrop-blur dark:bg-[#0c1a36] dark:ring-cyan-400/15">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-white/50">
+                Dokumen
+              </span>
+              <div className="flex flex-1 gap-1">
+                {ID_DOC_LIST.map((d) => {
+                  const on = settings.idDocType === d.id;
+                  return (
+                    <button
+                      key={d.id}
+                      type="button"
+                      onClick={() => saveSettings({ idDocType: d.id as IdDocType })}
+                      className={cn(
+                        "flex-1 rounded-xl px-2 py-1.5 text-[11px] font-bold uppercase tracking-wider transition",
+                        on
+                          ? "bg-gradient-to-br from-cyan-500 to-blue-600 text-white shadow"
+                          : "bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-white/5 dark:text-white/60 dark:hover:bg-white/10",
+                      )}
+                    >
+                      {d.short}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           <PrivacyBanner />
         </section>
@@ -1296,6 +1352,8 @@ function BiometricCamera({
   ktpFirst = false,
   ktpCaptured = false,
   ktpName = null,
+  ktpCrop = KTP_NAME_CROP,
+  docHint = "Arahkan NAMA ke sini",
 }: {
   captureEnabled: boolean;
   cameraRef: React.RefObject<FaceCaptureHandle>;
@@ -1309,6 +1367,9 @@ function BiometricCamera({
   /** KTP sudah terbaca (pendingKtp ada) → tampilkan konfirmasi, sembunyikan kotak. */
   ktpCaptured?: boolean;
   ktpName?: string | null;
+  /** Kotak area nama (per jenis dokumen) — panduan sekaligus region OCR. */
+  ktpCrop?: { x: number; y: number; w: number; h: number };
+  docHint?: string;
 }) {
   const hud = FACE_HUD[faceState];
   return (
@@ -1414,10 +1475,10 @@ function BiometricCamera({
             <div
               className="pointer-events-none absolute rounded-lg border-[3px] border-emerald-400 shadow-[0_0_0_9999px_rgba(2,6,23,0.35)]"
               style={{
-                left: `${KTP_NAME_CROP.x * 100}%`,
-                top: `${KTP_NAME_CROP.y * 100}%`,
-                width: `${KTP_NAME_CROP.w * 100}%`,
-                height: `${KTP_NAME_CROP.h * 100}%`,
+                left: `${ktpCrop.x * 100}%`,
+                top: `${ktpCrop.y * 100}%`,
+                width: `${ktpCrop.w * 100}%`,
+                height: `${ktpCrop.h * 100}%`,
               }}
             >
               <span className="absolute -left-[3px] -top-[3px] h-5 w-5 rounded-tl-lg border-l-[3px] border-t-[3px] border-emerald-300" />
@@ -1425,7 +1486,7 @@ function BiometricCamera({
               <span className="absolute -bottom-[3px] -left-[3px] h-5 w-5 rounded-bl-lg border-b-[3px] border-l-[3px] border-emerald-300" />
               <span className="absolute -bottom-[3px] -right-[3px] h-5 w-5 rounded-br-lg border-b-[3px] border-r-[3px] border-emerald-300" />
               <span className="absolute -top-3 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full bg-emerald-400 px-2.5 py-0.5 text-[10px] font-black uppercase tracking-wider text-emerald-950 shadow">
-                Arahkan NAMA KTP ke sini
+                {docHint}
               </span>
             </div>
             {/* Banner atas */}
@@ -1650,6 +1711,33 @@ function ActiveFlightCards({
       });
   }, [flights, scans, now, settings]);
 
+  // Opsi A: tampilkan HANYA sebanyak baris yang muat rapi di ruang tersedia
+  // (tanpa scroll berdempet). Sisanya via tombol "Lihat semua". Dihitung dari
+  // tinggi kontainer & tinggi 1 baris (~54px) × jumlah kolom (2 di layar lebar).
+  const gridRef = React.useRef<HTMLDivElement | null>(null);
+  const [maxVisible, setMaxVisible] = React.useState(999);
+  React.useEffect(() => {
+    const el = gridRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const ROW_STRIDE = 54; // tinggi baris kompak + gap
+    const recompute = () => {
+      const cols = window.matchMedia("(min-width:1280px)").matches ? 2 : 1;
+      const rows = Math.max(1, Math.floor(el.clientHeight / ROW_STRIDE));
+      setMaxVisible(rows * cols);
+    };
+    recompute();
+    const ro = new ResizeObserver(recompute);
+    ro.observe(el);
+    window.addEventListener("resize", recompute);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener("resize", recompute);
+    };
+  }, []);
+
+  const shown = cards.slice(0, maxVisible);
+  const remaining = cards.length - shown.length;
+
   return (
     <div className="flex min-h-0 flex-1 flex-col rounded-3xl bg-white/80 ring-1 ring-slate-200 backdrop-blur-md dark:bg-[#0c1a36] dark:ring-cyan-400/15">
       <div className="flex items-center justify-between px-5 py-3">
@@ -1660,13 +1748,16 @@ function ActiveFlightCards({
           {cards.length}
         </span>
       </div>
-      <div className="grid min-h-0 flex-1 grid-cols-3 content-start gap-2 overflow-y-auto px-3 pb-3">
+      <div
+        ref={gridRef}
+        className="grid min-h-0 flex-1 grid-cols-1 content-start gap-1.5 overflow-hidden px-3 pb-3 xl:grid-cols-2"
+      >
         {cards.length === 0 && (
-          <div className="col-span-3 px-3 py-8 text-center text-xs text-slate-400 dark:text-white/40">
+          <div className="col-span-full px-3 py-8 text-center text-xs text-slate-400 dark:text-white/40">
             Belum ada flight yang sedang boarding.
           </div>
         )}
-        {cards.map((c) => (
+        {shown.map((c) => (
           <FlightBoardingCard
             key={c.flight.id}
             data={c}
@@ -1679,7 +1770,16 @@ function ActiveFlightCards({
         onClick={onMore}
         className="group flex w-full items-center justify-center gap-1.5 border-t border-slate-200/70 px-5 py-3 text-[11px] font-bold uppercase tracking-wider text-cyan-700 transition hover:bg-cyan-50/50 dark:border-cyan-400/10 dark:text-cyan-300 dark:hover:bg-cyan-500/5"
       >
-        Lihat semua scan hari ini
+        {remaining > 0 ? (
+          <>
+            <span className="rounded-full bg-cyan-100 px-1.5 py-0.5 text-cyan-700 dark:bg-cyan-500/20 dark:text-cyan-200">
+              +{remaining}
+            </span>
+            flight lainnya · Lihat semua
+          </>
+        ) : (
+          "Lihat semua scan hari ini"
+        )}
         <ArrowRight className="h-3 w-3 transition group-hover:translate-x-0.5" />
       </button>
     </div>
@@ -1697,7 +1797,7 @@ function FlightBoardingCard({
   const expected = flight.expectedPax ?? null;
   const airlineName = getAirlineMeta(flight.airlineCode).name;
 
-  // Aksen status di garis atas kartu (tanpa teks — biar tetap ringkas).
+  // Aksen status pada garis kiri kartu (tanpa teks — biar tetap ringkas).
   const accent =
     effectiveStatus === "ACTIVE"
       ? "from-amber-400 to-orange-500"
@@ -1707,39 +1807,42 @@ function FlightBoardingCard({
     <div
       title={`${flight.flightNumber} · ${airlineName} · ${flight.originAirport}→${flight.destinationAirport}`}
       className={cn(
-        "relative flex flex-col items-center gap-1 overflow-hidden rounded-2xl bg-white px-2 pb-2.5 pt-3 text-center ring-1 ring-slate-200 transition dark:bg-[#0e1f44] dark:ring-cyan-400/15",
+        "relative flex items-center gap-2.5 overflow-hidden rounded-xl bg-white py-2 pl-3.5 pr-2.5 ring-1 ring-slate-200 transition dark:bg-[#0e1f44] dark:ring-cyan-400/15",
         highlight &&
-          "ring-2 ring-cyan-400 shadow-[0_0_24px_-4px_rgba(34,211,238,0.45)] dark:ring-cyan-300",
+          "ring-2 ring-cyan-400 shadow-[0_0_20px_-4px_rgba(34,211,238,0.45)] dark:ring-cyan-300",
       )}
     >
-      {/* garis aksen status di atas */}
+      {/* garis aksen status di kiri */}
       <span
-        className={cn("absolute inset-x-0 top-0 h-1 bg-gradient-to-r", accent)}
+        className={cn(
+          "absolute inset-y-0 left-0 w-1 bg-gradient-to-b",
+          accent,
+        )}
       />
 
       {/* Maskapai (logo) */}
-      <AirlineLogo code={flight.airlineCode} size="md" mode="rich" />
+      <AirlineLogo code={flight.airlineCode} size="sm" mode="rich" />
 
-      {/* Kode penerbangan */}
-      <p className="text-[15px] font-black leading-none tracking-tight tabular-nums text-slate-800 dark:text-white">
-        {flight.flightNumber}
-      </p>
-
-      {/* Nama maskapai */}
-      <p className="w-full truncate text-[9.5px] font-semibold text-slate-500 dark:text-white/55">
-        {airlineName}
-      </p>
-
-      {/* Rute */}
-      <p className="flex w-full items-center justify-center gap-1 text-[10px] font-bold tabular-nums text-slate-600 dark:text-white/70">
-        <span>{flight.originAirport}</span>
-        <ArrowRight className="h-2.5 w-2.5 text-cyan-500" />
-        <span>{flight.destinationAirport}</span>
-      </p>
+      {/* Info penerbangan */}
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-1.5">
+          <p className="truncate text-[13px] font-black leading-tight tracking-tight tabular-nums text-slate-800 dark:text-white">
+            {flight.flightNumber}
+          </p>
+          <span className="flex shrink-0 items-center gap-0.5 text-[9.5px] font-bold tabular-nums text-slate-500 dark:text-white/60">
+            {flight.originAirport}
+            <ArrowRight className="h-2.5 w-2.5 text-cyan-500" />
+            {flight.destinationAirport}
+          </span>
+        </div>
+        <p className="truncate text-[9.5px] font-semibold text-slate-400 dark:text-white/45">
+          {airlineName}
+        </p>
+      </div>
 
       {/* PAX */}
-      <div className="mt-0.5 inline-flex items-baseline gap-1 rounded-lg bg-slate-900/5 px-2 py-1 dark:bg-white/10">
-        <span className="text-[13px] font-black tabular-nums text-slate-800 dark:text-white">
+      <div className="shrink-0 rounded-lg bg-slate-900/5 px-2 py-1 text-right dark:bg-white/10">
+        <span className="text-[13px] font-black leading-none tabular-nums text-slate-800 dark:text-white">
           {boarded}
           {expected !== null && (
             <span className="text-[10px] font-bold text-slate-400 dark:text-white/40">
@@ -1747,7 +1850,7 @@ function FlightBoardingCard({
             </span>
           )}
         </span>
-        <span className="text-[8px] font-bold uppercase tracking-wider text-slate-400 dark:text-white/40">
+        <span className="ml-0.5 text-[8px] font-bold uppercase tracking-wider text-slate-400 dark:text-white/40">
           pax
         </span>
       </div>

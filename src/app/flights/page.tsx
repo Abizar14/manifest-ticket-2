@@ -51,6 +51,7 @@ import {
 } from "@/lib/boarding";
 import { pullFidsKeberangkatan } from "@/lib/jadwal/flightSync";
 import { getSettings, subscribeSettings } from "@/lib/settings";
+import { apiManifestByAirline, isAuthed } from "@/lib/api/client";
 import { getEffectiveFlightStatus } from "@/lib/flightStatus";
 import { useToast } from "@/components/ui/Toast";
 import { useConfirm } from "@/components/ui/ConfirmDialog";
@@ -243,6 +244,49 @@ export default function FlightsPage() {
   // P-07: index boarded-count dibangun sekali, dipakai per-flight O(1).
   const boardedCounts = useMemo(() => buildBoardedCounts(events), [events]);
 
+  // Hitungan boarded dari SERVER (agar scan petugas di perangkat lain ikut
+  // terhitung, bukan cuma scan perangkat ini). Key = "NOMOR|YYYY-MM-DD".
+  const [serverCounts, setServerCounts] = useState<Map<string, number>>(
+    () => new Map(),
+  );
+  useEffect(() => {
+    if (!settings.apiSyncEnabled || !isAuthed() || flights.length === 0) {
+      setServerCounts(new Map());
+      return;
+    }
+    const dates = flights.map((f) => f.departureDate).sort();
+    const from = dates[0];
+    const to = dates[dates.length - 1];
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await apiManifestByAirline({ from, to, detail: true });
+        if (cancelled || !res.ok || !res.data) return;
+        const m = new Map<string, number>();
+        for (const a of res.data.airlines) {
+          for (const fd of a.flightsDetail) {
+            m.set(
+              `${fd.flightNumber.toUpperCase()}|${fd.std.slice(0, 10)}`,
+              fd.passengers,
+            );
+          }
+        }
+        setServerCounts(m);
+      } catch {
+        /* biarkan kosong → fallback ke hitungan lokal */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [flights, settings.apiSyncEnabled]);
+
+  // Boarded efektif per flight: server (lintas-perangkat) > lokal.
+  const boardedOf = (f: Flight) =>
+    serverCounts.get(`${f.flightNumber.toUpperCase()}|${f.departureDate}`) ??
+    boardedCounts.get(f.id) ??
+    0;
+
   const onDelete = async (id: string) => {
     const target = flights.find((f) => f.id === id);
     const res = await confirm({
@@ -354,7 +398,7 @@ export default function FlightsPage() {
             {paginated.map((f) => {
               const eff = getEffectiveFlightStatus(f, now, settings);
               const differs = eff.status !== f.status;
-              const progress = boardingProgressFromCount(f, boardedCounts.get(f.id) ?? 0);
+              const progress = boardingProgressFromCount(f, boardedOf(f));
               return (
                 <FlightRow
                   key={f.id}
@@ -505,10 +549,7 @@ export default function FlightsPage() {
                     index={idx}
                     now={now}
                     settings={settings}
-                    progress={boardingProgressFromCount(
-                      f,
-                      boardedCounts.get(f.id) ?? 0,
-                    )}
+                    progress={boardingProgressFromCount(f, boardedOf(f))}
                     canManage={canManage}
                     onDelete={onDelete}
                   />

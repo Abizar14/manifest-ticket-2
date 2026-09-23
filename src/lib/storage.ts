@@ -60,14 +60,27 @@ function write<T>(key: string, value: T) {
   cache.set(key, value);
 }
 
+/**
+ * Auto-seed flight demo hanya bila di-aktifkan via env
+ * `NEXT_PUBLIC_SEED_DEMO_FLIGHTS=true`. DEFAULT OFF (produksi) → instance
+ * baru/reset mulai KOSONG; jadwal diisi dari sync FIDS atau dibuat manual.
+ */
+function demoFlightSeedEnabled(): boolean {
+  return process.env.NEXT_PUBLIC_SEED_DEMO_FLIGHTS === "true";
+}
+
 export function ensureSeed() {
   if (!isBrowser()) return;
   const seeded = window.localStorage.getItem(KEYS.seeded);
   if (seeded === "1") return;
 
   write<User[]>(KEYS.users, DUMMY_USERS);
+  // Snapshot "default" yang DISENGAJA disimpan operator tetap dihormati. Selain
+  // itu: flight demo bawaan HANYA diisi bila demo-seed di-aktifkan (env).
   const customSeed = buildFlightsFromCustomSeed();
-  write<Flight[]>(KEYS.flights, customSeed ?? buildSeedFlights());
+  const flights =
+    customSeed ?? (demoFlightSeedEnabled() ? buildSeedFlights() : []);
+  write<Flight[]>(KEYS.flights, flights);
   write<ScanEvent[]>(KEYS.scanEvents, []);
   window.localStorage.setItem(KEYS.seeded, "1");
 }

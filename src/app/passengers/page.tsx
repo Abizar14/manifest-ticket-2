@@ -24,9 +24,11 @@ import {
   THead,
   Tr,
 } from "@/components/ui/Table";
-import { Flight, ScanEvent } from "@/lib/types";
+import { Flight, ScanEvent, ScanResultStatus } from "@/lib/types";
 import { getFlights, getScanEvents } from "@/lib/storage";
-import { cn, formatDateTime } from "@/lib/utils";
+import { getSettings } from "@/lib/settings";
+import { apiListAllScans, isAuthed, type ApiScanEvent } from "@/lib/api/client";
+import { cn, formatDateTime, todayDateString } from "@/lib/utils";
 import { PageHero, HeroChip } from "@/components/layout/PageHero";
 import { Pagination } from "@/components/ui/Pagination";
 import { LargeTitle } from "@/components/mobile/LargeTitle";
@@ -53,6 +55,26 @@ interface Match {
   boarded: boolean;
 }
 
+/** ApiScanEvent (server) → ScanEvent (bentuk lokal) untuk pencarian. flightId
+ *  server ≠ id flight lokal, jadi dikosongkan — kolom nomor flight tetap dari
+ *  parsedFlightNumber. */
+function apiScanToLocal(s: ApiScanEvent): ScanEvent {
+  return {
+    id: s.eventId,
+    rawBarcode: s.rawBarcode,
+    parsedFlightNumber: s.flightNumber,
+    parsedPnr: s.pnr,
+    parsedTicketNumber: s.ticketNumber,
+    parsedSeatNumber: s.seat,
+    parsedPassengerName: s.passengerName,
+    resultStatus: s.resultStatus as ScanResultStatus,
+    message: s.message ?? "",
+    flightId: null,
+    scannedBy: s.operatorId,
+    scannedAt: s.scannedAt,
+  };
+}
+
 export default function PassengersPage() {
   const [query, setQuery] = useState("");
   const [field, setField] = useState<SearchField>("any");
@@ -61,8 +83,34 @@ export default function PassengersPage() {
   const [page, setPage] = useState(1);
 
   useEffect(() => {
-    setEvents(getScanEvents());
+    const local = getScanEvents();
+    setEvents(local);
     setFlights(getFlights());
+
+    // Gabungkan scan dari SERVER (mencakup semua pos/perangkat) supaya pencarian
+    // menemukan penumpang yang di-scan di pos lain — bukan cuma perangkat ini.
+    // Ambil scan hari ini (paling operasional); riwayat lokal tetap tercari.
+    if (!getSettings().apiSyncEnabled || !isAuthed()) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await apiListAllScans({ date: todayDateString() });
+        if (cancelled || !res.ok || !res.data) return;
+        const seen = new Set(local.map((e) => e.id));
+        const merged = [...local];
+        for (const s of res.data.items) {
+          if (seen.has(s.eventId)) continue; // sudah ada dari perangkat ini
+          seen.add(s.eventId);
+          merged.push(apiScanToLocal(s));
+        }
+        if (!cancelled) setEvents(merged);
+      } catch {
+        /* offline / gagal → cukup pakai lokal */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {

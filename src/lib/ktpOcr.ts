@@ -155,41 +155,15 @@ export { isHeaderOrLabel };
  *  2. Baris persis setelah NIK (layout standar KTP).
  *  3. Baris uppercase panjang yang BUKAN header/label/kota/provinsi.
  */
-function parseKtpName(rawText: string): string | null {
+export function parseKtpName(rawText: string): string | null {
   const lines = rawText
     .split(/\r?\n/)
     .map((l) => l.trim())
     .filter(Boolean);
 
-  const cleanName = (raw: string): string => {
-    let s = raw
-      .replace(/[^A-Za-z.\s'-]/g, "")
-      .replace(/\s+/g, " ")
-      .trim()
-      .toUpperCase();
-    // Buang label field yang kadang ikut terbaca ("NAMA PRAYUDA…" → "PRAYUDA…").
-    s = s.replace(/^(NAMA|NAME|NIK)\b[\s:.'-]*/g, "").trim();
-    // Buang token sampah di ujung (mis. "AA PRAYUDA ELFANDRO J" → "PRAYUDA
-    // ELFANDRO"): potongan label/garis yang nyangkut biasanya 1-2 huruf.
-    // Hanya trim bila masih ada >=2 token "berbobot" (>=3 huruf) supaya nama
-    // pendek sah seperti "ST FATIMAH" tidak ikut terpotong.
-    const tokens = s.split(" ").filter(Boolean);
-    const longCount = tokens.filter((t) => t.length >= 3).length;
-    if (longCount >= 2) {
-      while (tokens.length > 2 && tokens[tokens.length - 1].length <= 2) tokens.pop();
-      while (tokens.length > 2 && tokens[0].length <= 2) tokens.shift();
-    }
-    return tokens.join(" ");
-  };
-
   // 1. Cari label "Nama" eksplisit (OCR kadang baca "Narna", "Nema", dll).
-  for (const line of lines) {
-    const m = line.match(/^\s*n[a-z]{2,3}\s*[:\-]\s*(.+)$/i);
-    if (m) {
-      const name = cleanName(m[1]);
-      if (name.length >= 3 && !isHeaderOrLabel(name)) return name;
-    }
-  }
+  const byLabel = extractNameByLabel(lines);
+  if (byLabel) return byLabel;
 
   // 2. Baris setelah NIK (16 digit). Layout KTP: NIK → Nama.
   for (let i = 0; i < lines.length - 1; i++) {
@@ -327,4 +301,19 @@ export async function recognizeKtp(
   const result = await worker.recognize(processed);
   const rawText = result.data.text ?? "";
   return { rawText, name: parseKtpName(rawText) };
+}
+
+/**
+ * OCR generik: crop + preprocess lalu kembalikan rawText MENTAH (tanpa parsing).
+ * Dipakai preset multi-dokumen (KTP/SIM/ID) — parser dipilih per jenis dokumen
+ * oleh pemanggil (lihat src/lib/idDocs.ts).
+ */
+export async function recognizeRaw(
+  image: Blob,
+  cropRect?: CropRect,
+): Promise<string> {
+  const worker = await getWorker();
+  const processed = await preprocessForOcr(image, cropRect);
+  const result = await worker.recognize(processed);
+  return result.data.text ?? "";
 }

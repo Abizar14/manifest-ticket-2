@@ -106,21 +106,29 @@ export function validateBarcode(raw: string): ValidationOutcome {
     };
   }
 
-  // Kalau ada beberapa flight dengan nomor sama (mis. jadwal beda tanggal atau
-  // data seed lama dari hari sebelumnya), utamakan yang JADWALNYA HARI INI &
-  // boardable — supaya scan tidak nyangkut ke record basi lalu salah menolak
-  // "BUKAN HARI INI". Fallback ke record pertama hanya untuk pesan error.
-  const flight =
-    matches.find(
-      (f) => f.departureDate === today && (f.status === "OPEN" || f.status === "ACTIVE"),
-    ) ??
-    matches.find((f) => f.departureDate === today) ??
-    matches[0];
+  // Pilih flight yang cocok:
+  // - Bila barcode MEMUAT tanggal (flightDate), utamakan flight pada tanggal itu
+  //   → boarding pass tanggal lampau akan nyangkut ke flight lampau lalu ditolak
+  //   "BUKAN HARI INI" (tidak lolos ke flight hari ini yang nomornya kebetulan sama).
+  // - Bila tanpa tanggal (barcode lama), pakai preferensi HARI INI & boardable.
+  const flight = parsed.flightDate
+    ? (matches.find((f) => f.departureDate === parsed.flightDate) ?? matches[0])
+    : (matches.find(
+        (f) =>
+          f.departureDate === today &&
+          (f.status === "OPEN" || f.status === "ACTIVE"),
+      ) ??
+      matches.find((f) => f.departureDate === today) ??
+      matches[0]);
 
-  if (flight.departureDate !== today) {
+  // Tanggal OTORITATIF = dari barcode bila ada (mis. seeder/BCBP), else tanggal
+  // flight. Boarding pass untuk tanggal selain HARI INI langsung ditolak — cegah
+  // boarding pass tanggal lampau lolos ke flight hari ini yang nomornya sama.
+  const passDate = parsed.flightDate ?? flight.departureDate;
+  if (passDate !== today) {
     return {
       status: "FLIGHT_NOT_TODAY",
-      message: `Ditolak: flight ${flight.flightNumber} bukan penerbangan hari ini (jadwal: ${flight.departureDate}).${previousNote}`,
+      message: `Ditolak: ${flight.flightNumber} bukan penerbangan hari ini (jadwal boarding pass: ${passDate}).${previousNote}`,
       flight,
       parsed,
     };
