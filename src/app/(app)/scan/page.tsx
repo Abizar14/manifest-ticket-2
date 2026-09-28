@@ -22,6 +22,7 @@ import {
   Printer,
   Sparkles,
   Monitor,
+  ScanBarcode,
 } from "lucide-react";
 import { CameraScanner } from "@/components/scan/CameraScanner";
 import { Card, CardBody, CardHeader, CardTitle } from "@/components/ui/Card";
@@ -97,6 +98,8 @@ function ScanPageContent() {
   const [pulseKey, setPulseKey] = useState(0);
   const [cameraOpen, setCameraOpen] = useState(false);
   const [resultModalOpen, setResultModalOpen] = useState(false);
+  // "Scan ulang pakai scanner": tampilkan penanda siap sampai scan berikutnya masuk.
+  const [awaitingScanner, setAwaitingScanner] = useState(false);
   const toast = useToast();
 
   useEffect(() => {
@@ -164,6 +167,7 @@ function ScanPageContent() {
       setTimeout(() => inputRef.current?.focus(), 0);
       return;
     }
+    setAwaitingScanner(false);
     const { outcome, event } = processScan(raw, session.email);
     playFeedbackSound(outcome.status);
     playFeedbackHaptic(outcome.status);
@@ -200,6 +204,32 @@ function ScanPageContent() {
     setResultModalOpen(true);
     setTimeout(() => inputRef.current?.focus(), 0);
   };
+
+  // Scanner mode keyboard (USB HID) tetap jalan saat modal hasil terbuka:
+  // fokus tidak di input, jadi tangkap ketikan di window & proses saat Enter.
+  const submitRef = useRef(submit);
+  submitRef.current = submit;
+  useEffect(() => {
+    if (!resultModalOpen) return;
+    let buffer = "";
+    const onKey = (e: KeyboardEvent) => {
+      if (e.target === inputRef.current) return;
+      if (e.key === "Enter") {
+        if (buffer.trim()) {
+          e.preventDefault();
+          const raw = buffer;
+          buffer = "";
+          submitRef.current(raw);
+        }
+        return;
+      }
+      if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        buffer += e.key;
+      }
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [resultModalOpen]);
 
   return (
     <>
@@ -283,6 +313,12 @@ function ScanPageContent() {
                 <span className="text-[11px] font-semibold uppercase tracking-wider text-blue-700/80">
                   Barcode Boarding Pass
                 </span>
+                {awaitingScanner && (
+                  <div className="mt-2 flex items-center gap-2 rounded-xl bg-blue-600 px-3 py-2 text-xs font-semibold text-white shadow-sm animate-fade-up">
+                    <ScanBarcode className="h-4 w-4 shrink-0 animate-pulse" />
+                    Scanner siap — dekatkan barcode boarding pass ke scanner.
+                  </div>
+                )}
                 <div className="relative mt-2 animate-pulse-glow rounded-2xl">
                   <ScanLine className="absolute left-4 top-1/2 -translate-y-1/2 h-6 w-6 text-blue-600" />
                   <Input
@@ -478,6 +514,17 @@ function ScanPageContent() {
           setResultModalOpen(false);
           setCameraOpen(true);
         }}
+        onScanAgainScanner={() => {
+          setResultModalOpen(false);
+          setAwaitingScanner(true);
+          setTimeout(() => {
+            inputRef.current?.focus();
+            inputRef.current?.scrollIntoView({
+              behavior: "smooth",
+              block: "center",
+            });
+          }, 0);
+        }}
       />
     </>
   );
@@ -488,11 +535,14 @@ function ScanResultModal({
   last,
   onClose,
   onScanAgainCamera,
+  onScanAgainScanner,
 }: {
   open: boolean;
   last: LastResult | null;
   onClose: () => void;
   onScanAgainCamera: () => void;
+  /** Scan ulang pakai scanner barcode fisik (USB, mis. Blueprint). */
+  onScanAgainScanner: () => void;
 }) {
   const [showDetail, setShowDetail] = useState(false);
 
@@ -735,18 +785,29 @@ function ScanResultModal({
                   Cetak / Simpan
                 </button>
               ) : (
-                <button
-                  type="button"
-                  onClick={onScanAgainCamera}
-                  className={cn(
-                    "inline-flex items-center gap-1.5 rounded-xl px-4 py-2.5 text-[12.5px] font-bold text-white shadow-sm ring-1 transition hover:-translate-y-0.5",
-                    theme.ctaBg,
-                    theme.ctaRing,
-                  )}
-                >
-                  <Camera className="h-3.5 w-3.5" />
-                  Scan Ulang
-                </button>
+                <>
+                  <button
+                    type="button"
+                    onClick={onScanAgainScanner}
+                    title="Tutup hasil & siapkan scan berikutnya dari scanner barcode USB"
+                    className={cn(
+                      "inline-flex items-center gap-1.5 rounded-xl px-4 py-2.5 text-[12.5px] font-bold text-white shadow-sm ring-1 transition hover:-translate-y-0.5",
+                      theme.ctaBg,
+                      theme.ctaRing,
+                    )}
+                  >
+                    <ScanBarcode className="h-3.5 w-3.5" />
+                    Scan Ulang (Scanner)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={onScanAgainCamera}
+                    className="inline-flex items-center gap-1.5 rounded-xl bg-white px-4 py-2.5 text-[12.5px] font-semibold text-slate-700 ring-1 ring-slate-200 shadow-sm transition hover:bg-slate-50 hover:ring-slate-300"
+                  >
+                    <Camera className="h-3.5 w-3.5" />
+                    Kamera
+                  </button>
+                </>
               )}
               <button
                 type="button"

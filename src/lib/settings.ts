@@ -19,6 +19,8 @@ export interface AppSettings {
   boardingCloseMinutesAfter: number;
   faceCaptureEnabled: boolean;
   faceCameraDeviceId: string | null;
+  /** Kamera untuk scanner barcode (CameraScanner). null = kamera belakang default. */
+  scannerCameraDeviceId: string | null;
   kioskAutoEnter: boolean;
   requireFaceForScan: boolean;
   sikerenEnabled: boolean;
@@ -82,6 +84,7 @@ const DEFAULTS: AppSettings = {
   ...RECOMMENDED_BOARDING,
   faceCaptureEnabled: true,
   faceCameraDeviceId: null,
+  scannerCameraDeviceId: null,
   kioskAutoEnter: false,
   requireFaceForScan: true,
   sikerenEnabled: false,

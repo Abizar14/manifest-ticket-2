@@ -10,8 +10,10 @@ import {
   Zap,
   ZapOff,
   ScanLine,
+  SwitchCamera,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { getSettings, saveSettings } from "@/lib/settings";
 
 const PREFERRED_FORMATS = [
   "pdf417",
@@ -61,6 +63,12 @@ export function CameraScanner({ open, onClose, onDecode }: Props) {
   const [torchOn, setTorchOn] = useState(false);
   const [torchAvailable, setTorchAvailable] = useState(false);
   const [engine, setEngine] = useState<"native" | "zxing" | null>(null);
+  // Kamera terpilih (tersimpan di settings). null = kamera belakang default.
+  const [deviceId, setDeviceId] = useState<string | null>(() =>
+    typeof window === "undefined" ? null : getSettings().scannerCameraDeviceId,
+  );
+  const [devices, setDevices] = useState<MediaDeviceInfo[]>([]);
+  const [activeDeviceId, setActiveDeviceId] = useState<string | null>(null);
   const [hint, setHint] = useState(
     "Arahkan kamera ke barcode boarding pass…",
   );
@@ -119,6 +127,28 @@ export function CameraScanner({ open, onClose, onDecode }: Props) {
       }
     };
 
+    const videoConstraints: MediaTrackConstraints = {
+      ...(deviceId
+        ? { deviceId: { exact: deviceId } }
+        : { facingMode: { ideal: "environment" } }),
+      width: { ideal: 1280 },
+      height: { ideal: 720 },
+    };
+
+    // Label kamera baru tersedia setelah izin diberikan → enumerasi setelah
+    // stream jalan, dan catat kamera yang benar-benar aktif.
+    const refreshDevices = async (track: MediaStreamTrack | undefined) => {
+      setActiveDeviceId(track?.getSettings?.().deviceId ?? null);
+      try {
+        const list = await navigator.mediaDevices.enumerateDevices();
+        if (!cancelled) {
+          setDevices(list.filter((d) => d.kind === "videoinput"));
+        }
+      } catch {
+        /* ignore */
+      }
+    };
+
     const startNative = async (BD: BarcodeDetectorCtor) => {
       let formats = PREFERRED_FORMATS;
       if (BD.getSupportedFormats) {
@@ -129,11 +159,7 @@ export function CameraScanner({ open, onClose, onDecode }: Props) {
       detectorRef.current = new BD({ formats });
 
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          facingMode: { ideal: "environment" },
-          width: { ideal: 1280 },
-          height: { ideal: 720 },
-        },
+        video: videoConstraints,
         audio: false,
       });
       if (cancelled) {
@@ -146,6 +172,7 @@ export function CameraScanner({ open, onClose, onDecode }: Props) {
       const caps = (track.getCapabilities?.() ??
         {}) as MediaTrackCapabilitiesWithTorch;
       setTorchAvailable(Boolean(caps.torch));
+      void refreshDevices(track);
 
       const v = videoRef.current;
       if (v) {
@@ -208,11 +235,7 @@ export function CameraScanner({ open, onClose, onDecode }: Props) {
       if (!v) return;
 
       const constraints: MediaStreamConstraints = {
-        video: {
-          facingMode: { ideal: "environment" },
-          width: { ideal: 1280 },
-          height: { ideal: 720 },
-        },
+        video: videoConstraints,
         audio: false,
       };
 
@@ -245,6 +268,7 @@ export function CameraScanner({ open, onClose, onDecode }: Props) {
         const caps = (track?.getCapabilities?.() ??
           {}) as MediaTrackCapabilitiesWithTorch;
         setTorchAvailable(Boolean(caps.torch));
+        void refreshDevices(track);
       }
 
       setSupported(true);
@@ -285,6 +309,16 @@ export function CameraScanner({ open, onClose, onDecode }: Props) {
           await startZxing();
         }
       } catch (e) {
+        // Kamera tersimpan sudah tidak ada (dicabut / device lain) → kembali
+        // ke kamera default; efek jalan ulang karena deviceId berubah.
+        const name = e instanceof Error ? e.name : "";
+        if (
+          deviceId &&
+          (name === "OverconstrainedError" || name === "NotFoundError")
+        ) {
+          if (!cancelled) setDeviceId(null);
+          return;
+        }
         const msg =
           e instanceof Error ? e.message : "Tidak dapat mengakses kamera.";
         setError(msg);
@@ -299,7 +333,20 @@ export function CameraScanner({ open, onClose, onDecode }: Props) {
       setTorchOn(false);
       setEngine(null);
     };
-  }, [open]);
+  }, [open, deviceId]);
+
+  const selectCamera = (id: string) => {
+    const next = id || null;
+    setDeviceId(next);
+    saveSettings({ scannerCameraDeviceId: next });
+  };
+
+  // Tombol cepat: ganti ke kamera berikutnya (berguna di HP: depan ↔ belakang).
+  const nextCamera = () => {
+    if (devices.length < 2) return;
+    const idx = devices.findIndex((d) => d.deviceId === activeDeviceId);
+    selectCamera(devices[(idx + 1) % devices.length].deviceId);
+  };
 
   const toggleTorch = async () => {
     const s = streamRef.current;
@@ -350,6 +397,17 @@ export function CameraScanner({ open, onClose, onDecode }: Props) {
             )}
           </div>
           <div className="flex items-center gap-1">
+            {devices.length > 1 && (
+              <button
+                type="button"
+                onClick={nextCamera}
+                title="Ganti kamera"
+                aria-label="Ganti kamera"
+                className="rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-800 hover:text-white"
+              >
+                <SwitchCamera className="h-4 w-4" />
+              </button>
+            )}
             {torchAvailable && (
               <button
                 type="button"
@@ -379,6 +437,26 @@ export function CameraScanner({ open, onClose, onDecode }: Props) {
             </button>
           </div>
         </div>
+
+        {/* Pilih kamera */}
+        {devices.length > 0 && (
+          <div className="flex items-center gap-2 border-b border-slate-800 px-4 py-2">
+            <Camera className="h-3.5 w-3.5 shrink-0 text-slate-500" />
+            <select
+              value={activeDeviceId ?? deviceId ?? ""}
+              onChange={(e) => selectCamera(e.target.value)}
+              disabled={devices.length < 2}
+              aria-label="Pilih kamera"
+              className="min-w-0 flex-1 truncate rounded-lg bg-slate-900 px-2 py-1.5 text-xs text-slate-200 ring-1 ring-slate-700 outline-none focus:ring-emerald-500/60 disabled:opacity-70"
+            >
+              {devices.map((d, i) => (
+                <option key={d.deviceId || i} value={d.deviceId}>
+                  {d.label || `Kamera ${i + 1}`}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
 
         {/* Video / Reticle */}
         <div className="relative aspect-[4/3] bg-black">
