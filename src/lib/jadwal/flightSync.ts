@@ -146,7 +146,12 @@ export async function pullFidsKeberangkatan(
         // Status mengikuti FIDS dengan aturan aman (lihat nextStatus): FIDS
         // boleh MENUTUP (Departured/Cancelled) walau lokal sudah OPEN, tapi
         // tak boleh membuka kembali yang sudah CLOSED/CANCELLED manual.
-        status: nextStatus(existing.status, inc.status),
+        // Bila lokal masih penerbangan UJI, jadwal riil dari FIDS menang:
+        // tanda uji dilepas & status sepenuhnya mengikuti FIDS.
+        status: existing.isTest
+          ? inc.status
+          : nextStatus(existing.status, inc.status),
+        isTest: false,
         // Pertahankan pax yang sudah diisi; default FIDS hanya mengisi yang kosong.
         expectedPax:
           existing.expectedPax && existing.expectedPax > 0

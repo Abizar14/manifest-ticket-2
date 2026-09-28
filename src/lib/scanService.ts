@@ -16,6 +16,7 @@ import {
 import { todayDateString, uid } from "./utils";
 import { getSettings } from "./settings";
 import { getEffectiveFlightStatus } from "./flightStatus";
+import { activeTestFlight } from "./dummyFlight";
 import { facePhotoStore } from "./facePhotoStore";
 import { enqueueValidScan, flushOutbox } from "./sikerenOutbox";
 import {
@@ -93,8 +94,13 @@ export function validateBarcode(raw: string): ValidationOutcome {
   const events = getScanEvents();
   const previousNote = previousScanNote(cleaned, events);
 
+  // Penerbangan UJI hanya dipertimbangkan bila berlaku (fitur aktif & tak ada
+  // flight terjadwal bernomor sama hari ini) — selain itu dianggap tak ada.
+  const testFlight = activeTestFlight(flights, parsed.flightNumber, today);
   const matches = flights.filter(
-    (f) => f.flightNumber.toUpperCase() === parsed.flightNumber.toUpperCase(),
+    (f) =>
+      f.flightNumber.toUpperCase() === parsed.flightNumber.toUpperCase() &&
+      (!f.isTest || f === testFlight),
   );
 
   if (matches.length === 0) {
@@ -111,20 +117,28 @@ export function validateBarcode(raw: string): ValidationOutcome {
   //   → boarding pass tanggal lampau akan nyangkut ke flight lampau lalu ditolak
   //   "BUKAN HARI INI" (tidak lolos ke flight hari ini yang nomornya kebetulan sama).
   // - Bila tanpa tanggal (barcode lama), pakai preferensi HARI INI & boardable.
-  const flight = parsed.flightDate
-    ? (matches.find((f) => f.departureDate === parsed.flightDate) ?? matches[0])
-    : (matches.find(
-        (f) =>
-          f.departureDate === today &&
-          (f.status === "OPEN" || f.status === "ACTIVE"),
-      ) ??
-      matches.find((f) => f.departureDate === today) ??
-      matches[0]);
+  // - Penerbangan UJI yang berlaku (lihat activeTestFlight) menang: boarding
+  //   pass asli bertanggal lampau tetap bisa dites tanpa mengubah barcode-nya.
+  const flight =
+    testFlight ??
+    (parsed.flightDate
+      ? (matches.find((f) => f.departureDate === parsed.flightDate) ??
+        matches[0])
+      : (matches.find(
+          (f) =>
+            f.departureDate === today &&
+            (f.status === "OPEN" || f.status === "ACTIVE"),
+        ) ??
+        matches.find((f) => f.departureDate === today) ??
+        matches[0]));
 
   // Tanggal OTORITATIF = dari barcode bila ada (mis. seeder/BCBP), else tanggal
   // flight. Boarding pass untuk tanggal selain HARI INI langsung ditolak — cegah
   // boarding pass tanggal lampau lolos ke flight hari ini yang nomornya sama.
-  const passDate = parsed.flightDate ?? flight.departureDate;
+  // Pengecualian: penerbangan UJI (tanggal barcode diabaikan).
+  const passDate = testFlight
+    ? today
+    : (parsed.flightDate ?? flight.departureDate);
   if (passDate !== today) {
     return {
       status: "FLIGHT_NOT_TODAY",
@@ -134,7 +148,11 @@ export function validateBarcode(raw: string): ValidationOutcome {
     };
   }
 
-  const effective = getEffectiveFlightStatus(flight, new Date(), getSettings());
+  // Penerbangan UJI: jendela boarding diabaikan (bisa dites kapan saja hari
+  // itu) — status manual (DRAFT/CLOSED/CANCELLED) tetap dihormati.
+  const effective = testFlight
+    ? { status: flight.status, description: `Status ${flight.status}` }
+    : getEffectiveFlightStatus(flight, new Date(), getSettings());
   if (effective.status !== "OPEN" && effective.status !== "ACTIVE") {
     return {
       status: "FLIGHT_NOT_ACTIVE",
@@ -170,7 +188,13 @@ export function validateBarcode(raw: string): ValidationOutcome {
 
   return {
     status: "VALID_FLIGHT",
-    message: `Boarding pass valid untuk ${flight.flightNumber} → ${flight.destinationAirport}.`,
+    message: testFlight
+      ? `[PENERBANGAN UJI] Boarding pass valid untuk ${flight.flightNumber} → ${flight.destinationAirport} — bukan data operasional, tidak dikirim ke server.${
+          parsed.flightDate && parsed.flightDate !== today
+            ? ` Tanggal di barcode ${parsed.flightDate} diabaikan.`
+            : ""
+        }`
+      : `Boarding pass valid untuk ${flight.flightNumber} → ${flight.destinationAirport}.`,
     flight,
     parsed,
   };
@@ -182,6 +206,9 @@ export function processScan(
   opts?: { enqueueApiPush?: boolean },
 ): { outcome: ValidationOutcome; event: ScanEvent } {
   const outcome = validateBarcode(raw);
+  // Scan pada penerbangan UJI: dicatat lokal saja — tidak ke Sikeren (billable)
+  // maupun backend AFVS, agar data uji tak mencemari data operasional.
+  const isTest = outcome.flight?.isTest === true;
   const event: ScanEvent = {
     id: uid("scn"),
     rawBarcode: (raw ?? "").trim(),
@@ -195,6 +222,7 @@ export function processScan(
     flightId: outcome.flight?.id ?? null,
     scannedBy,
     scannedAt: new Date().toISOString(),
+    ...(isTest ? { isTest: true } : {}),
   };
   addScanEvent(event);
 
@@ -222,6 +250,7 @@ export function processScan(
 
   // Sikeren integration: enqueue only on VALID outcome (billable scan).
   if (
+    !isTest &&
     outcome.status === "VALID_FLIGHT" &&
     outcome.flight &&
     outcome.parsed
@@ -240,7 +269,7 @@ export function processScan(
 
   // Backend AFVS: enqueue semua scan tercatat (audit log) ke outbox.
   // Saat dipanggil dari processScanWithFace, enqueue ditunda sampai foto siap.
-  if (opts?.enqueueApiPush !== false) {
+  if (!isTest && opts?.enqueueApiPush !== false) {
     try {
       enqueueScanPush(event);
       flushApiOutbox().catch(() => {});
@@ -282,6 +311,8 @@ export async function processScanWithFace(
     /* capture gagal — scan tetap valid */
   }
   // Sekarang foto (kalau ada) sudah siap → enqueue ke backend & flush.
+  // Scan penerbangan UJI tidak dikirim (lihat processScan).
+  if (event.isTest) return { outcome, event };
   try {
     enqueueScanPush(event);
     if (event.faceCaptureId) attachFaceToQueued(event.id, event.faceCaptureId);

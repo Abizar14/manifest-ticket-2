@@ -81,3 +81,16 @@ describe("parseIataBcbp — format BCBP IATA 792", () => {
     expect(parseIataBcbp("M1SHORT")).toBeNull();
   });
 });
+
+describe("parseIataBcbp — rute & maskapai", () => {
+  it("ekstrak airline, origin, destination dari boarding pass asli", () => {
+    const r = parseIataBcbp(
+      "M1RACHMI/DHEA ANGGRAENEINBTXL AAPSUBIU 0653 157Y018F0020 100",
+    );
+    expect(r?.flightNumber).toBe("IU653");
+    expect(r?.airlineCode).toBe("IU");
+    expect(r?.originAirport).toBe("AAP");
+    expect(r?.destinationAirport).toBe("SUB");
+    expect(r?.seatNumber).toBe("18F");
+  });
+});

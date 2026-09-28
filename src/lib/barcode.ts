@@ -90,6 +90,8 @@ export function parseIataBcbp(raw: string): ParsedBarcode | null {
 
   const nameRaw = raw.substring(2, 22);
   const pnr = raw.substring(23, 30).trim();
+  const origin = raw.substring(30, 33).trim().toUpperCase();
+  const destination = raw.substring(33, 36).trim().toUpperCase();
   const airline = raw.substring(36, 39).trim();
   const flightNumRaw = raw.substring(39, 44).trim();
   const flightNum = flightNumRaw.replace(/^0+/, "") || flightNumRaw;
@@ -107,5 +109,8 @@ export function parseIataBcbp(raw: string): ParsedBarcode | null {
     seatNumber: seat || "—",
     passengerName: formatBcbpName(nameRaw),
     flightDate: julianToDate(doy),
+    airlineCode: airline.toUpperCase(),
+    originAirport: origin || null,
+    destinationAirport: destination || null,
   };
 }

@@ -90,6 +90,9 @@ export async function pullFlights(params: {
         ...existing,
         ...inc,
         id: existing.id, // pertahankan id lokal agar referensi tidak putus
+        // Flight dari server selalu riil: bila lokal masih penerbangan UJI,
+        // data server menang & tanda uji dilepas.
+        isTest: false,
         updatedAt: new Date().toISOString(),
       });
       updated += 1;

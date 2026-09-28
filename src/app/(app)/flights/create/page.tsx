@@ -37,6 +37,11 @@ import {
   FieldSelect,
 } from "@/components/mobile/FormFieldRow";
 import { StickyActionBar } from "@/components/mobile/StickyActionBar";
+import {
+  BoardingPassImport,
+  type FlightDraftFromPass,
+} from "@/components/flights/BoardingPassImport";
+import { testFlightsEnabled } from "@/lib/dummyFlight";
 
 const STATUSES: FlightStatus[] = [
   "DRAFT",
@@ -68,6 +73,8 @@ export default function CreateFlightPage() {
   const [gateOrCheckpoint, setGateOrCheckpoint] = useState("Gate A1");
   const [status, setStatus] = useState<FlightStatus>("OPEN");
   const [expectedPax, setExpectedPax] = useState("");
+  // Diisi dari boarding pass → disimpan sebagai penerbangan uji.
+  const [isTest, setIsTest] = useState(false);
 
   useEffect(() => {
     const session = getSession();
@@ -152,6 +159,8 @@ export default function CreateFlightPage() {
       gateOrCheckpoint: gateOrCheckpoint.trim(),
       status,
       expectedPax: expected,
+      // Hanya bila fitur aktif (defensif — panel impor pun tak tampil bila mati).
+      ...(isTest && testFlightsEnabled() ? { isTest: true } : {}),
       createdAt: now,
       updatedAt: now,
     };
@@ -170,6 +179,19 @@ export default function CreateFlightPage() {
     setGateOrCheckpoint("Gate B7");
     setStatus("OPEN");
     setExpectedPax("180");
+    setIsTest(false);
+  };
+
+  const applyFromPass = (d: FlightDraftFromPass) => {
+    setError(null);
+    setFlightNumber(d.flightNumber);
+    setAirlineCode(d.airlineCode);
+    setOriginAirport(d.originAirport);
+    setDestinationAirport(d.destinationAirport);
+    setDepartureDate(d.departureDate);
+    setDepartureTime(d.departureTime);
+    setStatus(d.status);
+    setIsTest(d.isTest);
   };
 
   if (!ready) return null;
@@ -215,6 +237,8 @@ export default function CreateFlightPage() {
             <span>{error}</span>
           </div>
         )}
+
+        {testFlightsEnabled() && <BoardingPassImport onApply={applyFromPass} />}
 
         <ListSection header="Identitas">
           <FormFieldRow
@@ -454,6 +478,10 @@ export default function CreateFlightPage() {
                     <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
                     <span>{error}</span>
                   </div>
+                )}
+
+                {testFlightsEnabled() && (
+                  <BoardingPassImport onApply={applyFromPass} />
                 )}
 
                 <Section

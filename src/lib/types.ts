@@ -35,6 +35,10 @@ export interface Flight {
   status: FlightStatus;
   expectedPax?: number; // total penumpang yang diharapkan boarding
   cancellationReason?: string;
+  /** Penerbangan UJI (testing): boarding pass dengan nomor flight ini diterima
+   *  walau tanggal di barcode bukan hari ini, dan jendela boarding diabaikan.
+   *  Hanya berlaku bila flight ini dijadwalkan hari ini. */
+  isTest?: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -90,6 +94,8 @@ export interface ScanEvent {
   scannedAt: string; // ISO
   faceCaptureId?: string | null; // key di facePhotoStore (IndexedDB)
   ktpVerification?: KtpVerification | null;
+  /** Scan pada penerbangan UJI — hanya lokal, tidak dikirim ke backend/Sikeren. */
+  isTest?: boolean;
 }
 
 export type KtpVerificationStatus =
@@ -121,6 +127,10 @@ export interface ParsedBarcode {
   /** Tanggal keberangkatan dari barcode (YYYY-MM-DD) bila tersedia: field ke-6
    *  format pipe, atau Julian date BCBP. null = barcode tak memuat tanggal. */
   flightDate?: string | null;
+  /** Hanya dari BCBP: kode maskapai & rute (IATA 3-huruf). */
+  airlineCode?: string | null;
+  originAirport?: string | null;
+  destinationAirport?: string | null;
 }
 
 export interface PassengerRecord {

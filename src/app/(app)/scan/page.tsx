@@ -22,6 +22,7 @@ import {
   Printer,
   Sparkles,
   Monitor,
+  FlaskConical,
   ScanBarcode,
 } from "lucide-react";
 import { CameraScanner } from "@/components/scan/CameraScanner";
@@ -41,6 +42,9 @@ import {
   playFeedbackSound,
   processScan,
 } from "@/lib/scanService";
+import { canManageFlights } from "@/lib/auth";
+import { applyTestFlightForBarcode } from "@/lib/testFlights";
+import { testFlightsEnabled } from "@/lib/dummyFlight";
 import { formatTime, todayDateString } from "@/lib/utils";
 import { cn } from "@/lib/utils";
 import { getSettings, saveSettings, subscribeSettings } from "@/lib/settings";
@@ -61,6 +65,8 @@ interface LastResult {
   gate: string | null;
   departureDate: string | null;
   departureTime: string | null;
+  /** Hasil pada penerbangan UJI (bukan data operasional). */
+  isTest: boolean;
 }
 
 export default function ScanPage() {
@@ -174,7 +180,7 @@ function ScanPageContent() {
     if (outcome.status === "VALID_FLIGHT") {
       toast.success(
         `${outcome.flight?.flightNumber ?? "Flight"} · seat ${outcome.parsed?.seatNumber ?? "—"}`,
-        "Valid",
+        event.isTest ? "Valid — penerbangan uji" : "Valid",
       );
     } else if (outcome.status === "DUPLICATE_SCAN") {
       toast.warning(outcome.message, "Duplicate - valid hari ini");
@@ -196,6 +202,7 @@ function ScanPageContent() {
       gate: outcome.flight?.gateOrCheckpoint ?? null,
       departureDate: outcome.flight?.departureDate ?? null,
       departureTime: outcome.flight?.departureTime ?? null,
+      isTest: event.isTest === true,
     });
     setRecent(getScanEvents().slice(0, 8));
     setPulseKey((k) => k + 1);
@@ -230,6 +237,29 @@ function ScanPageContent() {
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);
   }, [resultModalOpen]);
+
+  // Testing: barcode ditolak (flight tak dikenal / bukan hari ini / tidak
+  // aktif) → siapkan PENERBANGAN UJI hari ini, lalu scan ulang barcode ASLI.
+  const createTestFlightAndRescan = (raw: string) => {
+    const res = applyTestFlightForBarcode(raw);
+    if (!res.ok) {
+      toast.error(
+        res.reason === "conflict"
+          ? `${res.flight.flightNumber} adalah penerbangan terjadwal hari ini — tidak bisa dijadikan penerbangan uji. Pakai boarding pass dengan nomor flight lain.`
+          : res.reason === "disabled"
+            ? "Fitur penerbangan uji dimatikan di lingkungan ini."
+            : "Barcode tidak dikenali, penerbangan uji tidak dibuat.",
+        "Penerbangan uji ditolak",
+      );
+      return;
+    }
+    setFlights(getFlights());
+    toast.success(
+      `${res.flight.flightNumber} · ${res.flight.originAirport} → ${res.flight.destinationAirport}`,
+      res.created ? "Penerbangan uji dibuat" : "Penerbangan uji dibuka",
+    );
+    submit(raw);
+  };
 
   return (
     <>
@@ -525,6 +555,11 @@ function ScanPageContent() {
             });
           }, 0);
         }}
+        onCreateDummy={
+          canManageFlights(session?.role) && testFlightsEnabled()
+            ? createTestFlightAndRescan
+            : undefined
+        }
       />
     </>
   );
@@ -536,6 +571,7 @@ function ScanResultModal({
   onClose,
   onScanAgainCamera,
   onScanAgainScanner,
+  onCreateDummy,
 }: {
   open: boolean;
   last: LastResult | null;
@@ -543,6 +579,9 @@ function ScanResultModal({
   onScanAgainCamera: () => void;
   /** Scan ulang pakai scanner barcode fisik (USB, mis. Blueprint). */
   onScanAgainScanner: () => void;
+  /** Hanya untuk admin/supervisor — tampil saat flight tak dikenal / bukan
+   *  hari ini / tidak aktif. */
+  onCreateDummy?: (raw: string) => void;
 }) {
   const [showDetail, setShowDetail] = useState(false);
 
@@ -671,10 +710,19 @@ function ScanResultModal({
                   <Icon className="h-3 w-3 text-white" strokeWidth={3} />
                 </span>
               </span>
+              {last.isTest && (
+                <span
+                  title="Penerbangan uji — bukan data operasional, tidak dikirim ke server"
+                  className="inline-flex items-center gap-1 rounded-full bg-amber-500 px-2 py-0.5 text-[10.5px] font-bold uppercase tracking-wider text-white"
+                >
+                  <FlaskConical className="h-3 w-3" />
+                  Uji
+                </span>
+              )}
             </div>
 
             <p className="mt-1 text-[13.5px] text-slate-600">
-              {theme.tagline ?? last.message}
+              {last.isTest ? last.message : (theme.tagline ?? last.message)}
             </p>
 
             {/* Top chip row: Penumpang / Flight / Tanggal */}
@@ -808,6 +856,20 @@ function ScanResultModal({
                     Kamera
                   </button>
                 </>
+              )}
+              {onCreateDummy &&
+                (last.status === "UNKNOWN_FLIGHT" ||
+                  last.status === "FLIGHT_NOT_TODAY" ||
+                  last.status === "FLIGHT_NOT_ACTIVE") && (
+                <button
+                  type="button"
+                  onClick={() => onCreateDummy(last.raw)}
+                  title="Testing: siapkan penerbangan uji hari ini untuk barcode ini (tanggal barcode diabaikan), lalu scan ulang barcode yang sama"
+                  className="inline-flex items-center gap-1.5 rounded-xl bg-blue-600 px-4 py-2.5 text-[12.5px] font-bold text-white shadow-sm ring-1 ring-blue-700 transition hover:-translate-y-0.5 hover:bg-blue-700"
+                >
+                  <FlaskConical className="h-3.5 w-3.5" />
+                  Jadikan Penerbangan Uji &amp; Scan Ulang
+                </button>
               )}
               <button
                 type="button"
