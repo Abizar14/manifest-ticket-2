@@ -3,18 +3,22 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "predev": "node scripts/copy-tesseract-assets.mjs",
     "dev": "next dev",
     "dev:turbo": "next dev --turbo",
     "dev:https": "next dev --experimental-https",
+    "prebuild": "node scripts/copy-tesseract-assets.mjs",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "postinstall": "node scripts/copy-tesseract-assets.mjs"
   },
   "dependencies": {
     "@sentry/nextjs": "^8.55.2",
+    "@tesseract.js-data/ind": "^1.0.0",
     "@zxing/browser": "^0.2.0",
     "@zxing/library": "^0.22.0",
     "clsx": "^2.1.1",

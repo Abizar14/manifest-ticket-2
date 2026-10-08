@@ -124,6 +124,10 @@ export interface ParsedBarcode {
   ticketNumber: string;
   seatNumber: string;
   passengerName: string | null;
+  /** Hanya dari BCBP: field nama (20 karakter) terisi penuh → nama kemungkinan
+   *  TERPOTONG maskapai, jadi token terakhir nama depan bisa tidak utuh dan
+   *  nama tengah berikutnya hilang. Dipakai pencocokan nama KTP. */
+  passengerNameTruncated?: boolean;
   /** Tanggal keberangkatan dari barcode (YYYY-MM-DD) bila tersedia: field ke-6
    *  format pipe, atau Julian date BCBP. null = barcode tak memuat tanggal. */
   flightDate?: string | null;

@@ -121,3 +121,81 @@ export function similarity(a: string | null | undefined, b: string | null | unde
   const compact = levenshteinSim(na.replace(/\s+/g, ""), nb.replace(/\s+/g, ""));
   return Math.max(base, compact);
 }
+
+/**
+ * Rapatkan token kembar yang berurutan. Penumpang bernama tunggal sering ditulis
+ * maskapai "SUKARNO/SUKARNO" → "SUKARNO SUKARNO", sedangkan KTP cukup "SUKARNO".
+ */
+function dedupeAdjacent(tokens: string[]): string[] {
+  return tokens.filter((t, i) => i === 0 || t !== tokens[i - 1]);
+}
+
+const TRUNC_TOKEN_MIN = 0.8;
+
+/**
+ * Skor satu token boarding pass (`bp`, mungkin terpotong) terhadap satu token
+ * KTP. Awalan utuh ("ABDU" ↔ "ABDURRAHMAN") = cocok penuh; selain itu toleran
+ * typo OCR lewat Levenshtein, baik ke token utuh maupun ke awalannya.
+ */
+function truncatedTokenScore(bp: string, ktp: string): number {
+  if (bp === ktp || ktp.startsWith(bp)) return 1;
+  let s = levenshteinSim(bp, ktp);
+  if (bp.length >= 4 && ktp.length > bp.length) {
+    s = Math.max(s, levenshteinSim(bp, ktp.slice(0, bp.length)));
+  }
+  return s >= TRUNC_TOKEN_MIN ? s : 0;
+}
+
+/**
+ * Skor untuk nama boarding pass yang TERPOTONG (field BCBP 20 char penuh).
+ * Format hasil parser "DEPAN [TENGAH…] BELAKANG": token pertama & terakhir
+ * harus cocok dengan token pertama & terakhir KTP; token tengah harus muncul
+ * berurutan di KTP (boleh berupa awalan), dan nama tengah KTP yang hilang
+ * karena terpotong boleh dilewati. Gagal salah satu syarat → 0.
+ */
+function truncatedScore(ktp: string[], bp: string[]): number {
+  if (bp.length === 1) {
+    return Math.max(0, ...ktp.map((k) => truncatedTokenScore(bp[0], k)));
+  }
+  if (ktp.length < bp.length) return 0;
+  const scores: number[] = [];
+  const first = truncatedTokenScore(bp[0], ktp[0]);
+  const last = truncatedTokenScore(bp[bp.length - 1], ktp[ktp.length - 1]);
+  if (!first || !last) return 0;
+  scores.push(first, last);
+  let k = 1;
+  for (let b = 1; b < bp.length - 1; b++) {
+    let found = 0;
+    while (k < ktp.length - 1 && !found) {
+      found = truncatedTokenScore(bp[b], ktp[k]);
+      k++;
+    }
+    if (!found) return 0;
+    scores.push(found);
+  }
+  return scores.reduce((a, c) => a + c, 0) / scores.length;
+}
+
+export interface KtpNameMatchOptions {
+  /** Nama boarding pass terpotong (ParsedBarcode.passengerNameTruncated). */
+  expectedTruncated?: boolean;
+}
+
+/**
+ * Kemiripan 0..1 nama hasil OCR KTP vs nama boarding pass. Seperti
+ * `similarity`, ditambah: nama tunggal yang diulang maskapai dirapatkan, dan
+ * bila nama boarding pass terpotong, nama KTP yang lebih lengkap tetap cocok.
+ */
+export function matchKtpName(
+  ocrName: string | null | undefined,
+  expectedName: string | null | undefined,
+  opts: KtpNameMatchOptions = {},
+): number {
+  if (!ocrName || !expectedName) return 0;
+  const ktp = dedupeAdjacent(tokenize(ocrName));
+  const bp = dedupeAdjacent(tokenize(expectedName));
+  if (!ktp.length || !bp.length) return 0;
+  const base = similarity(ktp.join(" "), bp.join(" "));
+  if (!opts.expectedTruncated) return base;
+  return Math.max(base, truncatedScore(ktp, bp));
+}

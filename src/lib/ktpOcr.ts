@@ -8,14 +8,54 @@ type TesseractWorker = {
   terminate: () => Promise<void>;
 };
 
+type CreateWorker = (
+  lang: string,
+  oem?: number,
+  options?: Record<string, unknown>,
+) => Promise<TesseractWorker>;
+
+/**
+ * Aset Tesseract disajikan dari server sendiri (public/tesseract, disalin oleh
+ * scripts/copy-tesseract-assets.mjs) — bukan CDN — supaya OCR tetap jalan di
+ * kiosk bandara yang offline / jaringannya membatasi akses keluar.
+ */
+const TESSERACT_ASSETS = "/tesseract";
+const WORKER_INIT_TIMEOUT_MS = 60_000;
+
 let workerPromise: Promise<TesseractWorker> | null = null;
 
 async function getWorker(): Promise<TesseractWorker> {
   if (workerPromise) return workerPromise;
   workerPromise = (async () => {
     const mod = await import("tesseract.js");
-    const createWorker = (mod as unknown as { createWorker: (lang: string) => Promise<TesseractWorker> }).createWorker;
-    const worker = await createWorker("ind");
+    const createWorker = (mod as unknown as { createWorker: CreateWorker }).createWorker;
+    const base = `${window.location.origin}${TESSERACT_ASSETS}`;
+    // tesseract.js menelan error saat memuat bahasa/inisialisasi — promise
+    // createWorker lalu menggantung selamanya. errorHandler + batas waktu
+    // memastikan kegagalan tetap muncul sebagai penolakan.
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let failInit: (err: Error) => void = () => {};
+    const initFailed = new Promise<never>((_, reject) => {
+      failInit = reject;
+      timer = setTimeout(
+        () => reject(new Error("OCR: memuat aset Tesseract melebihi batas waktu")),
+        WORKER_INIT_TIMEOUT_MS,
+      );
+    });
+    let worker: TesseractWorker;
+    try {
+      worker = await Promise.race([
+        createWorker("ind", 1, {
+          workerPath: `${base}/worker.min.js`,
+          corePath: `${base}/core`,
+          langPath: `${base}/lang`,
+          errorHandler: (err: unknown) => failInit(new Error(`OCR: ${String(err)}`)),
+        }),
+        initFailed,
+      ]);
+    } finally {
+      clearTimeout(timer);
+    }
     try {
       // PSM 6 = anggap satu blok teks seragam (cocok untuk crop area nama
       // yang berisi beberapa baris: label NIK/Nama + nilainya).
@@ -28,6 +68,11 @@ async function getWorker(): Promise<TesseractWorker> {
     }
     return worker;
   })();
+  // Gagal memuat (aset tak terjangkau, dll.) → jangan cache penolakannya,
+  // supaya percobaan berikutnya memuat ulang tanpa perlu reload halaman.
+  workerPromise.catch(() => {
+    workerPromise = null;
+  });
   return workerPromise;
 }
 

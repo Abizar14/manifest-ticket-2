@@ -71,6 +71,17 @@ describe("parseIataBcbp — format BCBP IATA 792", () => {
     expect(r?.passengerName).toBe("AJIE MUH YUSUF"); // first + last
   });
 
+  it("nama pendek (field ber-pad spasi) → tidak terpotong", () => {
+    expect(parseIataBcbp(bcbp)?.passengerNameTruncated).toBe(false);
+  });
+
+  it("field nama 20 char penuh → ditandai terpotong", () => {
+    const full = bcbp.slice(0, 2) + "HASYIM/MUHAMMAD ABDU" + bcbp.slice(22);
+    const r = parseIataBcbp(full);
+    expect(r?.passengerName).toBe("MUHAMMAD ABDU HASYIM");
+    expect(r?.passengerNameTruncated).toBe(true);
+  });
+
   it("parseBarcode mendeteksi BCBP otomatis", () => {
     const r = parseBarcode(bcbp);
     expect(r?.flightNumber).toBe("IW1484");

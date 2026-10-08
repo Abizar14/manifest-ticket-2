@@ -13,7 +13,7 @@ import { Modal } from "@/components/ui/Modal";
 import { cn } from "@/lib/utils";
 import type { FaceCaptureHandle } from "./FaceCaptureCamera";
 import { recognizeKtp, initKtpOcr } from "@/lib/ktpOcr";
-import { similarity, normalizeName } from "@/lib/nameMatch";
+import { matchKtpName, normalizeName } from "@/lib/nameMatch";
 import type { KtpVerification, KtpVerificationStatus } from "@/lib/types";
 
 type Phase =
@@ -41,13 +41,16 @@ const KTP_CAPTURE_ASPECT = 1280 / 800;
 interface Props {
   open: boolean;
   expectedName: string | null;
+  /** Nama boarding pass terpotong (field BCBP penuh) — lihat matchKtpName. */
+  expectedNameTruncated?: boolean;
   cameraRef: React.RefObject<FaceCaptureHandle | null>;
   autoPassThreshold: number;
   manualThreshold: number;
   /**
-   * Bila true (KTP wajib untuk valid), operator TIDAK boleh meng-override
-   * hasil yang tidak cocok — tombol "Cocok (manual)" disembunyikan, jadi
-   * hanya kecocokan otomatis (≥ ambang) yang bisa lolos.
+   * Bila true (KTP wajib untuk valid), hasil yang jelas TIDAK COCOK
+   * (< manualThreshold) ditolak otomatis & tak bisa di-override. Zona
+   * "periksa manual" (manualThreshold..autoPassThreshold) tetap diputuskan
+   * petugas lewat tombol "Cocok (manual)" / "Tolak".
    */
   requireMatch?: boolean;
   onClose: (result: KtpVerification | null) => void;
@@ -75,6 +78,7 @@ function statusLabel(status: KtpVerificationStatus): string {
 export function KtpVerifyModal({
   open,
   expectedName,
+  expectedNameTruncated = false,
   cameraRef,
   autoPassThreshold,
   manualThreshold,
@@ -193,7 +197,9 @@ export function KtpVerifyModal({
         ocrTries++;
 
         if (res.name) {
-          const simVal = expectedName ? similarity(res.name, expectedName) : 0;
+          const simVal = matchKtpName(res.name, expectedName, {
+            expectedTruncated: expectedNameTruncated,
+          });
           // HANYA kunci/capture kalau nama benar-benar mirip (>= ambang cocok).
           if (simVal >= autoPassThreshold) {
             setOcrName(res.name);
@@ -238,7 +244,7 @@ export function KtpVerifyModal({
     return () => {
       cancelled = true;
     };
-  }, [phase, cameraRef, expectedName, autoPassThreshold]);
+  }, [phase, cameraRef, expectedName, expectedNameTruncated, autoPassThreshold]);
 
   const startFlowRef = React.useRef<() => Promise<void>>(() => Promise.resolve());
 
@@ -312,8 +318,8 @@ export function KtpVerifyModal({
     return () => clearTimeout(t);
   }, [phase, status]);
 
-  // Auto-TOLAK saat KTP WAJIB & nama KTP kebaca tapi TIDAK COCOK — operator
-  // tak perlu menekan "Tolak". Ref dipakai agar timer tidak ter-reset oleh
+  // Auto-TOLAK saat KTP WAJIB & nama KTP kebaca tapi jelas TIDAK COCOK —
+  // operator tak perlu menekan "Tolak". Ref dipakai agar timer tidak ter-reset oleh
   // re-render induk (jam kiosk).
   const autoRejectRef = React.useRef<() => void>(() => {});
   React.useEffect(() => {
@@ -331,10 +337,17 @@ export function KtpVerifyModal({
     if (phase !== "result" || !requireMatch) return;
     // Hanya auto-tolak kalau nama kebaca tapi beda. OCR gagal total (tak
     // terbaca) tetap manual supaya bukan salah-tolak karena kamera buram.
-    if (status !== "mismatch") return;
+    // Zona "periksa manual" (sim ≥ manualThreshold) juga tidak auto-tolak:
+    // nama mirip tapi tak identik (mis. maskapai hanya menulis sebagian nama)
+    // — petugas yang memutuskan.
+    if (status !== "mismatch" || sim >= manualThreshold) return;
     const t = setTimeout(() => autoRejectRef.current(), 1800);
     return () => clearTimeout(t);
-  }, [phase, status, requireMatch]);
+  }, [phase, status, sim, manualThreshold, requireMatch]);
+  // Hasil boleh di-override petugas: KTP tidak wajib, atau KTP wajib tapi
+  // masih di zona "periksa manual".
+  const canManualPass =
+    status !== "matched" && (!requireMatch || (status === "mismatch" && sim >= manualThreshold));
 
   const reject = () => {
     onClose({
@@ -584,10 +597,17 @@ export function KtpVerifyModal({
               </details>
             )}
 
-            {requireMatch && status === "mismatch" && (
+            {requireMatch && status === "mismatch" && sim < manualThreshold && (
               <p className="text-center text-[11px] font-semibold text-rose-600 dark:text-rose-300">
                 KTP tidak cocok — <b>ditolak otomatis</b>. Tekan{" "}
                 <b>Coba lagi</b> untuk mengulang.
+              </p>
+            )}
+            {requireMatch && status === "mismatch" && sim >= manualThreshold && (
+              <p className="text-center text-[11px] font-semibold text-amber-700 dark:text-amber-300">
+                Nama mirip tapi tidak identik — <b>petugas memutuskan</b>. Bandingkan
+                KTP dengan boarding pass, lalu tekan <b>Cocok (manual)</b> atau{" "}
+                <b>Tolak</b>.
               </p>
             )}
             <div className="grid gap-2 sm:grid-cols-3">
@@ -607,7 +627,7 @@ export function KtpVerifyModal({
                   Tolak
                 </button>
               )}
-              {(status === "matched" || !requireMatch) && (
+              {(status === "matched" || canManualPass) && (
                 <button
                   type="button"
                   onClick={accept}
@@ -631,7 +651,9 @@ export function KtpVerifyModal({
           className="flex w-full items-center justify-center gap-1.5 rounded-xl px-3 py-2 text-[12px] font-semibold text-ink-subtle hover:text-ink"
         >
           <SkipForward className="h-3.5 w-3.5" />
-          Lewati verifikasi KTP
+          {requireMatch
+            ? "Lewati verifikasi KTP (scan akan ditolak)"
+            : "Lewati verifikasi KTP"}
         </button>
         <span className="sr-only">{statusLabel("skipped")}</span>
       </div>

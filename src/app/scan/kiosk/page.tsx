@@ -81,7 +81,7 @@ import {
 import { setTheme } from "@/lib/theme";
 import { initKtpOcr } from "@/lib/ktpOcr";
 import { getIdDoc, recognizeIdName, ID_DOC_LIST, type IdDocType } from "@/lib/idDocs";
-import { similarity } from "@/lib/nameMatch";
+import { matchKtpName } from "@/lib/nameMatch";
 import type {
   Flight,
   KtpVerification,
@@ -106,6 +106,15 @@ type PendingKtp = {
   rawText: string;
   photoUrl: string;
   capturedAt: number;
+};
+
+/** KTP-first: nama di zona "periksa manual" — menunggu keputusan petugas. */
+type KtpDecision = {
+  ocrName: string;
+  expectedName: string;
+  similarity: number;
+  photoUrl: string;
+  decide: (accepted: boolean) => void;
 };
 
 interface LastResult {
@@ -349,12 +358,14 @@ export default function KioskPage() {
   const [ktpFlow, setKtpFlow] = React.useState<{
     eventId: string;
     expectedName: string | null;
+    expectedNameTruncated: boolean;
   } | null>(null);
   const [faceState, setFaceState] = React.useState<FaceState>("unknown");
   const [faceDetectorSupported, setFaceDetectorSupported] = React.useState(false);
   // KTP-first: identitas KTP yang sudah terbaca, menunggu boarding pass.
   const [pendingKtp, setPendingKtp] = React.useState<PendingKtp | null>(null);
   const pendingKtpRef = React.useRef<PendingKtp | null>(null);
+  const [ktpDecision, setKtpDecision] = React.useState<KtpDecision | null>(null);
   React.useEffect(() => {
     pendingKtpRef.current = pendingKtp;
   }, [pendingKtp]);
@@ -483,7 +494,7 @@ export default function KioskPage() {
     if (!settings.ktpScanFirst) return;
     if (!settings.faceCaptureEnabled) return; // butuh kamera hidup
     if (pendingKtp) return; // sudah ada identitas → tunggu boarding pass
-    if (modalOpen || ktpFlow) return; // jangan ganggu saat modal hasil terbuka
+    if (modalOpen || ktpFlow || ktpDecision) return; // jangan ganggu saat modal hasil terbuka
     const doc = getIdDoc(settings.idDocType); // crop + parser sesuai jenis dokumen
     let cancelled = false;
     const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
@@ -545,7 +556,7 @@ export default function KioskPage() {
     return () => {
       cancelled = true;
     };
-  }, [settings.ktpScanFirst, settings.faceCaptureEnabled, settings.idDocType, pendingKtp, modalOpen, ktpFlow]);
+  }, [settings.ktpScanFirst, settings.faceCaptureEnabled, settings.idDocType, pendingKtp, modalOpen, ktpFlow, ktpDecision]);
 
   // KTP-first: identitas pending kedaluwarsa setelah TTL bila tak ada scan.
   React.useEffect(() => {
@@ -583,7 +594,7 @@ export default function KioskPage() {
     return () => window.clearInterval(t);
   }, []);
 
-  const ktpFlowOpen = ktpFlow !== null;
+  const ktpFlowOpen = ktpFlow !== null || ktpDecision !== null;
   React.useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
@@ -652,6 +663,8 @@ export default function KioskPage() {
   const submit = async (rawInput?: string) => {
     if (!session) return;
     if (submittingRef.current) return;
+    // Petugas belum memutuskan KTP zona "periksa manual" — tahan scan berikutnya.
+    if (ktpDecision) return;
     const raw = rawInput ?? value;
     if (!raw.trim()) {
       setValue("");
@@ -669,6 +682,10 @@ export default function KioskPage() {
         const expectedName = outcome.parsed?.passengerName ?? null;
         let finalStatus = outcome.status;
         let finalMessage = outcome.message;
+        // Zona "periksa manual": nama mirip tapi di bawah ambang auto-cocok →
+        // petugas yang memutuskan (lihat setKtpDecision di bawah).
+        let review: { ktpRes: KtpVerification; ocrName: string; expectedName: string } | null =
+          null;
 
         // Jalur "Tanpa KTP" — one-shot, dikonsumsi saat scan ini.
         const isExempt = exemptNextRef.current;
@@ -687,7 +704,9 @@ export default function KioskPage() {
             event.ktpVerification = ktpRes;
             // finalStatus tetap VALID_FLIGHT.
           } else if (pending && expectedName) {
-            const sim = similarity(pending.name, expectedName);
+            const sim = matchKtpName(pending.name, expectedName, {
+              expectedTruncated: outcome.parsed?.passengerNameTruncated,
+            });
             const matched = sim >= settings.ktpAutoPassThreshold;
             const ktpRes: KtpVerification = {
               status: matched ? "matched" : "mismatch",
@@ -699,10 +718,16 @@ export default function KioskPage() {
             updateScanEvent(event.id, { ktpVerification: ktpRes });
             event.ktpVerification = ktpRes;
             // Mode KTP-first: nama WAJIB cocok. Tidak cocok → tolak (apa pun
-            // setting ktpRequireForValid, karena pencocokan ini inti mode-nya).
+            // setting ktpRequireForValid, karena pencocokan ini inti mode-nya),
+            // kecuali zona "periksa manual" → petugas memutuskan. Sambil
+            // menunggu, scan tetap tercatat DITOLAK (fail-safe bila tab ditutup).
             if (!matched) {
+              const reviewable = sim >= settings.ktpManualThreshold;
+              if (reviewable) review = { ktpRes, ocrName: pending.name, expectedName };
               finalStatus = "KTP_MISMATCH";
-              finalMessage = `Ditolak: nama KTP (${pending.name}) tidak cocok dengan boarding pass (${expectedName}).`;
+              finalMessage = reviewable
+                ? `Menunggu keputusan petugas: nama KTP (${pending.name}) mirip boarding pass (${expectedName}).`
+                : `Ditolak: nama KTP (${pending.name}) tidak cocok dengan boarding pass (${expectedName}).`;
               updateScanEvent(event.id, {
                 resultStatus: finalStatus,
                 message: finalMessage,
@@ -724,63 +749,107 @@ export default function KioskPage() {
           }
         }
 
-        // Audio hasil scan (berhasil/gagal) dimatikan — cukup getar + visual.
-        playFeedbackHaptic(finalStatus);
-        setSessionStats((prev) =>
-          finalStatus === "VALID_FLIGHT"
-            ? { ...prev, valid: prev.valid + 1 }
-            : finalStatus === "DUPLICATE_SCAN"
-              ? { ...prev, duplicate: prev.duplicate + 1 }
-              : { ...prev, rejected: prev.rejected + 1 },
-        );
-        if (finalStatus === "VALID_FLIGHT") {
-          toast.success(
-            `${outcome.flight?.flightNumber ?? "Flight"} · ${
-              isExempt
-                ? "tanpa KTP"
-                : pending
-                  ? "identitas terverifikasi"
-                  : "tanpa KTP"
-            }`,
-            "Valid",
-          );
-        } else if (finalStatus === "DUPLICATE_SCAN") {
-          toast.warning(finalMessage, "Duplicate");
-        } else {
-          toast.error(finalMessage, "Ditolak");
-        }
-
-        // Foto KTP dipakai sebagai gambar hasil — alihkan kepemilikan URL ke
-        // lastFaceUrlRef (jangan revoke saat clear pendingKtp).
-        if (lastFaceUrlRef.current) {
-          URL.revokeObjectURL(lastFaceUrlRef.current);
-          lastFaceUrlRef.current = null;
-        }
+        // Foto KTP dipakai sebagai gambar hasil — kepemilikan URL dialihkan ke
+        // lastFaceUrlRef di finish() (jangan revoke saat clear pendingKtp).
         const ktpPhotoUrl = pending?.photoUrl ?? null;
-        lastFaceUrlRef.current = ktpPhotoUrl;
+        setPendingKtp(null);
 
-        setLast({
-          event,
-          flight: outcome.flight,
-          parsed: outcome.parsed,
-          flightNumber:
-            outcome.flight?.flightNumber ?? outcome.parsed?.flightNumber ?? null,
-          seat: outcome.parsed?.seatNumber ?? null,
-          passengerName: outcome.parsed?.passengerName ?? null,
-          route: outcome.flight
-            ? `${outcome.flight.originAirport} → ${outcome.flight.destinationAirport}`
-            : null,
-          faceUrl: ktpPhotoUrl,
-        });
-        const all = getScanEvents();
-        setRecent(all.slice(0, 6));
-        const today = new Date().toISOString().slice(0, 10);
-        setTodayScans(all.filter((e) => e.scannedAt.slice(0, 10) === today));
-        setTodayFlights(getFlights().filter((f) => f.departureDate === today));
-        setModalOpen(true);
-        setPendingKtp(null); // URL kini dimiliki lastFaceUrlRef → jangan revoke
+        const finish = (
+          status: ScanResultStatus,
+          message: string,
+          manualPass = false,
+        ) => {
+          // Audio hasil scan (berhasil/gagal) dimatikan — cukup getar + visual.
+          playFeedbackHaptic(status);
+          setSessionStats((prev) =>
+            status === "VALID_FLIGHT"
+              ? { ...prev, valid: prev.valid + 1 }
+              : status === "DUPLICATE_SCAN"
+                ? { ...prev, duplicate: prev.duplicate + 1 }
+                : { ...prev, rejected: prev.rejected + 1 },
+          );
+          if (status === "VALID_FLIGHT") {
+            toast.success(
+              `${outcome.flight?.flightNumber ?? "Flight"} · ${
+                isExempt
+                  ? "tanpa KTP"
+                  : manualPass
+                    ? "KTP diverifikasi manual"
+                    : pending
+                      ? "identitas terverifikasi"
+                      : "tanpa KTP"
+              }`,
+              "Valid",
+            );
+          } else if (status === "DUPLICATE_SCAN") {
+            toast.warning(message, "Duplicate");
+          } else {
+            toast.error(message, "Ditolak");
+          }
+
+          if (lastFaceUrlRef.current) {
+            URL.revokeObjectURL(lastFaceUrlRef.current);
+            lastFaceUrlRef.current = null;
+          }
+          lastFaceUrlRef.current = ktpPhotoUrl;
+
+          setLast({
+            event,
+            flight: outcome.flight,
+            parsed: outcome.parsed,
+            flightNumber:
+              outcome.flight?.flightNumber ?? outcome.parsed?.flightNumber ?? null,
+            seat: outcome.parsed?.seatNumber ?? null,
+            passengerName: outcome.parsed?.passengerName ?? null,
+            route: outcome.flight
+              ? `${outcome.flight.originAirport} → ${outcome.flight.destinationAirport}`
+              : null,
+            faceUrl: ktpPhotoUrl,
+          });
+          const all = getScanEvents();
+          setRecent(all.slice(0, 6));
+          const today = new Date().toISOString().slice(0, 10);
+          setTodayScans(all.filter((e) => e.scannedAt.slice(0, 10) === today));
+          setTodayFlights(getFlights().filter((f) => f.departureDate === today));
+          setModalOpen(true);
+          setTimeout(() => inputRef.current?.focus(), 0);
+        };
+
         setValue("");
-        setTimeout(() => inputRef.current?.focus(), 0);
+        if (review && ktpPhotoUrl) {
+          const r = review;
+          let decided = false; // cegah klik ganda tercatat dua kali
+          setKtpDecision({
+            ocrName: r.ocrName,
+            expectedName: r.expectedName,
+            similarity: r.ktpRes.similarity ?? 0,
+            photoUrl: ktpPhotoUrl,
+            decide: (accepted) => {
+              if (decided) return;
+              decided = true;
+              const v: KtpVerification = {
+                ...r.ktpRes,
+                status: accepted ? "manual_pass" : "manual_reject",
+              };
+              const status: ScanResultStatus = accepted ? outcome.status : "KTP_MISMATCH";
+              const message = accepted
+                ? outcome.message
+                : `Ditolak petugas: nama KTP (${r.ocrName}) tidak cocok dengan boarding pass (${r.expectedName}).`;
+              updateScanEvent(event.id, {
+                ktpVerification: v,
+                resultStatus: status,
+                message,
+              });
+              event.ktpVerification = v;
+              event.resultStatus = status;
+              event.message = message;
+              setKtpDecision(null);
+              finish(status, message, accepted);
+            },
+          });
+          return;
+        }
+        finish(finalStatus, finalMessage);
       } finally {
         submittingRef.current = false;
       }
@@ -887,6 +956,7 @@ export default function KioskPage() {
         setKtpFlow({
           eventId: event.id,
           expectedName: expectedNameForKtp,
+          expectedNameTruncated: !!outcome.parsed?.passengerNameTruncated,
         });
       } else {
         setModalOpen(true);
@@ -1206,9 +1276,73 @@ export default function KioskPage() {
         );
       })()}
 
+      {/* KTP-first: nama di zona "periksa manual" — petugas wajib memutuskan
+          (tanpa tombol tutup / ESC, supaya tak terlewat tanpa keputusan). */}
+      <Modal
+        open={ktpDecision !== null}
+        onClose={() => {}}
+        closeOnBackdrop={false}
+        hideClose
+        tone="warning"
+        size="lg"
+        title="Periksa KTP manual"
+        icon={<IdCard className="h-5 w-5" />}
+      >
+        {ktpDecision && (
+          <div className="space-y-4 p-1">
+            <p className="rounded-2xl bg-amber-50 px-4 py-3 text-[13px] leading-snug text-amber-900 ring-1 ring-amber-200 dark:bg-amber-500/10 dark:text-amber-200 dark:ring-amber-500/30">
+              Nama mirip tapi tidak identik (
+              <b className="tabular-nums">{Math.round(ktpDecision.similarity * 100)}%</b>{" "}
+              kemiripan). Bandingkan KTP penumpang dengan boarding pass, lalu putuskan.
+            </p>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={ktpDecision.photoUrl}
+              alt="KTP yang dipindai"
+              className="h-40 w-full rounded-xl bg-slate-50 object-contain dark:bg-surface-elev"
+            />
+            <div className="grid gap-2 sm:grid-cols-2">
+              <div className="rounded-xl bg-slate-50 px-3 py-2 dark:bg-surface-elev">
+                <div className="text-[10px] font-bold uppercase tracking-wider text-ink-subtle">
+                  Boarding Pass
+                </div>
+                <div className="mt-0.5 text-[14px] font-bold text-ink">
+                  {ktpDecision.expectedName.toUpperCase()}
+                </div>
+              </div>
+              <div className="rounded-xl bg-slate-50 px-3 py-2 dark:bg-surface-elev">
+                <div className="text-[10px] font-bold uppercase tracking-wider text-ink-subtle">
+                  KTP (OCR)
+                </div>
+                <div className="mt-0.5 text-[14px] font-bold text-ink">
+                  {ktpDecision.ocrName.toUpperCase()}
+                </div>
+              </div>
+            </div>
+            <div className="grid gap-2 sm:grid-cols-2">
+              <button
+                type="button"
+                onClick={() => ktpDecision.decide(false)}
+                className="rounded-2xl bg-rose-600 px-3 py-2.5 text-[13px] font-bold text-white hover:bg-rose-700"
+              >
+                Tolak
+              </button>
+              <button
+                type="button"
+                onClick={() => ktpDecision.decide(true)}
+                className="rounded-2xl bg-blue-600 px-3 py-2.5 text-[13px] font-bold text-white hover:bg-blue-700"
+              >
+                Cocok (manual)
+              </button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
       <KtpVerifyModal
         open={ktpFlow !== null}
         expectedName={ktpFlow?.expectedName ?? null}
+        expectedNameTruncated={ktpFlow?.expectedNameTruncated ?? false}
         cameraRef={cameraRef}
         autoPassThreshold={settings.ktpAutoPassThreshold}
         manualThreshold={settings.ktpManualThreshold}
@@ -1223,10 +1357,19 @@ export default function KioskPage() {
 
             if (requireKtp && !passed) {
               // BLOKIR: KTP wajib cocok tapi gagal → turunkan scan jadi tidak valid.
-              const msg =
+              // Pesan sesuai PENYEBAB — penting untuk audit: "dilewati" bukan
+              // berarti nama tidak cocok.
+              const [msg, title] =
                 result.status === "ocr_failed"
-                  ? "Ditolak: KTP tidak terbaca, verifikasi nama gagal."
-                  : "Ditolak: nama KTP tidak cocok dengan boarding pass.";
+                  ? ["Ditolak: KTP tidak terbaca, verifikasi nama gagal.", "KTP tidak terbaca"]
+                  : result.status === "skipped"
+                    ? [
+                        "Ditolak: verifikasi KTP dilewati, padahal KTP wajib untuk validasi.",
+                        "KTP dilewati",
+                      ]
+                    : result.status === "manual_reject"
+                      ? ["Ditolak petugas: nama KTP tidak cocok dengan boarding pass.", "KTP ditolak"]
+                      : ["Ditolak: nama KTP tidak cocok dengan boarding pass.", "KTP tidak cocok"];
               updateScanEvent(ktpFlow.eventId, {
                 resultStatus: "KTP_MISMATCH",
                 message: msg,
@@ -1245,7 +1388,7 @@ export default function KioskPage() {
               );
               setSessionStats((prev) => ({ ...prev, rejected: prev.rejected + 1 }));
               playFeedbackHaptic("KTP_MISMATCH");
-              toast.error(msg, "KTP tidak cocok");
+              toast.error(msg, title);
             } else if (requireKtp && passed) {
               // LOLOS: berikan feedback sukses yang tadi ditunda di submit().
               setSessionStats((prev) => ({ ...prev, valid: prev.valid + 1 }));

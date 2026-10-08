@@ -108,6 +108,9 @@ export function parseIataBcbp(raw: string): ParsedBarcode | null {
     ticketNumber: seq || "—",
     seatNumber: seat || "—",
     passengerName: formatBcbpName(nameRaw),
+    // Field nama BCBP tetap 20 char & di-pad spasi; karakter terakhir bukan
+    // spasi → nama mengisi penuh field, kemungkinan besar terpotong.
+    passengerNameTruncated: nameRaw.length === 20 && nameRaw[19] !== " ",
     flightDate: julianToDate(doy),
     airlineCode: airline.toUpperCase(),
     originAirport: origin || null,
